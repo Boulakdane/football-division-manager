@@ -1,0 +1,17 @@
+# IDE / editors
+.idea/
+.vscode/
+*.iml
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs & temp files
+*.log
+*.tmp
+
+# Dependencies / build output (not used today, but keeps the repo clean)
+node_modules/
+dist/
