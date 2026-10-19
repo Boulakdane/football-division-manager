@@ -3,107 +3,70 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Local Football Division Manager</title>
-  <!-- Tailwind CSS CDN -->
+  <meta name="description" content="KickOff Division — lightweight, zero-server football league management for local divisions.">
+  <title>KickOff Division — League Manager</title>
+
+  <!-- Tailwind CSS CDN + project theme -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="js/tailwind.config.js"></script>
+
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- Google Fonts for English/French & Arabic typography -->
+
+  <!-- Fonts: Inter (EN/FR) + Cairo (AR) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-            arabic: ['Cairo', 'sans-serif']
-          },
-          colors: {
-            pitch: {
-              50: '#f0fdf4',
-              100: '#dcfce7',
-              500: '#22c55e',
-              600: '#16a34a',
-              700: '#15803d',
-              800: '#166534',
-              900: '#14532d',
-            }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body {
-      font-family: 'Inter', sans-serif;
-    }
-    [dir="rtl"] body, [dir="rtl"] button, [dir="rtl"] input, [dir="rtl"] select {
-      font-family: 'Cairo', sans-serif;
-    }
-    /* Custom scrollbars */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: rgba(0,0,0,0.05);
-    }
-    ::-webkit-scrollbar-thumb {
-      background: rgba(0,0,0,0.2);
-      border-radius: 3px;
-    }
-  </style>
+
+  <!-- App styles -->
+  <link rel="stylesheet" href="css/styles.css">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200">
 
   <!-- TOP NAVIGATION BAR -->
   <header class="bg-slate-950 border-b border-slate-800 sticky top-0 z-30 shadow-md">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
-        
+      <div class="flex items-center justify-between h-16 gap-3">
+
         <!-- Logo & Title -->
-        <div class="flex items-center space-x-3 rtl:space-x-reverse">
+        <div class="flex items-center space-x-3 rtl:space-x-reverse shrink-0">
           <div class="p-2 bg-pitch-600 rounded-lg text-white shadow-lg shadow-pitch-600/30">
             <i data-lucide="trophy" class="w-6 h-6"></i>
           </div>
           <div>
             <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              <span data-i18n="appTitle">LIGA MANAGER</span> 
-              <span class="text-xs font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v1.1</span>
+              <span data-i18n="appTitle">KickOff Division</span>
+              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v2.0</span>
             </h1>
-            <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Division Management Platform</p>
+            <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Football League Management</p>
           </div>
         </div>
 
         <!-- Navigation Tabs (Desktop) -->
-        <nav class="hidden md:flex space-x-1 rtl:space-x-reverse">
+        <nav class="hidden md:flex items-center space-x-1 rtl:space-x-reverse">
           <button onclick="switchTab('standings')" id="nav-standings" class="tab-btn px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center space-x-2 rtl:space-x-reverse text-white bg-slate-800">
             <i data-lucide="award" class="w-4 h-4"></i>
             <span data-i18n="tabStandings">Standings</span>
           </button>
           <button onclick="switchTab('fixtures')" id="nav-fixtures" class="tab-btn px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all flex items-center space-x-2 rtl:space-x-reverse">
             <i data-lucide="calendar" class="w-4 h-4"></i>
-            <span data-i18n="tabFixtures">Fixtures & Results</span>
+            <span data-i18n="tabFixtures">Fixtures &amp; Results</span>
           </button>
           <button onclick="switchTab('teams')" id="nav-teams" class="tab-btn px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all flex items-center space-x-2 rtl:space-x-reverse">
             <i data-lucide="shield" class="w-4 h-4"></i>
-            <span data-i18n="tabTeams">Teams & Players</span>
+            <span data-i18n="tabTeams">Teams &amp; Players</span>
           </button>
         </nav>
 
         <!-- Right Side Actions & Language Switcher -->
         <div class="flex items-center space-x-2 rtl:space-x-reverse">
           <!-- Language Selector -->
-          <div class="relative">
-            <select id="language-select" onchange="changeLanguage(this.value)" class="bg-slate-800 text-slate-200 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-pitch-500 cursor-pointer">
-              <option value="en">🇬🇧 English</option>
-              <option value="fr">🇫🇷 Français</option>
-              <option value="ar">🇩🇿 العربية</option>
-            </select>
-          </div>
+          <select id="language-select" onchange="changeLanguage(this.value)" aria-label="Language"
+                  class="bg-slate-800 text-slate-200 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-pitch-500 cursor-pointer">
+            <option value="en">🇬🇧 English</option>
+            <option value="fr">🇫🇷 Français</option>
+            <option value="ar">🇩🇿 العربية</option>
+          </select>
 
           <!-- Quick Add Match Button -->
           <button onclick="openMatchModal()" class="px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
@@ -111,27 +74,26 @@
             <span class="hidden sm:inline" data-i18n="btnLogMatch">Log Match</span>
           </button>
 
-          <!-- Hosting & Free Deploy Modal Button -->
-          <button onclick="openGuideModal()" class="p-2 text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 rounded-lg text-xs font-medium flex items-center gap-1 transition" title="Free Hosting Guide">
+          <!-- Free Hosting Guide -->
+          <button onclick="openGuideModal()" class="p-2 text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 rounded-lg transition" title="Free Hosting Guide">
             <i data-lucide="cloud-lightning" class="w-4 h-4"></i>
-            <span class="hidden lg:inline" data-i18n="btnFreeHosting">Free Hosting Guide</span>
           </button>
 
           <!-- Data Settings Dropdown -->
           <div class="relative">
-            <button onclick="toggleDataMenu()" class="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition">
+            <button onclick="toggleDataMenu(event)" class="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition" aria-label="Data settings">
               <i data-lucide="settings" class="w-4 h-4"></i>
             </button>
-            <div id="data-menu" class="hidden absolute ltr:right-0 rtl:left-0 mt-2 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-xl py-1 z-50">
+            <div id="data-menu" class="hidden absolute ltr:right-0 rtl:left-0 mt-2 w-52 bg-slate-800 border border-slate-700 rounded-xl shadow-xl py-1 z-50">
               <button onclick="exportData()" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
                 <i data-lucide="download" class="w-3.5 h-3.5"></i> <span data-i18n="btnExport">Export Backup (JSON)</span>
               </button>
               <label class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2 cursor-pointer">
                 <i data-lucide="upload" class="w-3.5 h-3.5"></i> <span data-i18n="btnImport">Import Backup (JSON)</span>
-                <input type="file" id="import-file" accept=".json" class="hidden" onchange="importData(event)">
+                <input type="file" id="import-file" accept=".json,application/json" class="hidden" onchange="importData(event)">
               </label>
               <hr class="border-slate-700 my-1">
-              <button onclick="resetToSampleData()" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-rose-400 hover:bg-slate-700/80 flex items-center gap-2">
+              <button onclick="resetData()" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-rose-400 hover:bg-slate-700/80 flex items-center gap-2">
                 <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> <span data-i18n="btnReset">Reset Sample Data</span>
               </button>
             </div>
@@ -172,7 +134,7 @@
           <i data-lucide="shield" class="w-5 h-5"></i>
         </div>
       </div>
-      
+
       <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3.5 flex items-center justify-between">
         <div>
           <p class="text-xs font-medium text-slate-400" data-i18n="statMatchesPlayed">Played Matches</p>
@@ -209,7 +171,7 @@
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 class="text-xl font-bold text-white" data-i18n="titleLeagueTable">League Table</h2>
-          <p class="text-xs text-slate-400" data-i18n="subtitleStandings">Real-time dynamic calculated standings based on match results</p>
+          <p class="text-xs text-slate-400" data-i18n="subtitleStandings">Real-time standings, recalculated automatically from every logged result</p>
         </div>
         <div class="flex items-center gap-2">
           <button onclick="openTeamModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
@@ -236,9 +198,7 @@
                 <th class="py-3 px-4 text-center" data-i18n="thForm">Form</th>
               </tr>
             </thead>
-            <tbody id="standings-table-body" class="divide-y divide-slate-700/50">
-              <!-- Dynamically populated -->
-            </tbody>
+            <tbody id="standings-table-body" class="divide-y divide-slate-700/50"></tbody>
           </table>
         </div>
       </div>
@@ -248,18 +208,12 @@
     <section id="view-fixtures" class="tab-view hidden space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 class="text-xl font-bold text-white" data-i18n="titleFixtures">Match Schedule & Results</h2>
-          <p class="text-xs text-slate-400" data-i18n="subtitleFixtures">Filter upcoming, ongoing, and completed league matches</p>
+          <h2 class="text-xl font-bold text-white" data-i18n="titleFixtures">Fixtures &amp; Results</h2>
+          <p class="text-xs text-slate-400" data-i18n="subtitleFixtures">Schedule upcoming matches, follow live scores and log finished results</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <!-- Round Filter -->
-          <select id="filter-round" onchange="renderFixtures()" class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-pitch-500">
-            <option value="ALL" data-i18n="optAllMatchdays">All Matchdays</option>
-            <option value="1" data-i18n="optMatchday1">Matchday 1</option>
-            <option value="2" data-i18n="optMatchday2">Matchday 2</option>
-            <option value="3" data-i18n="optMatchday3">Matchday 3</option>
-            <option value="4" data-i18n="optMatchday4">Matchday 4</option>
-          </select>
+          <!-- Round Filter (dynamically populated) -->
+          <select id="filter-round" onchange="renderFixtures()" class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-pitch-500"></select>
 
           <!-- Status Filter -->
           <select id="filter-status" onchange="renderFixtures()" class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-pitch-500">
@@ -270,34 +224,31 @@
           </select>
 
           <button onclick="openMatchModal()" class="px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
-            <i data-lucide="plus" class="w-3.5 h-3.5"></i> <span data-i18n="btnLogMatch">Schedule / Log Match</span>
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i> <span data-i18n="btnLogMatch">Log Match</span>
           </button>
         </div>
       </div>
 
-      <div id="fixtures-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <!-- Dynamically rendered match cards -->
-      </div>
+      <div id="fixtures-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
     </section>
 
     <!-- VIEW 3: TEAMS & PLAYERS ROSTER -->
     <section id="view-teams" class="tab-view hidden space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 class="text-xl font-bold text-white" data-i18n="titleTeams">Teams & Player Squads</h2>
-          <p class="text-xs text-slate-400" data-i18n="subtitleTeams">Manage team profiles, active rosters, player stats and cards</p>
+          <h2 class="text-xl font-bold text-white" data-i18n="titleTeams">Teams &amp; Player Squads</h2>
+          <p class="text-xs text-slate-400" data-i18n="subtitleTeams">Manage club profiles, rosters, positions, squad numbers and goal stats</p>
         </div>
         <div class="flex items-center gap-2">
-          <input type="text" id="player-search" onkeyup="renderTeamsView()" placeholder="Search..." class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-3 py-1.5 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-pitch-500 w-48">
+          <input type="text" id="player-search" oninput="renderTeamsView()" data-i18n-ph="searchPlaceholder" placeholder="Search players or teams..."
+                 class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-3 py-1.5 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-pitch-500 w-48">
           <button onclick="openTeamModal()" class="px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i> <span data-i18n="btnAddTeam">Add Team</span>
           </button>
         </div>
       </div>
 
-      <div id="teams-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Dynamically populated teams & players list -->
-      </div>
+      <div id="teams-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
     </section>
 
   </main>
@@ -305,23 +256,23 @@
   <!-- FOOTER -->
   <footer class="bg-slate-950 border-t border-slate-800/80 py-4 mt-auto">
     <div class="max-w-7xl mx-auto px-4 text-center sm:flex sm:justify-between sm:items-center text-xs text-slate-500">
-      <p data-i18n="footerText">© Local Football Division Manager — Open Source & Zero-Cost Architecture</p>
+      <p data-i18n="footerText">© KickOff Division — Zero-server architecture, 100% free hosting on GitHub Pages</p>
       <div class="mt-2 sm:mt-0 flex justify-center space-x-4 rtl:space-x-reverse">
-        <button onclick="openGuideModal()" class="hover:text-slate-300 transition" data-i18n="btnFreeHosting">Free Deployment Guide</button>
+        <button onclick="openGuideModal()" class="hover:text-slate-300 transition" data-i18n="btnFreeHosting">Free Hosting Guide</button>
         <span>•</span>
-        <button onclick="resetToSampleData()" class="hover:text-slate-300 transition" data-i18n="btnReset">Reset Demo Data</button>
+        <button onclick="resetData()" class="hover:text-slate-300 transition" data-i18n="btnReset">Reset Sample Data</button>
       </div>
     </div>
   </footer>
 
-  <!-- MODAL 1: MATCH LOGGING / EDITING -->
+  <!-- MODAL: MATCH LOGGING / EDITING -->
   <div id="modal-match" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4">
       <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 id="match-modal-title" class="text-base font-bold text-white flex items-center gap-2">
-          <i data-lucide="file-edit" class="w-4 h-4 text-pitch-400"></i> <span data-i18n="modalMatchTitle">Record Match Result</span>
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="file-edit" class="w-4 h-4 text-pitch-400"></i> <span id="match-modal-title" data-i18n="modalMatchTitle">Schedule / Log Match</span>
         </h3>
-        <button onclick="closeMatchModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <button onclick="closeModal('modal-match')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
 
       <form id="form-match" onsubmit="saveMatch(event)" class="space-y-4">
@@ -330,25 +281,25 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblRound">Matchday / Round</label>
-            <input type="number" id="match-round" min="1" max="50" required value="1" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
+            <input type="number" id="match-round" min="1" max="200" required value="1" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
           </div>
           <div>
             <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblStatus">Status</label>
             <select id="match-status" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
-              <option value="FINISHED" data-i18n="optFinished">Finished</option>
-              <option value="LIVE" data-i18n="optLiveNow">Live</option>
               <option value="SCHEDULED" data-i18n="optUpcoming">Scheduled</option>
+              <option value="LIVE" data-i18n="optLiveNow">Live</option>
+              <option value="FINISHED" data-i18n="optFinished">Finished</option>
             </select>
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblDateTime">Date & Time</label>
+            <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblDateTime">Date &amp; Time</label>
             <input type="datetime-local" id="match-datetime" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblVenue">Venue Field</label>
+            <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblVenue">Venue</label>
             <input type="text" id="match-venue" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
           </div>
         </div>
@@ -376,24 +327,24 @@
         </div>
 
         <div class="space-y-2">
-          <label class="text-xs font-medium text-slate-400 block" data-i18n="lblGoalLog">Quick Goal Scorer Log (Comma Separated)</label>
+          <label class="text-xs font-medium text-slate-400 block" data-i18n="lblGoalLog">Goal scorers (comma separated)</label>
           <input type="text" id="match-scorers-text" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
         </div>
 
         <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
-          <button type="button" onclick="closeMatchModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
-          <button type="submit" class="px-4 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold shadow-md" data-i18n="btnSaveResult">Save Match Result</button>
+          <button type="button" onclick="closeModal('modal-match')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold shadow-md" data-i18n="btnSaveMatch">Save Match</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL 2: ADD / EDIT TEAM -->
+  <!-- MODAL: ADD / EDIT TEAM -->
   <div id="modal-team" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
       <div class="flex justify-between items-center border-b border-slate-800 pb-3">
         <h3 id="team-modal-title" class="text-base font-bold text-white" data-i18n="modalTeamTitle">Add New Team</h3>
-        <button onclick="closeTeamModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <button onclick="closeModal('modal-team')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
 
       <form id="form-team" onsubmit="saveTeam(event)" class="space-y-3">
@@ -414,22 +365,23 @@
         </div>
 
         <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
-          <button type="button" onclick="closeTeamModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
+          <button type="button" onclick="closeModal('modal-team')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
           <button type="submit" class="px-4 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold" data-i18n="btnSaveTeam">Save Team</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL 3: ADD PLAYER TO TEAM -->
+  <!-- MODAL: ADD / EDIT PLAYER -->
   <div id="modal-player" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
       <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 class="text-base font-bold text-white" data-i18n="modalPlayerTitle">Add Player to Squad</h3>
-        <button onclick="closePlayerModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <h3 id="player-modal-title" class="text-base font-bold text-white" data-i18n="modalPlayerTitle">Add Player to Squad</h3>
+        <button onclick="closeModal('modal-player')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
 
       <form id="form-player" onsubmit="savePlayer(event)" class="space-y-3">
+        <input type="hidden" id="player-id">
         <input type="hidden" id="player-team-id">
         <div>
           <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblPlayerName">Full Name</label>
@@ -467,911 +419,53 @@
         </div>
 
         <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
-          <button type="button" onclick="closePlayerModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
-          <button type="submit" class="px-4 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold" data-i18n="btnAddPlayer">Add Player</button>
+          <button type="button" onclick="closeModal('modal-player')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold" data-i18n="btnSavePlayer">Save Player</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL 4: FREE HOSTING & DEPLOYMENT GUIDE -->
+  <!-- MODAL: FREE HOSTING & DEPLOYMENT GUIDE -->
   <div id="modal-guide" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 shadow-2xl space-y-5">
       <div class="flex justify-between items-center border-b border-slate-800 pb-3">
         <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <i data-lucide="cloud-lightning" class="w-5 h-5 text-amber-400"></i> <span data-i18n="btnFreeHosting">Free Deployment Guide</span>
+          <i data-lucide="cloud-lightning" class="w-5 h-5 text-amber-400"></i> <span data-i18n="btnFreeHosting">Free Hosting Guide</span>
         </h3>
-        <button onclick="closeGuideModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <button onclick="closeModal('modal-guide')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
 
       <div class="space-y-4 text-xs text-slate-300 leading-relaxed">
-        
         <div class="bg-amber-400/10 border border-amber-400/20 p-3.5 rounded-xl">
-          <p class="font-bold text-amber-300 text-sm mb-1" data-i18n="guideHeading">💡 How to Host This Web App 100% Free</p>
-          <p data-i18n="guideSub">You can run this complete division management dashboard without paying anything for servers, domains, or databases.</p>
+          <p class="font-bold text-amber-300 text-sm mb-1" data-i18n="guideHeading">💡 How to host this web app 100% free</p>
+          <p data-i18n="guideSub">KickOff Division runs entirely in the browser — no servers, no domains, no databases to pay for.</p>
         </div>
 
         <div class="border border-slate-800 bg-slate-950/60 p-4 rounded-xl space-y-2">
           <h4 class="font-bold text-sm text-pitch-400 flex items-center gap-1.5">
-            <i data-lucide="github" class="w-4 h-4"></i> <span data-i18n="guideStep1Title">Step 1: Free Hosting with GitHub Pages</span>
+            <i data-lucide="rocket" class="w-4 h-4"></i> <span data-i18n="guideStep1Title">Step 1: Free hosting with GitHub Pages</span>
           </h4>
-          <p data-i18n="guideStep1Desc">Upload this single file as index.html into a public GitHub repository and enable GitHub Pages in settings.</p>
+          <p data-i18n="guideStep1Desc">Upload the project files into a public GitHub repository, then open Settings → Pages and select the main branch.</p>
         </div>
 
         <div class="border border-slate-800 bg-slate-950/60 p-4 rounded-xl space-y-2">
           <h4 class="font-bold text-sm text-blue-400 flex items-center gap-1.5">
-            <i data-lucide="database" class="w-4 h-4"></i> <span data-i18n="guideStep2Title">Step 2: Local & Backend Sync</span>
+            <i data-lucide="database" class="w-4 h-4"></i> <span data-i18n="guideStep2Title">Step 2: Offline data &amp; backups</span>
           </h4>
-          <p data-i18n="guideStep2Desc">Data automatically saves in browser LocalStorage. Export or import JSON files anytime or connect to Supabase/Firebase free tier for multi-user sync.</p>
+          <p data-i18n="guideStep2Desc">All teams, players and results are saved automatically in your browser's LocalStorage. Export a JSON backup at any time.</p>
         </div>
-
       </div>
 
       <div class="flex justify-end pt-2 border-t border-slate-800">
-        <button onclick="closeGuideModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold" data-i18n="btnGotIt">Got it</button>
+        <button onclick="closeModal('modal-guide')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold" data-i18n="btnGotIt">Got it</button>
       </div>
     </div>
   </div>
 
-  <!-- INTERNATIONALIZATION (i18n) DICTIONARY & APP LOGIC -->
-  <script>
-    const i18n = {
-      en: {
-        appTitle: "LIGA MANAGER",
-        appSubtitle: "Local Division Management Platform",
-        tabStandings: "Standings",
-        tabFixtures: "Fixtures & Results",
-        tabTeams: "Teams & Players",
-        btnLogMatch: "Log Match",
-        btnFreeHosting: "Free Hosting Guide",
-        btnExport: "Export Backup (JSON)",
-        btnImport: "Import Backup (JSON)",
-        btnReset: "Reset Sample Data",
-        statActiveTeams: "Active Teams",
-        statMatchesPlayed: "Played Matches",
-        statTotalGoals: "Total Goals",
-        statTopScorer: "Top Goalscorer",
-        titleLeagueTable: "League Table",
-        subtitleStandings: "Real-time dynamic calculated standings based on match results",
-        btnAddTeam: "Add New Team",
-        thPos: "Pos",
-        thClub: "Club",
-        thMP: "MP",
-        thW: "W",
-        thD: "D",
-        thL: "L",
-        thGF: "GF",
-        thGA: "GA",
-        thGD: "GD",
-        thPts: "Pts",
-        thForm: "Form",
-        titleFixtures: "Match Schedule & Results",
-        subtitleFixtures: "Filter upcoming, ongoing, and completed league matches",
-        optAllMatchdays: "All Matchdays",
-        optMatchday1: "Matchday 1",
-        optMatchday2: "Matchday 2",
-        optMatchday3: "Matchday 3",
-        optMatchday4: "Matchday 4",
-        optAllStatuses: "All Statuses",
-        optFinished: "Finished",
-        optUpcoming: "Upcoming",
-        optLiveNow: "Live Now",
-        titleTeams: "Teams & Player Squads",
-        subtitleTeams: "Manage team profiles, active rosters, player stats and cards",
-        footerText: "© Local Football Division Manager — Open Source & Zero-Cost Architecture",
-        modalMatchTitle: "Record Match Result",
-        lblRound: "Matchday / Round",
-        lblStatus: "Status",
-        lblDateTime: "Date & Time",
-        lblVenue: "Venue Field",
-        lblHomeTeam: "Home Team",
-        lblAwayTeam: "Away Team",
-        lblScore: "Score",
-        lblGoalLog: "Quick Goal Scorer Log (Comma Separated)",
-        btnCancel: "Cancel",
-        btnSaveResult: "Save Match Result",
-        modalTeamTitle: "Add New Team",
-        lblTeamName: "Club / Team Name",
-        lblTeamCode: "Short Code (3 Letters)",
-        lblPrimaryColor: "Primary Color",
-        btnSaveTeam: "Save Team",
-        modalPlayerTitle: "Add Player to Squad",
-        lblPlayerName: "Full Name",
-        lblPosition: "Position",
-        posGK: "Goalkeeper (GK)",
-        posDEF: "Defender (DEF)",
-        posMID: "Midfielder (MID)",
-        posFWD: "Forward (FWD)",
-        lblJerseyNum: "Jersey Number",
-        lblGoals: "Goals",
-        lblYellowCards: "Yellow Cards",
-        lblRedCards: "Red Cards",
-        btnAddPlayer: "Add Player",
-        guideHeading: "💡 How to Host This Web App 100% Free",
-        guideSub: "You can run this complete division management dashboard without paying anything for servers, domains, or databases.",
-        guideStep1Title: "Step 1: Free Hosting with GitHub Pages",
-        guideStep1Desc: "Upload this single file as index.html into a public GitHub repository and enable GitHub Pages in settings.",
-        guideStep2Title: "Step 2: Local & Backend Sync",
-        guideStep2Desc: "Data automatically saves in browser LocalStorage. Export or import JSON files anytime or connect to Supabase/Firebase free tier for multi-user sync.",
-        btnGotIt: "Got it",
-        editResult: "Edit Result",
-        matchdayPrefix: "Matchday",
-        noTeamsFound: "No teams added yet. Add a team to view standings.",
-        noMatchesFound: "No matches found for the selected filter.",
-        noPlayersFound: "No players registered in squad."
-      },
-      fr: {
-        appTitle: "LIGA MANAGER",
-        appSubtitle: "Plateforme de Gestion de Division Locale",
-        tabStandings: "Classement",
-        tabFixtures: "Calendrier & Résultats",
-        tabTeams: "Équipes & Joueurs",
-        btnLogMatch: "Saisir Match",
-        btnFreeHosting: "Guide d'Hébergement",
-        btnExport: "Exporter Sauvegarde (JSON)",
-        btnImport: "Importer Sauvegarde (JSON)",
-        btnReset: "Réinitialiser les Données",
-        statActiveTeams: "Équipes Actives",
-        statMatchesPlayed: "Matchs Joués",
-        statTotalGoals: "Total Buts",
-        statTopScorer: "Meilleur Buteur",
-        titleLeagueTable: "Tableau de Classement",
-        subtitleStandings: "Classement calculé en temps réel selon les résultats",
-        btnAddTeam: "Ajouter Équipe",
-        thPos: "Pos",
-        thClub: "Club",
-        thMP: "MJ",
-        thW: "V",
-        thD: "N",
-        thL: "D",
-        thGF: "BP",
-        thGA: "BC",
-        thGD: "DB",
-        thPts: "Pts",
-        thForm: "Forme",
-        titleFixtures: "Programme & Résultats",
-        subtitleFixtures: "Filtrer les matchs à venir, en cours et terminés",
-        optAllMatchdays: "Toutes les Journées",
-        optMatchday1: "Journée 1",
-        optMatchday2: "Journée 2",
-        optMatchday3: "Journée 3",
-        optMatchday4: "Journée 4",
-        optAllStatuses: "Tous les Statuts",
-        optFinished: "Terminé",
-        optUpcoming: "À venir",
-        optLiveNow: "En direct",
-        titleTeams: "Équipes & Effectifs",
-        subtitleTeams: "Gérer les profils des clubs, joueurs et cartons",
-        footerText: "© Gestionnaire de Division de Football — Architecture Open Source & Gratuite",
-        modalMatchTitle: "Enregistrer le Match",
-        lblRound: "Journée / Tour",
-        lblStatus: "Statut",
-        lblDateTime: "Date & Heure",
-        lblVenue: "Stade / Terrain",
-        lblHomeTeam: "Équipe Domicile",
-        lblAwayTeam: "Équipe Extérieur",
-        lblScore: "Score",
-        lblGoalLog: "Buteurs (Séparés par des virgules)",
-        btnCancel: "Annuler",
-        btnSaveResult: "Enregistrer le Match",
-        modalTeamTitle: "Ajouter une Équipe",
-        lblTeamName: "Nom du Club / Équipe",
-        lblTeamCode: "Code Court (3 Lettres)",
-        lblPrimaryColor: "Couleur Principale",
-        btnSaveTeam: "Enregistrer Équipe",
-        modalPlayerTitle: "Ajouter un Joueur",
-        lblPlayerName: "Nom Complet",
-        lblPosition: "Poste",
-        posGK: "Gardien (GK)",
-        posDEF: "Défenseur (DEF)",
-        posMID: "Milieu (MID)",
-        posFWD: "Attaquant (FWD)",
-        lblJerseyNum: "Numéro de Maillot",
-        lblGoals: "Buts",
-        lblYellowCards: "Cartons Jaunes",
-        lblRedCards: "Cartons Rouges",
-        btnAddPlayer: "Ajouter Joueur",
-        guideHeading: "💡 Comment Héberger Gratuitement l'Application",
-        guideSub: "Vous pouvez exécuter ce tableau de bord sans aucun frais de serveur ou de base de données.",
-        guideStep1Title: "Étape 1: Hébergement Gratuit via GitHub Pages",
-        guideStep1Desc: "Importez ce fichier sous le nom index.html dans un dépôt GitHub public et activez GitHub Pages.",
-        guideStep2Title: "Étape 2: Synchronisation des Données",
-        guideStep2Desc: "Les données sont stockées dans LocalStorage. Exportez/Importez en JSON ou connectez Supabase/Firebase.",
-        btnGotIt: "Compris",
-        editResult: "Modifier",
-        matchdayPrefix: "Journée",
-        noTeamsFound: "Aucune équipe ajoutée. Ajoutez une équipe pour afficher le classement.",
-        noMatchesFound: "Aucun match ne correspond au filtre.",
-        noPlayersFound: "Aucun joueur enregistré."
-      },
-      ar: {
-        appTitle: "مدير البطولة",
-        appSubtitle: "منصة إدارة دوريات كرة القدم المحلية",
-        tabStandings: "الترتيب",
-        tabFixtures: "المباريات والنتائج",
-        tabTeams: "الفرق واللاعبين",
-        btnLogMatch: "تسجيل مباراة",
-        btnFreeHosting: "دليل الاستضافة المجانية",
-        btnExport: "تصدير نسخة احتياطية (JSON)",
-        btnImport: "استيراد نسخة احتياطية (JSON)",
-        btnReset: "إعادة ضبط البيانات",
-        statActiveTeams: "الفرق المشاركة",
-        statMatchesPlayed: "المباريات المكتملة",
-        statTotalGoals: "إجمالي الأهداف",
-        statTopScorer: "الهداف",
-        titleLeagueTable: "جدول ترتيب الدوري",
-        subtitleStandings: "حساب فوري وديناميكي للترتيب بناءً على نتائج المباريات",
-        btnAddTeam: "إضافة فريق جديد",
-        thPos: "المركز",
-        thClub: "النادي",
-        thMP: "لعب",
-        thW: "فاز",
-        thD: "تعادل",
-        thL: "خسر",
-        thGF: "له",
-        thGA: "عليه",
-        thGD: "الفارق",
-        thPts: "النقاط",
-        thForm: "L5",
-        titleFixtures: "جدول المباريات والنتائج",
-        subtitleFixtures: "تصفية المباريات القادمة، المباشرة والمكتملة",
-        optAllMatchdays: "جميع الجولات",
-        optMatchday1: "الجولة 1",
-        optMatchday2: "الجولة 2",
-        optMatchday3: "الجولة 3",
-        optMatchday4: "الجولة 4",
-        optAllStatuses: "جميع الحالات",
-        optFinished: "منتهية",
-        optUpcoming: "قادمة",
-        optLiveNow: "مباشر الآن",
-        titleTeams: "الفرق وتشكيلات اللاعبين",
-        subtitleTeams: "إدارة بيانات الأندية، قائمة اللاعبين، الأهداف والبطاقات",
-        footerText: "© مدير بطولة كرة القدم - تطبيق مفتوح المصدر بدون تكاليف",
-        modalMatchTitle: "تسجيل نتيجة مباراة",
-        lblRound: "الجولة",
-        lblStatus: "الحالة",
-        lblDateTime: "التاريخ والوقت",
-        lblVenue: "الملعب",
-        lblHomeTeam: "الفريق المستضيف",
-        lblAwayTeam: "الفريق الضيف",
-        lblScore: "النتيجة",
-        lblGoalLog: "مسجلو الأهداف (مفصولة بفاصلة)",
-        btnCancel: "إلغاء",
-        btnSaveResult: "حفظ نتيجة المباراة",
-        modalTeamTitle: "إضافة فريق جديد",
-        lblTeamName: "اسم النادي / الفريق",
-        lblTeamCode: "رمز النادي (3 أحرف)",
-        lblPrimaryColor: "اللون الرئيسي",
-        btnSaveTeam: "حفظ الفريق",
-        modalPlayerTitle: "إضافة لاعب إلى التشكيلة",
-        lblPlayerName: "الاسم الكامل",
-        lblPosition: "المركز",
-        posGK: "حارس مرمى (GK)",
-        posDEF: "مدافع (DEF)",
-        posMID: "وسط (MID)",
-        posFWD: "مهاجم (FWD)",
-        lblJerseyNum: "رقم القميص",
-        lblGoals: "الأهداف",
-        lblYellowCards: "بطاقات صفراء",
-        lblRedCards: "بطاقات حمراء",
-        btnAddPlayer: "إضافة اللاعب",
-        guideHeading: "💡 كيفية استضافة هذا التطبيق مجاناً 100%",
-        guideSub: "يمكنك تشغيل نظام إدارة البطولة كاملاً مجاناً بدون الحاجة لخوادم أو مدفوعات.",
-        guideStep1Title: "الخطوة 1: استضافة مجانية عبر GitHub Pages",
-        guideStep1Desc: "قم برفع هذا الملف باسم index.html إلى مستودع GitHub مفعل مع خيار GitHub Pages.",
-        guideStep2Title: "الخطوة 2: حفظ ومزامنة البيانات",
-        guideStep2Desc: "تُحفظ البيانات تلقائياً في متصفحك LocalStorage، مع إمكانية التصدير أو المزامنة عبر Supabase/Firebase.",
-        btnGotIt: "حسناً",
-        editResult: "تعديل",
-        matchdayPrefix: "الجولة",
-        noTeamsFound: "لم يتم إضافة أي فريق بعد. أضف فريقاً لعرض جدول الترتيب.",
-        noMatchesFound: "لا توجد مباريات تطابق الفلتر المSelected.",
-        noPlayersFound: "لا يوجد لاعبون مسجلون."
-      }
-    };
-
-    let currentLang = localStorage.getItem('app_language') || 'en';
-
-    // INITIAL SAMPLE DATA SETUP
-    const defaultData = {
-      teams: [
-        { id: 't1', name: 'Spartan FC', code: 'SFC', color: '#3b82f6' },
-        { id: 't2', name: 'Titan United', code: 'TTN', color: '#10b981' },
-        { id: 't3', name: 'Phoenix Rovers', code: 'PHX', color: '#f59e0b' },
-        { id: 't4', name: 'Vanguard Athletic', code: 'VNG', color: '#ef4444' }
-      ],
-      players: [
-        { id: 'p1', teamId: 't1', name: 'David Silva', pos: 'MID', num: 10, goals: 5, yellow: 1, red: 0 },
-        { id: 'p2', teamId: 't1', name: 'Carlos Ramos', pos: 'FWD', num: 9, goals: 7, yellow: 0, red: 0 },
-        { id: 'p3', teamId: 't2', name: 'Ethan Hunt', pos: 'FWD', num: 11, goals: 4, yellow: 2, red: 0 },
-        { id: 'p4', teamId: 't3', name: 'Leo Messi', pos: 'MID', num: 8, goals: 6, yellow: 0, red: 0 },
-        { id: 'p5', teamId: 't4', name: 'John Terry', pos: 'DEF', num: 4, goals: 1, yellow: 3, red: 1 }
-      ],
-      matches: [
-        {
-          id: 'm1',
-          round: 1,
-          homeId: 't1',
-          awayId: 't2',
-          homeScore: 3,
-          awayScore: 1,
-          status: 'FINISHED',
-          datetime: '2026-10-10T15:00',
-          venue: 'Main Field - Pitch 1',
-          scorersText: 'Carlos Ramos (2), David Silva (1) - Ethan Hunt (1)'
-        },
-        {
-          id: 'm2',
-          round: 1,
-          homeId: 't3',
-          awayId: 't4',
-          homeScore: 2,
-          awayScore: 2,
-          status: 'FINISHED',
-          datetime: '2026-10-10T17:30',
-          venue: 'Main Field - Pitch 2',
-          scorersText: 'Leo Messi (2) - John Terry (1)'
-        },
-        {
-          id: 'm3',
-          round: 2,
-          homeId: 't1',
-          awayId: 't3',
-          homeScore: 0,
-          awayScore: 0,
-          status: 'SCHEDULED',
-          datetime: '2026-10-24T15:00',
-          venue: 'Community Sports Complex',
-          scorersText: ''
-        }
-      ]
-    };
-
-    let appState = JSON.parse(localStorage.getItem('football_division_data')) || defaultData;
-
-    function saveState() {
-      localStorage.setItem('football_division_data', JSON.stringify(appState));
-      renderApp();
-    }
-
-    window.onload = function() {
-      document.getElementById('language-select').value = currentLang;
-      applyLanguage(currentLang);
-      lucide.createIcons();
-      renderApp();
-    };
-
-    // LANGUAGE SWITCHER & i18n APPLIER
-    function changeLanguage(lang) {
-      currentLang = lang;
-      localStorage.setItem('app_language', lang);
-      applyLanguage(lang);
-      renderApp();
-    }
-
-    function applyLanguage(lang) {
-      const dict = i18n[lang] || i18n['en'];
-      
-      // Set Document Direction (RTL for Arabic)
-      if (lang === 'ar') {
-        document.documentElement.setAttribute('dir', 'rtl');
-        document.documentElement.setAttribute('lang', 'ar');
-      } else {
-        document.documentElement.setAttribute('dir', 'ltr');
-        document.documentElement.setAttribute('lang', lang);
-      }
-
-      // Translate static strings
-      document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        if (dict[key]) {
-          el.textContent = dict[key];
-        }
-      });
-    }
-
-    function getText(key) {
-      return (i18n[currentLang] && i18n[currentLang][key]) ? i18n[currentLang][key] : (i18n['en'][key] || key);
-    }
-
-    // MAIN APP RENDERER
-    function renderApp() {
-      renderStandings();
-      renderFixtures();
-      renderTeamsView();
-      renderStatsBanner();
-      lucide.createIcons();
-    }
-
-    // NAVIGATION TABS
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab-view').forEach(el => el.classList.add('hidden'));
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('bg-slate-800', 'text-white');
-        btn.classList.add('text-slate-400');
-      });
-
-      const targetView = document.getElementById(`view-${tabId}`);
-      if (targetView) targetView.classList.remove('hidden');
-
-      const targetBtn = document.getElementById(`nav-${tabId}`);
-      if (targetBtn) {
-        targetBtn.classList.add('bg-slate-800', 'text-white');
-        targetBtn.classList.remove('text-slate-400');
-      }
-    }
-
-    // CALCULATE LEAGUE STANDINGS
-    function calculateStandings() {
-      const stats = {};
-
-      appState.teams.forEach(team => {
-        stats[team.id] = {
-          team: team,
-          mp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0,
-          form: []
-        };
-      });
-
-      appState.matches.filter(m => m.status === 'FINISHED').forEach(m => {
-        const home = stats[m.homeId];
-        const away = stats[m.awayId];
-
-        if (home && away) {
-          home.mp++; away.mp++;
-          home.gf += m.homeScore; home.ga += m.awayScore;
-          away.gf += m.awayScore; away.ga += m.homeScore;
-
-          if (m.homeScore > m.awayScore) {
-            home.w++; home.pts += 3; home.form.push('W');
-            away.l++; away.form.push('L');
-          } else if (m.homeScore < m.awayScore) {
-            away.w++; away.pts += 3; away.form.push('W');
-            home.l++; home.form.push('L');
-          } else {
-            home.d++; home.pts += 1; home.form.push('D');
-            away.d++; away.pts += 1; away.form.push('D');
-          }
-        }
-      });
-
-      const standingsArray = Object.values(stats).map(s => {
-        s.gd = s.gf - s.ga;
-        s.form = s.form.slice(-5);
-        return s;
-      });
-
-      standingsArray.sort((a, b) => {
-        if (b.pts !== a.pts) return b.pts - a.pts;
-        if (b.gd !== a.gd) return b.gd - a.gd;
-        if (b.gf !== a.gf) return b.gf - a.gf;
-        return b.w - a.w;
-      });
-
-      return standingsArray;
-    }
-
-    // RENDER STANDINGS TABLE
-    function renderStandings() {
-      const tbody = document.getElementById('standings-table-body');
-      const standings = calculateStandings();
-
-      if (standings.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-slate-500">${getText('noTeamsFound')}</td></tr>`;
-        return;
-      }
-
-      tbody.innerHTML = standings.map((item, index) => {
-        const rank = index + 1;
-        let rankBadgeClass = 'bg-slate-800 text-slate-400';
-        if (rank === 1) rankBadgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
-        else if (rank === 2) rankBadgeClass = 'bg-slate-300/20 text-slate-200';
-        else if (rank === 3) rankBadgeClass = 'bg-amber-700/20 text-amber-500';
-
-        const formBadges = item.form.map(f => {
-          if (f === 'W') return `<span class="w-4 h-4 rounded-full bg-pitch-500/20 text-pitch-400 text-[9px] font-bold inline-flex items-center justify-center border border-pitch-500/30">W</span>`;
-          if (f === 'D') return `<span class="w-4 h-4 rounded-full bg-slate-500/20 text-slate-400 text-[9px] font-bold inline-flex items-center justify-center border border-slate-500/30">D</span>`;
-          return `<span class="w-4 h-4 rounded-full bg-rose-500/20 text-rose-400 text-[9px] font-bold inline-flex items-center justify-center border border-rose-500/30">L</span>`;
-        }).join(' ');
-
-        return `
-          <tr class="hover:bg-slate-800/40 transition">
-            <td class="py-3 px-4 text-center">
-              <span class="w-6 h-6 inline-flex items-center justify-center rounded-lg text-xs font-bold ${rankBadgeClass}">${rank}</span>
-            </td>
-            <td class="py-3 px-4 font-semibold text-white flex items-center space-x-2.5 rtl:space-x-reverse">
-              <span class="w-3 h-3 rounded-full shrink-0" style="background-color: ${item.team.color || '#22c55e'}"></span>
-              <span class="truncate">${item.team.name}</span>
-              <span class="text-[10px] text-slate-500 font-normal uppercase hidden sm:inline">(${item.team.code})</span>
-            </td>
-            <td class="py-3 px-3 text-center text-slate-300 font-medium">${item.mp}</td>
-            <td class="py-3 px-3 text-center text-slate-300">${item.w}</td>
-            <td class="py-3 px-3 text-center text-slate-400">${item.d}</td>
-            <td class="py-3 px-3 text-center text-slate-400">${item.l}</td>
-            <td class="py-3 px-3 text-center text-slate-400 hidden sm:table-cell">${item.gf}</td>
-            <td class="py-3 px-3 text-center text-slate-400 hidden sm:table-cell">${item.ga}</td>
-            <td class="py-3 px-3 text-center font-medium ${item.gd > 0 ? 'text-pitch-400' : item.gd < 0 ? 'text-rose-400' : 'text-slate-400'}">${item.gd > 0 ? '+' + item.gd : item.gd}</td>
-            <td class="py-3 px-4 text-center font-extrabold text-white bg-slate-800/30">${item.pts}</td>
-            <td class="py-3 px-4 text-center">
-              <div class="flex items-center justify-center space-x-1 rtl:space-x-reverse">${formBadges || '<span class="text-slate-600 text-[10px]">-</span>'}</div>
-            </td>
-          </tr>
-        `;
-      }).join('');
-    }
-
-    // RENDER FIXTURES
-    function renderFixtures() {
-      const container = document.getElementById('fixtures-container');
-      const roundFilter = document.getElementById('filter-round').value;
-      const statusFilter = document.getElementById('filter-status').value;
-
-      let matches = appState.matches;
-
-      if (roundFilter !== 'ALL') {
-        matches = matches.filter(m => m.round.toString() === roundFilter);
-      }
-      if (statusFilter !== 'ALL') {
-        matches = matches.filter(m => m.status === statusFilter);
-      }
-
-      if (matches.length === 0) {
-        container.innerHTML = `
-          <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center text-slate-400">
-            <i data-lucide="calendar-x" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
-            <p class="font-medium text-sm">${getText('noMatchesFound')}</p>
-          </div>`;
-        return;
-      }
-
-      container.innerHTML = matches.map(m => {
-        const homeTeam = appState.teams.find(t => t.id === m.homeId) || { name: 'Unknown', code: 'UNK' };
-        const awayTeam = appState.teams.find(t => t.id === m.awayId) || { name: 'Unknown', code: 'UNK' };
-        
-        let statusBadge = '';
-        if (m.status === 'FINISHED') {
-          statusBadge = `<span class="bg-slate-700/60 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-600">${getText('optFinished')}</span>`;
-        } else if (m.status === 'LIVE') {
-          statusBadge = `<span class="bg-rose-500/20 text-rose-400 text-[10px] font-bold px-2 py-0.5 rounded border border-rose-500/30 animate-pulse">${getText('optLiveNow')}</span>`;
-        } else {
-          statusBadge = `<span class="bg-blue-500/20 text-blue-400 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-500/30">${getText('optUpcoming')}</span>`;
-        }
-
-        const matchDate = m.datetime ? new Date(m.datetime).toLocaleString(currentLang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'TBD';
-
-        return `
-          <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl p-4 shadow-sm hover:border-slate-600 transition flex flex-col justify-between">
-            <div class="flex justify-between items-center text-xs text-slate-400 mb-3 pb-2 border-b border-slate-700/50">
-              <span class="font-medium text-slate-300">${getText('matchdayPrefix')} ${m.round} • ${m.venue || ''}</span>
-              <div class="flex items-center space-x-2 rtl:space-x-reverse">
-                <span>${matchDate}</span>
-                ${statusBadge}
-              </div>
-            </div>
-
-            <div class="grid grid-cols-7 items-center gap-2 my-2 text-center">
-              <div class="col-span-3 flex flex-col items-center">
-                <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white mb-1 shadow" style="background-color: ${homeTeam.color || '#334155'}">
-                  ${homeTeam.code || 'H'}
-                </span>
-                <span class="font-semibold text-sm text-white line-clamp-1">${homeTeam.name}</span>
-              </div>
-
-              <div class="col-span-1 flex flex-col items-center justify-center">
-                ${m.status === 'SCHEDULED' ? `
-                  <span class="text-xs font-bold text-slate-500 bg-slate-900 px-2 py-1 rounded">VS</span>
-                ` : `
-                  <span class="text-xl font-extrabold text-white tracking-wider bg-slate-900/80 px-2.5 py-1 rounded border border-slate-700">
-                    ${m.homeScore} - ${m.awayScore}
-                  </span>
-                `}
-              </div>
-
-              <div class="col-span-3 flex flex-col items-center">
-                <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white mb-1 shadow" style="background-color: ${awayTeam.color || '#334155'}">
-                  ${awayTeam.code || 'A'}
-                </span>
-                <span class="font-semibold text-sm text-white line-clamp-1">${awayTeam.name}</span>
-              </div>
-            </div>
-
-            ${m.scorersText ? `
-              <div class="mt-2 pt-2 border-t border-slate-700/40 text-[11px] text-slate-400 flex items-center gap-1.5">
-                <i data-lucide="activity" class="w-3.5 h-3.5 text-pitch-400 shrink-0"></i>
-                <span class="truncate">${m.scorersText}</span>
-              </div>
-            ` : ''}
-
-            <div class="mt-3 pt-2 border-t border-slate-700/50 flex justify-end gap-2">
-              <button onclick="editMatch('${m.id}')" class="px-2.5 py-1 text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded text-xs flex items-center gap-1 transition">
-                <i data-lucide="edit-3" class="w-3 h-3"></i> ${getText('editResult')}
-              </button>
-              <button onclick="deleteMatch('${m.id}')" class="px-2 py-1 text-rose-400 hover:bg-rose-500/20 rounded text-xs transition">
-                <i data-lucide="trash-2" class="w-3 h-3"></i>
-              </button>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    // RENDER TEAMS & PLAYERS
-    function renderTeamsView() {
-      const container = document.getElementById('teams-container');
-      const searchQuery = document.getElementById('player-search').value.toLowerCase();
-
-      if (appState.teams.length === 0) {
-        container.innerHTML = `
-          <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center text-slate-400">
-            <i data-lucide="shield-alert" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
-            <p class="font-medium text-sm">${getText('noTeamsFound')}</p>
-          </div>`;
-        return;
-      }
-
-      container.innerHTML = appState.teams.map(team => {
-        let squad = appState.players.filter(p => p.teamId === team.id);
-
-        if (searchQuery) {
-          squad = squad.filter(p => p.name.toLowerCase().includes(searchQuery) || team.name.toLowerCase().includes(searchQuery));
-        }
-
-        return `
-          <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl overflow-hidden shadow-sm flex flex-col">
-            <div class="bg-slate-900/80 p-4 border-b border-slate-700 flex justify-between items-center">
-              <div class="flex items-center space-x-3 rtl:space-x-reverse">
-                <div class="w-4 h-8 rounded-full" style="background-color: ${team.color || '#22c55e'}"></div>
-                <div>
-                  <h3 class="font-bold text-base text-white">${team.name}</h3>
-                  <p class="text-xs text-slate-400">${squad.length} ${getText('tabTeams')}</p>
-                </div>
-              </div>
-              <div class="flex items-center space-x-2 rtl:space-x-reverse">
-                <button onclick="openPlayerModal('${team.id}')" class="px-2.5 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-xs font-medium flex items-center gap-1 transition">
-                  <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> ${getText('btnAddPlayer')}
-                </button>
-                <button onclick="deleteTeam('${team.id}')" class="p-1.5 text-slate-500 hover:text-rose-400 rounded transition">
-                  <i data-lucide="trash-2" class="w-4 h-4"></i>
-                </button>
-              </div>
-            </div>
-
-            <div class="p-3 flex-1 overflow-x-auto">
-              ${squad.length === 0 ? `
-                <p class="text-xs text-slate-500 text-center py-4">${getText('noPlayersFound')}</p>
-              ` : `
-                <table class="w-full text-left rtl:text-right text-xs">
-                  <thead class="text-slate-400 border-b border-slate-700/60">
-                    <tr>
-                      <th class="pb-2 w-8">#</th>
-                      <th class="pb-2">${getText('modalPlayerTitle')}</th>
-                      <th class="pb-2 text-center">${getText('lblPosition')}</th>
-                      <th class="pb-2 text-center">${getText('lblGoals')}</th>
-                      <th class="pb-2 text-center">Cards</th>
-                      <th class="pb-2 ltr:text-right rtl:text-left">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-700/40">
-                    ${squad.map(p => `
-                      <tr class="hover:bg-slate-800/40">
-                        <td class="py-2 text-slate-400 font-medium">${p.num}</td>
-                        <td class="py-2 font-semibold text-slate-200">${p.name}</td>
-                        <td class="py-2 text-center">
-                          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300">${p.pos}</span>
-                        </td>
-                        <td class="py-2 text-center font-bold text-pitch-400">${p.goals}</td>
-                        <td class="py-2 text-center">
-                          <span class="inline-flex items-center gap-1">
-                            ${p.yellow > 0 ? `<span class="w-2.5 h-3 bg-amber-400 rounded-sm inline-block"></span>` : ''}
-                            ${p.red > 0 ? `<span class="w-2.5 h-3 bg-rose-500 rounded-sm inline-block"></span>` : ''}
-                            ${p.yellow === 0 && p.red === 0 ? `<span class="text-slate-600">-</span>` : ''}
-                          </span>
-                        </td>
-                        <td class="py-2 ltr:text-right rtl:text-left">
-                          <button onclick="deletePlayer('${p.id}')" class="text-slate-500 hover:text-rose-400 p-1"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
-                        </td>
-                      </tr>
-                    `).join('')}
-                  </tbody>
-                </table>
-              `}
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    // RENDER STATS BANNER
-    function renderStatsBanner() {
-      document.getElementById('stat-teams-count').innerText = appState.teams.length;
-      const finishedMatches = appState.matches.filter(m => m.status === 'FINISHED');
-      document.getElementById('stat-matches-played').innerText = finishedMatches.length;
-
-      const totalGoals = finishedMatches.reduce((acc, m) => acc + (parseInt(m.homeScore) || 0) + (parseInt(m.awayScore) || 0), 0);
-      document.getElementById('stat-total-goals').innerText = totalGoals;
-
-      if (appState.players.length > 0) {
-        const topScorer = [...appState.players].sort((a,b) => b.goals - a.goals)[0];
-        document.getElementById('stat-top-scorer').innerText = topScorer && topScorer.goals > 0 ? `${topScorer.name} (${topScorer.goals})` : '--';
-      } else {
-        document.getElementById('stat-top-scorer').innerText = '--';
-      }
-    }
-
-    // MODAL & HANDLERS
-    function openMatchModal() {
-      const homeSelect = document.getElementById('match-home-team');
-      const awaySelect = document.getElementById('match-away-team');
-
-      if (appState.teams.length < 2) {
-        alert('Requires at least 2 teams.');
-        openTeamModal();
-        return;
-      }
-
-      const teamOptions = appState.teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
-      homeSelect.innerHTML = teamOptions;
-      awaySelect.innerHTML = teamOptions;
-      if (appState.teams.length > 1) awaySelect.selectedIndex = 1;
-
-      document.getElementById('form-match').reset();
-      document.getElementById('match-id').value = '';
-      document.getElementById('match-datetime').value = new Date().toISOString().slice(0,16);
-      document.getElementById('modal-match').classList.remove('hidden');
-    }
-
-    function closeMatchModal() { document.getElementById('modal-match').classList.add('hidden'); }
-
-    function editMatch(matchId) {
-      const match = appState.matches.find(m => m.id === matchId);
-      if (!match) return;
-
-      openMatchModal();
-      document.getElementById('match-id').value = match.id;
-      document.getElementById('match-round').value = match.round;
-      document.getElementById('match-status').value = match.status;
-      document.getElementById('match-datetime').value = match.datetime || '';
-      document.getElementById('match-venue').value = match.venue || '';
-      document.getElementById('match-home-team').value = match.homeId;
-      document.getElementById('match-away-team').value = match.awayId;
-      document.getElementById('match-home-score').value = match.homeScore;
-      document.getElementById('match-away-score').value = match.awayScore;
-      document.getElementById('match-scorers-text').value = match.scorersText || '';
-    }
-
-    function saveMatch(e) {
-      e.preventDefault();
-      const id = document.getElementById('match-id').value;
-      const homeId = document.getElementById('match-home-team').value;
-      const awayId = document.getElementById('match-away-team').value;
-
-      if (homeId === awayId) return;
-
-      const matchData = {
-        id: id || 'm_' + Date.now(),
-        round: parseInt(document.getElementById('match-round').value) || 1,
-        status: document.getElementById('match-status').value,
-        datetime: document.getElementById('match-datetime').value,
-        venue: document.getElementById('match-venue').value,
-        homeId: homeId,
-        awayId: awayId,
-        homeScore: parseInt(document.getElementById('match-home-score').value) || 0,
-        awayScore: parseInt(document.getElementById('match-away-score').value) || 0,
-        scorersText: document.getElementById('match-scorers-text').value
-      };
-
-      if (id) {
-        const index = appState.matches.findIndex(m => m.id === id);
-        if (index !== -1) appState.matches[index] = matchData;
-      } else {
-        appState.matches.push(matchData);
-      }
-
-      saveState();
-      closeMatchModal();
-    }
-
-    function deleteMatch(matchId) {
-      appState.matches = appState.matches.filter(m => m.id !== matchId);
-      saveState();
-    }
-
-    function openTeamModal() {
-      document.getElementById('form-team').reset();
-      document.getElementById('team-id').value = '';
-      document.getElementById('modal-team').classList.remove('hidden');
-    }
-    function closeTeamModal() { document.getElementById('modal-team').classList.add('hidden'); }
-
-    function saveTeam(e) {
-      e.preventDefault();
-      const teamData = {
-        id: 't_' + Date.now(),
-        name: document.getElementById('team-name').value,
-        code: document.getElementById('team-code').value.toUpperCase(),
-        color: document.getElementById('team-color').value
-      };
-
-      appState.teams.push(teamData);
-      saveState();
-      closeTeamModal();
-    }
-
-    function deleteTeam(teamId) {
-      appState.teams = appState.teams.filter(t => t.id !== teamId);
-      appState.players = appState.players.filter(p => p.teamId !== teamId);
-      appState.matches = appState.matches.filter(m => m.homeId !== teamId && m.awayId !== teamId);
-      saveState();
-    }
-
-    function openPlayerModal(teamId) {
-      document.getElementById('form-player').reset();
-      document.getElementById('player-team-id').value = teamId;
-      document.getElementById('modal-player').classList.remove('hidden');
-    }
-    function closePlayerModal() { document.getElementById('modal-player').classList.add('hidden'); }
-
-    function savePlayer(e) {
-      e.preventDefault();
-      const playerData = {
-        id: 'p_' + Date.now(),
-        teamId: document.getElementById('player-team-id').value,
-        name: document.getElementById('player-name').value,
-        pos: document.getElementById('player-position').value,
-        num: parseInt(document.getElementById('player-number').value) || 10,
-        goals: parseInt(document.getElementById('player-goals').value) || 0,
-        yellow: parseInt(document.getElementById('player-yellows').value) || 0,
-        red: parseInt(document.getElementById('player-reds').value) || 0
-      };
-
-      appState.players.push(playerData);
-      saveState();
-      closePlayerModal();
-    }
-
-    function deletePlayer(playerId) {
-      appState.players = appState.players.filter(p => p.id !== playerId);
-      saveState();
-    }
-
-    function openGuideModal() { document.getElementById('modal-guide').classList.remove('hidden'); }
-    function closeGuideModal() { document.getElementById('modal-guide').classList.add('hidden'); }
-
-    function toggleDataMenu() {
-      document.getElementById('data-menu').classList.toggle('hidden');
-    }
-
-    function exportData() {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", `league_backup_${new Date().toISOString().slice(0,10)}.json`);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-    }
-
-    function importData(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          const imported = JSON.parse(e.target.result);
-          if (imported.teams && imported.matches) {
-            appState = imported;
-            saveState();
-          }
-        } catch (err) {}
-      };
-      reader.readAsText(file);
-    }
-
-    function resetToSampleData() {
-      appState = JSON.parse(JSON.stringify(defaultData));
-      saveState();
-    }
-  </script>
+  <!-- Application scripts (deferred, loaded in dependency order) -->
+  <script src="js/i18n.js" defer></script>
+  <script src="js/store.js" defer></script>
+  <script src="js/app.js" defer></script>
 </body>
 </html>

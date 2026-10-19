@@ -1,0 +1,34 @@
+/* ---------------------------------------------------------------
+   KickOff Division — global styles
+   Tailwind handles the layout; this file only adds what Tailwind
+   can't cover: font swapping for Arabic, RTL typography and
+   custom scrollbars.
+   --------------------------------------------------------------- */
+
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+/* Arabic / RTL typography */
+[dir="rtl"] body,
+[dir="rtl"] button,
+[dir="rtl"] input,
+[dir="rtl"] select,
+[dir="rtl"] table {
+  font-family: 'Cairo', sans-serif;
+}
+
+/* Slim custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
