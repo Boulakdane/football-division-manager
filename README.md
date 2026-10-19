@@ -12,6 +12,8 @@ tournaments. Everything runs client-side — no backend, no database, no hosting
 - **Teams & squads** — create/edit clubs, add players with positions, squad numbers,
   goals, yellow and red cards.
 - **Trilingual UI** — English, French and Arabic, with automatic RTL layout for Arabic.
+- **Local password gate** — first visit asks you to create an admin password; returning visits
+  require it. Sessions last until you log out or close the tab.
 - **Zero-server storage** — all data persists in `localStorage`; export/import a JSON
   backup from the settings menu.
 - **Live score shortcuts** — matches in `LIVE` state get `+` buttons on the fixture card.
@@ -27,11 +29,12 @@ tournaments. Everything runs client-side — no backend, no database, no hosting
     ├── tailwind.config.js  # Tailwind theme (pitch palette, fonts)
     ├── i18n.js             # EN/FR/AR dictionary, t(), language + RTL switching
     ├── store.js            # Demo data, localStorage load/save/normalize
+    ├── auth.js             # Local password gate (PBKDF2) + session handling
     └── app.js              # Rendering, standings math, modals, CRUD, import/export
 ```
 
-Script load order is defined in `index.html` (`i18n.js` → `store.js` → `app.js`, all
-`defer`red). Keep that order if you add more modules.
+Script load order is defined in `index.html` (`i18n.js` → `store.js` → `auth.js` →
+`app.js`, all `defer`red). Keep that order if you add more modules.
 
 ## Run locally
 
@@ -73,6 +76,23 @@ Stored under the `kickoff_division_data` key:
 
 Match `status` is one of `SCHEDULED`, `LIVE`, `FINISHED`. Only `FINISHED` matches count
 towards the league table. The active language is stored separately as `kickoff_lang`.
+
+## Login / password gate
+
+On first launch the app asks you to create an admin password (minimum 6 characters).
+It stores only a salted hash under the `kickoff_auth` key — never the password itself.
+PBKDF2-SHA256 (150,000 iterations) is used when `crypto.subtle` is available (HTTPS or
+localhost); otherwise a salted non-cryptographic fallback hash is used so the gate still
+works from `file://`. A successful login writes a session marker to `sessionStorage`, so
+the session ends when the tab is closed or you press **Log out**.
+
+**This is a client-side gate, not real authentication.** Anyone with access to the
+browser can read the data or clear `kickoff_auth` to reset the password from DevTools.
+Do not use this app to store sensitive information. Clearing site data resets the
+password (and removes league data), and there is no password recovery.
+
+If you need real multi-user accounts, replace `js/auth.js` with a provider such as
+Supabase, Firebase Auth or Auth0.
 
 ## Notes
 

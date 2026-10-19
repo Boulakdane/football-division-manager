@@ -87,7 +87,27 @@ const I18N = {
     guideStep1Desc: "Upload the project files into a public GitHub repository, then open Settings → Pages and select the main branch.",
     guideStep2Title: "Step 2: Offline data & backups",
     guideStep2Desc: "All teams, players and results are saved automatically in your browser's LocalStorage. Export a JSON backup at any time.",
-    btnGotIt: "Got it"
+    btnGotIt: "Got it",
+    authSetupTitle: "Create your admin password",
+    authSetupSubtitle: "Protect this league dashboard on this device.",
+    authPassword: "Password",
+    authConfirmPassword: "Confirm password",
+    authCreatePassword: "Create password",
+    authLoginTitle: "Welcome back",
+    authLoginSubtitle: "Enter your password to open the league dashboard.",
+    authLoginBtn: "Log in",
+    authLogout: "Log out",
+    authChangePassword: "Change password",
+    authCurrentPassword: "Current password",
+    authNewPassword: "New password",
+    authSavePassword: "Update password",
+    authWrongPassword: "Incorrect password. Try again.",
+    authMismatch: "Passwords do not match.",
+    authTooShort: "Password must be at least 6 characters.",
+    authCurrentWrong: "Current password is incorrect.",
+    authSetupWarning: "Note it down — there is no recovery. The password is stored only in this browser.",
+    authHint: "Local gate only: data stays in this browser, and clearing site data resets the password.",
+    authUnsupported: "Secure hashing is unavailable here. Open the app over HTTPS or localhost."
   },
   fr: {
     appTitle: "KickOff Division",
@@ -170,7 +190,27 @@ const I18N = {
     guideStep1Desc: "Importez les fichiers du projet dans un dépôt GitHub public, puis activez Settings → Pages sur la branche principale.",
     guideStep2Title: "Étape 2 : Données hors ligne & sauvegardes",
     guideStep2Desc: "Toutes les équipes, joueurs et résultats sont enregistrés automatiquement dans le LocalStorage du navigateur. Exportez une sauvegarde JSON à tout moment.",
-    btnGotIt: "Compris"
+    btnGotIt: "Compris",
+    authSetupTitle: "Créez votre mot de passe administrateur",
+    authSetupSubtitle: "Protégez ce tableau de bord sur cet appareil.",
+    authPassword: "Mot de passe",
+    authConfirmPassword: "Confirmer le mot de passe",
+    authCreatePassword: "Créer le mot de passe",
+    authLoginTitle: "Bon retour",
+    authLoginSubtitle: "Saisissez votre mot de passe pour ouvrir le tableau de bord.",
+    authLoginBtn: "Se connecter",
+    authLogout: "Se déconnecter",
+    authChangePassword: "Changer le mot de passe",
+    authCurrentPassword: "Mot de passe actuel",
+    authNewPassword: "Nouveau mot de passe",
+    authSavePassword: "Mettre à jour",
+    authWrongPassword: "Mot de passe incorrect. Réessayez.",
+    authMismatch: "Les mots de passe ne correspondent pas.",
+    authTooShort: "Le mot de passe doit contenir au moins 6 caractères.",
+    authCurrentWrong: "Le mot de passe actuel est incorrect.",
+    authSetupWarning: "Notez-le : aucune récupération possible. Le mot de passe est stocké uniquement dans ce navigateur.",
+    authHint: "Simple verrou local : les données restent dans ce navigateur et l'effacement des données du site réinitialise le mot de passe.",
+    authUnsupported: "Le hachage sécurisé est indisponible ici. Ouvrez l'application via HTTPS ou localhost."
   },
   ar: {
     appTitle: "كيك أوف ديڤيزيون",
@@ -253,7 +293,27 @@ const I18N = {
     guideStep1Desc: "ارفع ملفات المشروع إلى مستودع GitHub عام، ثم افتح Settings ← Pages واختر الفرع الرئيسي.",
     guideStep2Title: "الخطوة 2: البيانات والنسخ الاحتياطي",
     guideStep2Desc: "تُحفظ الفرق واللاعبون والنتائج تلقائياً في LocalStorage بالمتصفح. يمكنك تصدير نسخة JSON في أي وقت.",
-    btnGotIt: "حسناً"
+    btnGotIt: "حسناً",
+    authSetupTitle: "أنشئ كلمة مرور المسؤول",
+    authSetupSubtitle: "احمِ لوحة إدارة البطولة على هذا الجهاز.",
+    authPassword: "كلمة المرور",
+    authConfirmPassword: "تأكيد كلمة المرور",
+    authCreatePassword: "إنشاء كلمة المرور",
+    authLoginTitle: "مرحباً بعودتك",
+    authLoginSubtitle: "أدخل كلمة المرور لفتح لوحة إدارة البطولة.",
+    authLoginBtn: "تسجيل الدخول",
+    authLogout: "تسجيل الخروج",
+    authChangePassword: "تغيير كلمة المرور",
+    authCurrentPassword: "كلمة المرور الحالية",
+    authNewPassword: "كلمة المرور الجديدة",
+    authSavePassword: "تحديث كلمة المرور",
+    authWrongPassword: "كلمة المرور غير صحيحة. حاول مرة أخرى.",
+    authMismatch: "كلمتا المرور غير متطابقتين.",
+    authTooShort: "يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.",
+    authCurrentWrong: "كلمة المرور الحالية غير صحيحة.",
+    authSetupWarning: "احفظها جيداً — لا توجد طريقة للاستعادة. تُخزَّن كلمة المرور في هذا المتصفح فقط.",
+    authHint: "قفل محلي فقط: تبقى البيانات في هذا المتصفح، ومسح بيانات الموقع يعيد ضبط كلمة المرور.",
+    authUnsupported: "التشفير الآمن غير متاح هنا. افتح التطبيق عبر HTTPS أو localhost."
   }
 };
 
@@ -269,7 +329,8 @@ function changeLanguage(lang) {
   currentLang = lang;
   localStorage.setItem('kickoff_lang', lang);
   applyLanguage();
-  renderApp();
+  if (typeof clearAuthErrors === 'function') clearAuthErrors();
+  if (typeof renderApp === 'function') renderApp();
 }
 
 /** Apply the active language to all static markup and document attributes. */
@@ -285,5 +346,10 @@ function applyLanguage() {
 
   document.querySelectorAll('[data-i18n-ph]').forEach(el => {
     el.setAttribute('placeholder', t(el.getAttribute('data-i18n-ph')));
+  });
+
+  // Keep every language switcher (header + login screen) in sync
+  document.querySelectorAll('.lang-select').forEach(select => {
+    select.value = currentLang;
   });
 }

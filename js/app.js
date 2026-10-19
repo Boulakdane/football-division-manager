@@ -32,6 +32,10 @@ function toInt(value, fallback) {
 function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
+function closeAllModals() {
+  ['modal-match', 'modal-team', 'modal-player', 'modal-guide', 'modal-password'].forEach(id => closeModal(id));
+}
+
 /* ---------------------------------------------------------------
  * 2. MAIN RENDERER & TAB NAVIGATION
  * --------------------------------------------------------------- */
@@ -681,8 +685,8 @@ function resetData() {
  * 11. INITIALIZATION
  * --------------------------------------------------------------- */
 window.addEventListener('DOMContentLoaded', function () {
-  document.getElementById('language-select').value = currentLang;
   applyLanguage();
   switchTab('standings');
   renderApp();
+  initAuth();
 });

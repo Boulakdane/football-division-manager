@@ -9,6 +9,13 @@ body {
   font-family: 'Inter', sans-serif;
 }
 
+/* While the login gate is active, hide the app chrome (auth screen stays visible) */
+body.locked > header,
+body.locked > main,
+body.locked > footer {
+  display: none;
+}
+
 /* Arabic / RTL typography */
 [dir="rtl"] body,
 [dir="rtl"] button,
