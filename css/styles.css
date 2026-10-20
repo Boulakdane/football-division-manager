@@ -1,12 +1,35 @@
 /* ---------------------------------------------------------------
    KickOff Division — global styles
-   Tailwind handles the layout; this file only adds what Tailwind
-   can't cover: font swapping for Arabic, RTL typography and
-   custom scrollbars.
+   Tailwind handles the layout; this file adds the project theme,
+   Arabic/RTL typography, motion and small production polish.
    --------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+}
 
 body {
   font-family: 'Inter', sans-serif;
+}
+
+/* Soft stadium glow behind the app instead of a flat slate page */
+body.bg-slate-900 {
+  background-color: #0b1220;
+  background-image:
+    radial-gradient(1100px 520px at 12% -8%, rgba(34, 197, 94, 0.16), transparent 60%),
+    radial-gradient(900px 460px at 92% 0%, rgba(59, 130, 246, 0.12), transparent 55%),
+    radial-gradient(700px 520px at 50% 110%, rgba(16, 185, 129, 0.06), transparent 62%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(34, 197, 94, 0.35);
+  color: #fff;
 }
 
 /* Admin-only controls (login buttons + RLS are the real protection) */
@@ -28,17 +51,174 @@ body.season-readonly .season-write {
   font-family: 'Cairo', sans-serif;
 }
 
+/* Glass navigation */
+header.bg-slate-950 {
+  background-color: rgba(2, 6, 23, 0.78);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.08), 0 18px 50px -38px rgba(0, 0, 0, 0.95);
+}
+
+header .bg-pitch-600 {
+  background-image: linear-gradient(135deg, #22c55e, #15803d);
+  box-shadow: 0 10px 30px -12px rgba(34, 197, 94, 0.65);
+}
+
+#season-bar {
+  background-color: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(14px) saturate(130%);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+}
+
+@media (min-width: 768px) {
+  #season-bar {
+    position: sticky;
+    top: 4rem;
+    z-index: 20;
+  }
+}
+
+/* Subtle gradient on cards without changing their Tailwind layout */
+.bg-slate-800\/60 {
+  background-image: linear-gradient(160deg, rgba(30, 41, 59, 0.88), rgba(15, 23, 42, 0.72));
+}
+
+#fixtures-container > div,
+#teams-container > div {
+  transition:
+    transform 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    background-color 0.22s ease;
+}
+
+@media (hover: hover) {
+  #fixtures-container > div:hover,
+  #teams-container > div:hover {
+    transform: translateY(-2px);
+    border-color: rgba(74, 222, 128, 0.28);
+    box-shadow: 0 18px 40px -28px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(74, 222, 128, 0.08);
+  }
+}
+
+/* Table focus and a small accent marker on the hovered row */
+#standings-table-body tr {
+  transition: background-color 0.16s ease;
+}
+
+#standings-table-body tr:hover td:first-child {
+  box-shadow: inset 3px 0 0 rgba(74, 222, 128, 0.85);
+}
+
+[dir="rtl"] #standings-table-body tr:hover td:first-child {
+  box-shadow: inset -3px 0 0 rgba(74, 222, 128, 0.85);
+}
+
+/* Dropdown and modal entrances */
+#data-menu:not(.hidden) {
+  animation: pop-in 0.16s ease-out both;
+  transform-origin: top right;
+}
+
+[dir="rtl"] #data-menu:not(.hidden) {
+  transform-origin: top left;
+}
+
+div[id^="modal-"]:not(.hidden) {
+  animation: fade-in 0.18s ease-out both;
+}
+
+div[id^="modal-"]:not(.hidden) > div {
+  animation: pop-in 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+
+/* View transitions */
+.tab-view:not(.hidden) {
+  animation: rise-in 0.28s ease-out both;
+}
+
+main > .grid:first-child {
+  animation: rise-in 0.35s ease-out both;
+}
+
+/* Buttons feel physical, and keyboard focus is always visible */
+button,
+select,
+input,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px) scale(0.99);
+}
+
+:where(button, a, select, input, textarea):focus-visible {
+  outline: 2px solid rgba(74, 222, 128, 0.85) !important;
+  outline-offset: 2px !important;
+}
+
 /* Slim custom scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.05);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

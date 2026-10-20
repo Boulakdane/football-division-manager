@@ -16,6 +16,15 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install CSS tooling
+        run: npm ci --no-audit --no-fund
+
+      - name: Build Tailwind CSS
+        run: npm run build:css
+
+      - name: Check compiled CSS is current
+        run: git diff --exit-code -- css/tailwind.css
+
       - name: Check JavaScript syntax
         shell: bash
         run: |

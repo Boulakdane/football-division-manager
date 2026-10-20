@@ -5,18 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="KickOff Division — lightweight, zero-server football league management for local divisions.">
   <meta name="theme-color" content="#020617">
+  <meta name="color-scheme" content="dark">
+  <meta property="og:title" content="KickOff Division — League Manager">
+  <meta property="og:description" content="Standings, fixtures, results and squads for local football divisions. Free, fast and shareable.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://boulakdane.github.io/football-division-manager/">
+  <meta name="twitter:card" content="summary">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <title>KickOff Division — League Manager</title>
 
-  <!-- Tailwind CSS CDN + project theme -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="js/tailwind.config.js"></script>
+  <!-- Tailwind CSS (compiled locally, no CDN dependency) -->
+  <link rel="stylesheet" href="css/tailwind.css">
+
+  <!-- CDN preconnects: icons + Supabase client -->
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
 
   <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/lucide@latest" defer></script>
 
   <!-- Supabase JS client -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 
   <!-- Fonts: Inter (EN/FR) + Cairo (AR) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,7 +35,7 @@
   <!-- App styles -->
   <link rel="stylesheet" href="css/styles.css">
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200">
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200 antialiased">
 
   <!-- GLOBAL BANNERS -->
   <div id="demo-banner" class="hidden bg-amber-500/10 border-b border-amber-500/30 text-amber-300 text-xs">
@@ -63,7 +72,7 @@
           <div>
             <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
               <span data-i18n="appTitle">KickOff Division</span>
-              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.0</span>
+              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.1</span>
             </h1>
             <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Football League Management</p>
           </div>
@@ -112,7 +121,7 @@
           </button>
 
           <!-- Free Hosting Guide -->
-          <button onclick="openGuideModal()" class="p-2 text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 rounded-lg transition" title="Free Hosting Guide">
+          <button onclick="openGuideModal()" class="hidden sm:inline-flex p-2 text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 rounded-lg transition" title="Free Hosting Guide" aria-label="Free Hosting Guide">
             <i data-lucide="cloud-lightning" class="w-4 h-4"></i>
           </button>
 

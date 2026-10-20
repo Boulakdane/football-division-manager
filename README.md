@@ -35,15 +35,18 @@ accounts live in a free [Supabase](https://supabase.com) project.
 .
 ├── index.html                 # Markup only (header, views, modals, script tags)
 ├── css/
-│   └── styles.css             # Fonts (incl. Arabic/RTL) and scrollbar styling
+│   ├── tailwind.input.css     # Tailwind source file (build input)
+│   ├── tailwind.css           # Compiled, minified stylesheet (committed)
+│   └── styles.css             # Theme polish, fonts (incl. Arabic/RTL), motion
 ├── js/
-│   ├── tailwind.config.js     # Tailwind theme (pitch palette, fonts)
 │   ├── config.js              # ⚠️ Supabase URL + anon key (edit this)
 │   ├── i18n.js                # EN/FR/AR dictionary, t(), language + RTL switching
 │   ├── store.js               # In-memory state + demo/seed dataset
 │   ├── backend.js             # Supabase client, reads, writes, row mapping
 │   ├── auth.js                # Login/signup, session, role-based UI
 │   └── app.js                 # Rendering, standings math, modals, import/export
+├── package.json               # Tailwind build scripts (dev-only dependency)
+├── tailwind.config.js         # Tailwind theme (pitch palette, fonts, content)
 ├── data/
 │   ├── README.md              # CSV column reference and workflow
 │   └── examples/              # Template seasons/teams/players/matches CSV files
@@ -231,7 +234,8 @@ policies make the league readable without logging in.
 
 ## Run locally
 
-No build step. Serve the folder with any static server, for example:
+The compiled Tailwind stylesheet is committed, so the site runs without a build step.
+Serve the folder with any static server, for example:
 
 ```bash
 # Node (no dependencies)
@@ -242,6 +246,22 @@ Then open <http://localhost:8000>.
 
 > Opening `index.html` directly via `file://` also works in most browsers, but a local
 > server matches GitHub Pages behavior more closely.
+
+### Styling changes
+
+Tailwind is compiled locally into `css/tailwind.css` (about 22 KB) instead of loading
+the Play CDN. The generated file is committed, so visitors and GitHub Pages need no
+build tooling. If you add or change Tailwind classes in `index.html` or `js/`, rebuild
+the stylesheet:
+
+```bash
+npm install          # first time only
+npm run build:css    # one-off build
+npm run watch:css    # rebuild while editing
+```
+
+The GitHub Actions workflow rebuilds the CSS on every push and fails if the committed
+file is out of date.
 
 ## Bulk data entry (CSV)
 
@@ -339,8 +359,7 @@ before seasons existed are upgraded automatically into a single default season:
 - Player goals and cards are cumulative player totals, so the top-scorer card is
   all-time rather than per-season. Per-season player statistics would require
   structured match events.
-- The Tailwind Play CDN prints a "should not be used in production" warning in the
-  console. It is intentional here to keep the project build-free. For a fully optimized
-  production bundle, compile Tailwind locally and replace the CDN script with the
-  generated stylesheet.
+- Tailwind is compiled locally, so there is no Play CDN warning and no runtime
+  dependency on the Tailwind CDN. The generated stylesheet is committed; rebuild it
+  with `npm run build:css` after changing classes.
 - All user input is escaped before being injected into the DOM.

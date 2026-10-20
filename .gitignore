@@ -12,7 +12,7 @@ desktop.ini
 *.log
 *.tmp
 
-# Dependencies / build output (not used today, but keeps the repo clean)
+# Dependencies and build artifacts (the compiled CSS is committed)
 node_modules/
 dist/
 

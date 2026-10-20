@@ -1,9 +1,6 @@
-/* ---------------------------------------------------------------
-   KickOff Division — Tailwind theme customization
-   Loaded right after the Tailwind CDN script.
-   --------------------------------------------------------------- */
-
-tailwind.config = {
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ['./index.html', './js/**/*.js'],
   darkMode: 'class',
   theme: {
     extend: {
@@ -24,5 +21,6 @@ tailwind.config = {
         }
       }
     }
-  }
+  },
+  plugins: []
 };
