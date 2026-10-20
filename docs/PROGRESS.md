@@ -16,12 +16,12 @@
 | Multiple seasons and archive | ✅ Done | Archived seasons are read-only in the UI |
 | CSV bulk entry and admin exports | ✅ Done | Five-file workflow including `events.csv` |
 | JSON backup and restore | ✅ Done | Full replacement; test in development first |
-| Structured match events | ✅ Deployed and migrated | Goals/cards with minutes, player dropdowns; admin RPC smoke test still pending |
+| Structured match events | ✅ Deployed and migrated | Goals/cards with minutes, player dropdowns; development RPC test passed, production smoke test pending |
 | Security hardening pass | 🟡 In progress | SRI, secret scanning, dependency updates, XSS helper |
 | Production migration | ✅ Applied | `match_events` and `events_counted` exist with RLS and RPCs |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and the `v3.4.4` code plus match-events migration are live in both projects. The remaining validation is a signed-in admin test of the event RPCs, then real league data can be loaded.
+**Bottom line:** the core league manager is usable, publicly readable and the `v3.4.4` code plus match-events migration are live in both projects. The match-event RPCs passed a full development smoke test; the remaining validation is the same signed-in admin test in production, then real league data can be loaded.
 
 ## 2. Architecture
 
@@ -117,22 +117,24 @@ Local CSV / JSON tools
 | CSV round trip with `data/examples` | Stable; 10 events preserved |
 | `npm audit --omit=dev` | 0 vulnerabilities |
 | Lighthouse (local, mocked events) | Accessibility 100, Best Practices 100, SEO 100 |
-| Lighthouse (production, pre-migration) | Accessibility 100, Best Practices 100, SEO 100 |
+| Lighthouse (production, v3.4.4) | Accessibility 100, Best Practices 100, SEO 100 |
 | Browser smoke test | 9 fixtures render; no console errors after CDN/SRI load |
 | SRI load test | Lucide and Supabase JS loaded with integrity checks |
 | Inline-handler XSS test | Malicious ID rendered as a string literal; no execution |
 | `npm run check:secrets` | No privileged secrets found |
-| Production deploy | `v3.4.3` live; SRI active; 6 teams and 9 fixtures load |
+| Production deploy | `v3.4.4` live; SRI active; 6 teams and 9 fixtures load; no console errors |
 | Production anonymous write | `POST /rest/v1/teams` returned `401` / `42501` |
 | Development migration | `match_events` and `events_counted` exist; REST returns `200` |
 | Production migration | `match_events` and `events_counted` exist; REST returns `200` |
 | Historical-match flag | Existing fixtures have `events_counted = false` |
 | Anonymous event RPC | `replace_match_events` returned `401` in development and production |
-| Admin RPC success path | Not yet verified with a signed-in admin session |
+| Development admin event RPC | Add goal/yellow, replace yellow with red, delete match: all totals and rows verified |
+| Historical flag RPC | `events_counted = false` stored an event without changing player totals |
+| Admin RPC success path | Verified in development; production smoke test pending |
 
 ## 5. Current blockers and risks
 
-1. **Admin RPCs are untested end-to-end.** A signed-in admin must add a goal/card, verify player totals, edit the event and delete the match.
+1. **Production admin RPCs are untested end-to-end.** Development passed; repeat the add/edit/delete and historical-flag test with a signed-in production admin.
 2. **Real data is not loaded.** The app still contains sample fixtures and players.
 3. **Production and development differ.** For example, `m6` is 1–1 in development but 1–3 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
 4. **Destructive edits still have data-integrity gaps.** Deleting a team cascades its matches and events without reversing other players' aggregate totals; deleting a player removes their historical events; a player transfer leaves old events attached to the former team. Keep a backup and prefer the planned RPC/soft-delete work.
@@ -141,15 +143,16 @@ Local CSV / JSON tools
 ## 6. Release checklist for the match-events release
 
 - [x] Commit the working tree, push `main`, move the `prod` tag and verify GitHub Pages.
-- [x] Confirm `v3.4.3` is live, SRI is active and the public league loads.
+- [x] Confirm `v3.4.4` is live, SRI is active and the public league loads.
 - [x] Re-run the anonymous write rejection test against production (`401` / `42501`).
 - [x] Run `supabase/match-events-migration.sql` in the **development** project SQL Editor.
 - [x] Run `supabase/match-events-migration.sql` in the **production** project SQL Editor.
 - [x] Reload both apps and confirm the migration notice disappears and no `match_events` `404` remains.
-- [ ] Sign in as a development admin and add one goal and one card to a test match.
-- [ ] Confirm the event timeline, minute and player totals.
-- [ ] Edit and remove events; confirm totals return to the original values.
-- [ ] Delete a test match; confirm events and totals are cleaned up.
+- [x] Sign in as a development admin and add one goal and one card to a test match.
+- [x] Confirm the event timeline, minute and player totals.
+- [x] Edit and remove events; confirm totals return to the original values.
+- [x] Delete a test match; confirm events and totals are cleaned up.
+- [x] Confirm a match with `events_counted = false` stores events without changing player totals.
 - [ ] Repeat the admin smoke test in **production**.
 - [ ] Export a fresh production JSON backup.
 
@@ -157,7 +160,7 @@ Local CSV / JSON tools
 
 ### P0 — finish this release
 
-- Test the admin event RPCs in development, then production.
+- Repeat the admin event RPC test in production (development passed).
 - Refresh the production backup after the admin smoke test.
 - Re-run the RLS checks after the schema change.
 
