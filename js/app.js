@@ -38,8 +38,17 @@ function closeAllModals() {
 
 /* ---------- loading / error banners ---------- */
 
-function showDataError() {
+function showDataError(error) {
   const banner = document.getElementById('data-error');
+  const message = document.getElementById('data-error-text');
+  const missingSchema = error && (
+    error.code === 'PGRST205' ||
+    /Could not find the table|could not find the table/i.test(error.message || '')
+  );
+
+  if (message) {
+    message.textContent = t(missingSchema ? 'dbNotInstalledBanner' : 'dataErrorBanner');
+  }
   if (banner) banner.classList.remove('hidden');
 }
 
@@ -54,7 +63,7 @@ async function retryLoad() {
     hideDataError();
     renderApp();
   } catch (e) {
-    showDataError();
+    showDataError(e);
   }
 }
 
@@ -782,7 +791,7 @@ window.addEventListener('DOMContentLoaded', async function () {
       await refreshData();
       hideDataError();
     } catch (err) {
-      showDataError();
+      showDataError(err);
     }
     renderApp();
   }

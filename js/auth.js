@@ -176,7 +176,7 @@ async function handleLogin(e) {
       await refreshData();
       renderApp();
     } catch (err) {
-      showDataError();
+      showDataError(err);
     }
 
     if (!isAdmin()) {
