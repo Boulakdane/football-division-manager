@@ -16,12 +16,12 @@
 | Multiple seasons and archive | ✅ Done | Archived seasons are read-only in the UI |
 | CSV bulk entry and admin exports | ✅ Done | Five-file workflow including `events.csv` |
 | JSON backup and restore | ✅ Done | Full replacement; test in development first |
-| Structured match events | ✅ Deployed and migrated | Goals/cards with minutes, player dropdowns; development RPC test passed, production smoke test pending |
+| Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPC tests passed in development and production |
 | Security hardening pass | 🟡 In progress | SRI, secret scanning, dependency updates, XSS helper |
 | Production migration | ✅ Applied | `match_events` and `events_counted` exist with RLS and RPCs |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and the `v3.4.4` code plus match-events migration are live in both projects. The match-event RPCs passed a full development smoke test; the remaining validation is the same signed-in admin test in production, then real league data can be loaded.
+**Bottom line:** the core league manager is usable, publicly readable and the `v3.4.4` code plus match-events migration are live in both projects. The match-event RPCs passed full admin smoke tests in development and production, and a fresh production JSON backup was exported. The next step is loading the real league data into development, then production.
 
 ## 2. Architecture
 
@@ -129,16 +129,17 @@ Local CSV / JSON tools
 | Historical-match flag | Existing fixtures have `events_counted = false` |
 | Anonymous event RPC | `replace_match_events` returned `401` in development and production |
 | Development admin event RPC | Add goal/yellow, replace yellow with red, delete match: all totals and rows verified |
-| Historical flag RPC | `events_counted = false` stored an event without changing player totals |
-| Admin RPC success path | Verified in development; production smoke test pending |
+| Production admin event RPC | Add goal/yellow, replace yellow with red, delete match: all totals and rows verified |
+| Historical flag RPC | `events_counted = false` stored an event without changing player totals in development and production |
+| Production backup | Fresh JSON export validated: 1 season, 6 teams, 9 players, 9 matches, 0 events; no smoke data |
+| Admin RPC success path | Verified in development and production |
 
 ## 5. Current blockers and risks
 
-1. **Production admin RPCs are untested end-to-end.** Development passed; repeat the add/edit/delete and historical-flag test with a signed-in production admin.
-2. **Real data is not loaded.** The app still contains sample fixtures and players.
-3. **Production and development differ.** For example, `m6` is 1–1 in development but 1–3 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
-4. **Destructive edits still have data-integrity gaps.** Deleting a team cascades its matches and events without reversing other players' aggregate totals; deleting a player removes their historical events; a player transfer leaves old events attached to the former team. Keep a backup and prefer the planned RPC/soft-delete work.
-5. **Operational gaps.** There is no audit log, MFA, atomic server-side import, automated RLS test suite or automated browser test yet. These are covered in the security and modernization plans.
+1. **Real data is not loaded.** The app still contains sample fixtures and players.
+2. **Production and development differ.** For example, `m6` is 1–1 in development but 1–3 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
+3. **Destructive edits still have data-integrity gaps.** Deleting a team cascades its matches and events without reversing other players' aggregate totals; deleting a player removes their historical events; a player transfer leaves old events attached to the former team. Keep a backup and prefer the planned RPC/soft-delete work.
+4. **Operational gaps.** There is no audit log, MFA, atomic server-side import, automated RLS test suite or automated browser test yet. These are covered in the security and modernization plans.
 
 ## 6. Release checklist for the match-events release
 
@@ -153,16 +154,16 @@ Local CSV / JSON tools
 - [x] Edit and remove events; confirm totals return to the original values.
 - [x] Delete a test match; confirm events and totals are cleaned up.
 - [x] Confirm a match with `events_counted = false` stores events without changing player totals.
-- [ ] Repeat the admin smoke test in **production**.
-- [ ] Export a fresh production JSON backup.
+- [x] Repeat the admin smoke test in **production**.
+- [x] Export and validate a fresh production JSON backup.
 
 ## 7. Recommended next work
 
 ### P0 — finish this release
 
-- Repeat the admin event RPC test in production (development passed).
-- Refresh the production backup after the admin smoke test.
-- Re-run the RLS checks after the schema change.
+- Load the real league data into development, verify standings, fixtures and squads, then import into production.
+- Keep the fresh production backup and export another one immediately before the production import.
+- Re-run the final anonymous/RLS checks after the import.
 
 ### P1 — data integrity
 
