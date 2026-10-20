@@ -122,7 +122,15 @@ const I18N = {
     authMismatch: "Passwords do not match.",
     authTooShort: "Password must be at least 6 characters.",
     authCurrentWrong: "Current password is incorrect.",
-    authSaveFailed: "Could not update the password."
+    authSaveFailed: "Could not update the password.",
+    authResend: "Didn't get the confirmation email? Resend it",
+    authResendSent: "Confirmation email sent. Check your inbox and spam folder.",
+    authResendFailed: "Could not send the confirmation email. Wait a minute and try again.",
+    authAlreadyConfirmed: "This email is already confirmed — just log in.",
+    authTooManyRequests: "Too many attempts. Wait a few minutes and try again.",
+    authEmailRequired: "Enter your email address first.",
+    authLinkExpired: "That confirmation link has expired. Enter your email and request a new one.",
+    authLinkInvalid: "That confirmation link is invalid. Request a new one below."
   },
   fr: {
     appTitle: "KickOff Division",
@@ -240,7 +248,15 @@ const I18N = {
     authMismatch: "Les mots de passe ne correspondent pas.",
     authTooShort: "Le mot de passe doit contenir au moins 6 caractères.",
     authCurrentWrong: "Le mot de passe actuel est incorrect.",
-    authSaveFailed: "Impossible de mettre à jour le mot de passe."
+    authSaveFailed: "Impossible de mettre à jour le mot de passe.",
+    authResend: "Vous n'avez pas reçu l'e-mail de confirmation ? Renvoyez-le",
+    authResendSent: "E-mail de confirmation envoyé. Vérifiez votre boîte de réception et vos spams.",
+    authResendFailed: "Impossible d'envoyer l'e-mail de confirmation. Attendez une minute et réessayez.",
+    authAlreadyConfirmed: "Cet e-mail est déjà confirmé — connectez-vous simplement.",
+    authTooManyRequests: "Trop de tentatives. Attendez quelques minutes et réessayez.",
+    authEmailRequired: "Saisissez d'abord votre adresse e-mail.",
+    authLinkExpired: "Ce lien de confirmation a expiré. Saisissez votre e-mail et demandez-en un nouveau.",
+    authLinkInvalid: "Ce lien de confirmation est invalide. Demandez-en un nouveau ci-dessous."
   },
   ar: {
     appTitle: "كيك أوف ديڤيزيون",
@@ -358,7 +374,15 @@ const I18N = {
     authMismatch: "كلمتا المرور غير متطابقتين.",
     authTooShort: "يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.",
     authCurrentWrong: "كلمة المرور الحالية غير صحيحة.",
-    authSaveFailed: "تعذر تحديث كلمة المرور."
+    authSaveFailed: "تعذر تحديث كلمة المرور.",
+    authResend: "لم تستلم رسالة التأكيد؟ أعد إرسالها",
+    authResendSent: "تم إرسال رسالة التأكيد. تحقق من بريدك الوارد ومجلد الرسائل غير المرغوب فيها.",
+    authResendFailed: "تعذر إرسال رسالة التأكيد. انتظر دقيقة ثم حاول مجدداً.",
+    authAlreadyConfirmed: "هذا البريد مؤكد بالفعل — سجّل الدخول مباشرة.",
+    authTooManyRequests: "محاولات كثيرة جداً. انتظر بضع دقائق ثم حاول مجدداً.",
+    authEmailRequired: "أدخل بريدك الإلكتروني أولاً.",
+    authLinkExpired: "انتهت صلاحية رابط التأكيد. أدخل بريدك الإلكتروني واطلب رابطاً جديداً.",
+    authLinkInvalid: "رابط التأكيد غير صالح. اطلب رابطاً جديداً أدناه."
   }
 };
 

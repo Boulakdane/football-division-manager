@@ -524,6 +524,7 @@
                    class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
           </div>
           <p id="login-error" class="hidden text-xs text-rose-400"></p>
+          <p id="login-success" class="hidden text-xs text-emerald-400"></p>
           <button type="submit" class="w-full px-4 py-2.5 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-60 text-white rounded-lg text-sm font-semibold shadow-md flex items-center justify-center gap-2 transition">
             <i data-lucide="log-in" class="w-4 h-4"></i>
             <span data-i18n="authLoginBtn">Log in</span>
@@ -531,6 +532,7 @@
         </form>
         <p class="text-[11px] text-slate-500 mt-3 leading-relaxed" data-i18n="authRolesNote">Only admins can edit.</p>
         <button onclick="toggleSignup(event)" class="text-[11px] text-pitch-400 hover:text-pitch-300 mt-2 font-medium" data-i18n="authNoAccount">No account? Create one</button>
+        <button type="button" onclick="resendConfirmation(event)" class="block text-[11px] text-slate-400 hover:text-pitch-300 mt-2 font-medium" data-i18n="authResend">Didn't get the confirmation email? Resend it</button>
       </div>
 
       <!-- SIGNUP -->

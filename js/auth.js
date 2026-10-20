@@ -21,20 +21,53 @@ function isSignedIn() {
 /* ---------- session handling ---------- */
 
 async function initAuth() {
+  const redirectErrorKey = consumeAuthRedirectError();
+
   if (!BACKEND_READY) {
     updateAuthUI();
-    return;
+  } else {
+    const { data, error } = await db.auth.getSession();
+    if (!error) await applySession(data.session);
+
+    db.auth.onAuthStateChange(async (event, session) => {
+      // INITIAL_SESSION is already handled above; TOKEN_REFRESHED needs no UI work.
+      if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return;
+      await applySession(session);
+      renderApp();
+    });
   }
 
-  const { data, error } = await db.auth.getSession();
-  if (!error) await applySession(data.session);
+  if (redirectErrorKey) {
+    openLoginModal();
+    setAuthError('login-error', redirectErrorKey);
+  }
+}
 
-  db.auth.onAuthStateChange(async (event, session) => {
-    // INITIAL_SESSION is already handled above; TOKEN_REFRESHED needs no UI work.
-    if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return;
-    await applySession(session);
-    renderApp();
-  });
+/**
+ * Supabase redirects failed confirmation links back with error details in the
+ * URL hash/query. Show a friendly message and clean the address bar.
+ */
+function consumeAuthRedirectError() {
+  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+  const hashParams = new URLSearchParams(hash);
+  const queryParams = new URLSearchParams(window.location.search);
+
+  const error = hashParams.get('error') || queryParams.get('error');
+  const errorCode = hashParams.get('error_code') || queryParams.get('error_code');
+  const description = hashParams.get('error_description') || queryParams.get('error_description') || '';
+
+  if (!error && !errorCode) return null;
+
+  const expired = errorCode === 'otp_expired' ||
+    /expired/i.test(description) ||
+    /expired/i.test(error || '');
+
+  const url = new URL(window.location.href);
+  ['error', 'error_code', 'error_description', 'sb', 'code'].forEach(key => url.searchParams.delete(key));
+  url.hash = '';
+  history.replaceState(null, '', url.pathname + url.search);
+
+  return expired ? 'authLinkExpired' : 'authLinkInvalid';
 }
 
 async function applySession(session) {
@@ -109,10 +142,15 @@ function setAuthNotice(elementId, key) {
 }
 
 function clearAuthMessages() {
-  ['login-error', 'signup-error', 'signup-success', 'pw-error'].forEach(id => {
+  ['login-error', 'login-success', 'signup-error', 'signup-success', 'pw-error'].forEach(id => {
     setAuthError(id, null);
     setAuthNotice(id, null);
   });
+}
+
+/** URL Supabase should send users back to after confirming an email. */
+function authRedirectUrl() {
+  return window.location.origin + window.location.pathname;
 }
 
 /* ---------- login / signup modal ---------- */
@@ -213,7 +251,11 @@ async function handleSignup(e) {
   button.disabled = true;
 
   try {
-    const { data, error } = await db.auth.signUp({ email, password });
+    const { data, error } = await db.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: authRedirectUrl() }
+    });
     if (error) {
       setAuthError('signup-error', 'authSignupFailed');
       return;
@@ -231,6 +273,50 @@ async function handleSignup(e) {
     setAuthError('signup-error', 'authSignupFailed');
   } finally {
     button.disabled = false;
+  }
+}
+
+async function resendConfirmation(event) {
+  clearAuthMessages();
+
+  if (!BACKEND_READY) {
+    setAuthError('login-error', 'authConfigMissing');
+    return;
+  }
+
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) {
+    setAuthError('login-error', 'authEmailRequired');
+    return;
+  }
+
+  const button = event && event.currentTarget ? event.currentTarget : null;
+  if (button) button.disabled = true;
+
+  try {
+    const { error } = await db.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: authRedirectUrl() }
+    });
+
+    if (error) {
+      const message = (error.message || '').toLowerCase();
+      if (message.includes('already confirmed')) {
+        setAuthError('login-error', 'authAlreadyConfirmed');
+      } else if (error.status === 429 || message.includes('rate limit')) {
+        setAuthError('login-error', 'authTooManyRequests');
+      } else {
+        setAuthError('login-error', 'authResendFailed');
+      }
+      return;
+    }
+
+    setAuthNotice('login-success', 'authResendSent');
+  } catch (err) {
+    setAuthError('login-error', 'authResendFailed');
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 

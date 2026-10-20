@@ -97,6 +97,17 @@ Optional: disable email confirmation under **Authentication → Providers → Em
 if you don't want new accounts to confirm their address. Once your admin account
 exists, you can also turn off public sign-ups there to prevent extra accounts.
 
+### Confirmation email issues
+
+If a confirmation link redirects to `localhost:3000` or says it expired:
+
+1. Set **Authentication → URL Configuration → Site URL** to your deployed URL
+   (`https://<user>.github.io/<repo>/`) and add the same URL under **Redirect URLs**.
+2. In the login modal, enter your email and click **Didn't get the confirmation email?
+   Resend it**. Old links cannot be reused.
+3. Or disable **Confirm email** under **Authentication → Providers → Email**, delete the
+   unconfirmed user under **Authentication → Users**, and sign up again.
+
 ## Roles and permissions
 
 | Action | Visitor (no account) | Viewer account | Admin account |
