@@ -16,12 +16,12 @@
 | Multiple seasons and archive | ✅ Done | Archived seasons are read-only in the UI |
 | CSV bulk entry and admin exports | ✅ Done | Five-file workflow including `events.csv` |
 | JSON backup and restore | ✅ Done | Full replacement; test in development first |
-| Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPC tests passed in development and production |
+| Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
 | Security hardening pass | 🟡 In progress | SRI, secret scanning, dependency updates, XSS helper |
 | Production migration | ✅ Applied | `match_events` and `events_counted` exist with RLS and RPCs |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and the `v3.4.4` code plus match-events migration are live in both projects. The match-event RPCs passed full admin smoke tests in development and production, and a fresh production JSON backup was exported. The next step is loading the real league data into development, then production.
+**Bottom line:** the core league manager is usable, publicly readable and the `v3.4.4` code plus match-events migration are live in both projects. The match-event RPCs and the full admin UI flow passed in production, and a fresh production JSON backup was exported. The next step is loading the real league data into development, then production.
 
 ## 2. Architecture
 
@@ -130,6 +130,7 @@ Local CSV / JSON tools
 | Anonymous event RPC | `replace_match_events` returned `401` in development and production |
 | Development admin event RPC | Add goal/yellow, replace yellow with red, delete match: all totals and rows verified |
 | Production admin event RPC | Add goal/yellow, replace yellow with red, delete match: all totals and rows verified |
+| Live production admin UI | Created a fixture through the live Add Match modal, added goal/yellow, edited to red, deleted it; totals restored |
 | Historical flag RPC | `events_counted = false` stored an event without changing player totals in development and production |
 | Production backup | Fresh JSON export validated: 1 season, 6 teams, 9 players, 9 matches, 0 events; no smoke data |
 | Admin RPC success path | Verified in development and production |
