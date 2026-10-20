@@ -74,12 +74,19 @@ In Supabase open **Project Settings → API** and copy:
 - **anon public** key (or **Publishable key** on newer dashboards, starting with
   `sb_publishable_...`)
 
-Put both into [`js/config.js`](js/config.js):
+Put the project's URL and anon key into the `PRODUCTION` block in
+[`js/config.js`](js/config.js). Leave the `DEVELOPMENT` block empty until you create
+a separate dev project (recommended — see the next section):
 
 ```js
-window.KICKOFF_CONFIG = {
+const PRODUCTION = {
   SUPABASE_URL: 'https://abcdefghijkl.supabase.co',
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+  SUPABASE_ANON_KEY: 'sb_publishable_...'
+};
+
+const DEVELOPMENT = {
+  SUPABASE_URL: '',
+  SUPABASE_ANON_KEY: ''
 };
 ```
 
@@ -116,6 +123,77 @@ If a confirmation link redirects to `localhost:3000` or says it expired:
    Resend it**. Old links cannot be reused.
 3. Or disable **Confirm email** under **Authentication → Providers → Email**, delete the
    unconfirmed user under **Authentication → Users**, and sign up again.
+
+## Development vs production databases
+
+Use **two independent Supabase projects**. Never test new features directly against
+real league data.
+
+| | Production | Development |
+|---|---|---|
+| Purpose | Real league | Experiments and sample data |
+| Used by | GitHub Pages | `http://localhost:8765` |
+| Data | Real teams, players, results | Sample data, safe to reset |
+| Admin account | Your real admin | A separate dev admin |
+| Backups | Export regularly | Not required |
+
+Both anon/publishable keys are safe to publish. Row Level Security still blocks
+non-admin writes in both projects.
+
+### Create the development project
+
+1. In Supabase, create a **second project** in the same organization.
+2. Run `supabase/schema.sql` in its SQL Editor. This also inserts the sample league.
+3. Under **Authentication → Providers → Email**, disable public sign-ups.
+4. Create a dev admin account (temporarily enable sign-ups if needed), confirm it,
+   then promote it:
+   ```sql
+   update public.profiles
+      set role = 'admin'
+    where email = 'dev-admin@example.com';
+   ```
+5. Set **Authentication → URL Configuration → Site URL** to
+   `http://localhost:8765` and add the same value under **Redirect URLs**.
+6. Optionally disable email confirmation in the dev project to speed up sign-in.
+
+### Add the development keys
+
+Open [`js/config.js`](js/config.js) and fill the `DEVELOPMENT` block with the second
+project's URL and anon/publishable key:
+
+```js
+const DEVELOPMENT = {
+  SUPABASE_URL: 'https://your-dev-project.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_...'
+};
+```
+
+The `PRODUCTION` block keeps the real project. The app picks the database like this:
+
+- `http://localhost:8765` → **development** (once the dev keys are filled)
+- GitHub Pages → **production**
+- `?env=dev` on the deployed site → development, with a blue banner
+- `?env=prod` → production, even on localhost
+- If the dev keys are empty, localhost falls back to production and shows an amber
+  warning so you don't edit real data by accident.
+
+Auth sessions are separate because each Supabase project uses its own storage key.
+Logging into the dev admin does not log you into production.
+
+### Schema changes and data
+
+1. Apply every schema change to the **development** project first.
+2. Test the full feature there, including login, writes, archived seasons and import.
+3. Run the same SQL in **production** only after it is verified.
+4. Keep dev data disposable. Use **Settings → Reset Sample Data** or import a small
+   test backup; do not import real data into dev unless you are comfortable with that
+   project being publicly readable.
+5. Export a production backup before running migrations:
+   **Settings → Export Backup (JSON)**.
+
+> Free Supabase projects pause after a period of inactivity. The development project
+> may need to be restored from the dashboard before you start working; the app shows a
+> retry banner while it is unavailable.
 
 ## Roles and permissions
 

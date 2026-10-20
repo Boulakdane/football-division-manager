@@ -93,6 +93,29 @@ function hideDataError() {
   if (banner) banner.classList.add('hidden');
 }
 
+/** Show which database the page is talking to (dev or local-production warning). */
+function applyEnvironmentNotice() {
+  const banner = document.getElementById('env-banner');
+  const text = document.getElementById('env-banner-text');
+  if (!banner || !text) return;
+
+  const config = window.KICKOFF_CONFIG || {};
+
+  if (config.ENVIRONMENT === 'development') {
+    banner.className = 'bg-sky-500/10 border-b border-sky-500/30 text-sky-300 text-xs';
+    text.textContent = t('envDevBanner');
+  } else if (config.ENV_WARNING === 'localProd') {
+    banner.className = 'bg-amber-500/10 border-b border-amber-500/30 text-amber-300 text-xs';
+    text.textContent = t('envLocalProdBanner');
+  } else if (config.ENV_WARNING === 'devMissing') {
+    banner.className = 'bg-amber-500/10 border-b border-amber-500/30 text-amber-300 text-xs';
+    text.textContent = t('envDevMissingBanner');
+  } else {
+    banner.className = 'hidden border-b text-xs';
+    text.textContent = '';
+  }
+}
+
 async function retryLoad() {
   try {
     await refreshData();
@@ -156,6 +179,7 @@ function selectSeason(seasonId) {
 }
 
 function renderApp() {
+  applyEnvironmentNotice();
   renderSeasonBar();
   renderStandings();
   renderFixtureFilters();
