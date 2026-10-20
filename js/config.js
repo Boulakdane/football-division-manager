@@ -7,6 +7,6 @@
    --------------------------------------------------------------- */
 
 window.KICKOFF_CONFIG = {
-  SUPABASE_URL: '',       // e.g. 'https://abcdefghijkl.supabase.co'
-  SUPABASE_ANON_KEY: ''   // e.g. 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+  SUPABASE_URL: 'https://vbegrfxsxsbldgwvwpeb.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_TmId0iOLlW18EieXMNn2JQ_zJ_R6IKi'
 };
