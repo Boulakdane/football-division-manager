@@ -10,6 +10,9 @@ accounts live in a free [Supabase](https://supabase.com) project.
   The table is recalculated instantly whenever a result changes.
 - **Fixtures & results** — schedule matchdays, log live scores, and mark matches as
   finished. Duplicate fixtures on the same matchday are rejected.
+- **Goals & cards with minutes** — log each goal, yellow card and red card against a
+  player from the correct team, with the minute. Events appear on the fixture card and
+  update the player's goal/card totals.
 - **Multiple seasons** — create a new season, switch between active and archived
   seasons, and keep every past table and fixture intact. Archived seasons are
   read-only in the UI until an admin makes them active again.
@@ -23,11 +26,21 @@ accounts live in a free [Supabase](https://supabase.com) project.
 - **Shared data** — every visitor sees the same league, from any device.
 - **JSON backup** — export/import the full dataset from the admin settings menu.
 - **CSV tools** — export the current season's standings, fixtures and squads,
-  bulk-build a league from four CSV files, or turn a JSON backup back into
+  bulk-build a league from five CSV files, or turn a JSON backup back into
   editable CSV files.
 - **Live score shortcuts** — matches in `LIVE` state get `+` buttons on the fixture card.
 - **Read-only demo mode** — until Supabase is configured, the site shows the sample
   league with all write controls hidden and a banner explaining how to connect it.
+
+## Documentation
+
+- [Progress update](docs/PROGRESS.md) — current release state, verification evidence,
+  blockers and the next deploy checklist.
+- [Security review and plan](docs/SECURITY_AUDIT.md) — threat model, findings,
+  prioritised remediation and verification commands.
+- [Modernization plan](docs/MODERNIZATION_PLAN.md) — phased roadmap and sophisticated
+  data, security, UX and platform improvements.
+- [Security policy](SECURITY.md) — how to report a vulnerability privately.
 
 ## Project structure
 
@@ -49,13 +62,20 @@ accounts live in a free [Supabase](https://supabase.com) project.
 ├── tailwind.config.js         # Tailwind theme (pitch palette, fonts, content)
 ├── data/
 │   ├── README.md              # CSV column reference and workflow
-│   └── examples/              # Template seasons/teams/players/matches CSV files
+│   └── examples/              # Template seasons/teams/players/matches/events CSV files
+├── docs/
+│   ├── PROGRESS.md            # Current status, blockers and release checklist
+│   ├── SECURITY_AUDIT.md      # Findings, threat model and remediation plan
+│   └── MODERNIZATION_PLAN.md  # Phased roadmap and advanced improvements
 ├── tools/
 │   ├── csv-to-backup.js       # Validate CSVs and build an importable JSON backup
-│   └── backup-to-csv.js       # Turn a JSON backup into editable CSV files
+│   ├── backup-to-csv.js       # Turn a JSON backup into editable CSV files
+│   └── check-secrets.js       # Fail CI if a privileged secret is committed
+├── SECURITY.md                # Private vulnerability reporting policy
 └── supabase/
-    ├── schema.sql             # Tables, RLS policies, trigger and seed data
-    └── seasons-migration.sql  # Upgrade an existing database to seasons
+    ├── schema.sql                   # Tables, RLS policies, triggers and seed data
+    ├── seasons-migration.sql        # Upgrade an existing database to seasons
+    └── match-events-migration.sql   # Upgrade an existing database to match events
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -73,10 +93,18 @@ Scripts are loaded in dependency order in `index.html`:
    This creates the tables, trigger and Row Level Security policies, and inserts the
    sample league (delete the seed block if you want to start empty).
 
-> **Upgrading an existing project?** If you created the database before multiple
-> seasons were added, run [`supabase/seasons-migration.sql`](supabase/seasons-migration.sql)
-> once in the SQL Editor instead. It adds the `seasons` table, links existing
-> fixtures to a default season, and installs the season functions.
+> **Upgrading an existing project?** Run the migrations in order, once each, in the
+> SQL Editor:
+>
+> 1. [`supabase/seasons-migration.sql`](supabase/seasons-migration.sql) — if the
+>    database predates multiple seasons. It adds the `seasons` table, links existing
+>    fixtures to a default season, and installs the season functions.
+> 2. [`supabase/match-events-migration.sql`](supabase/match-events-migration.sql) —
+>    adds goals/cards with minutes, RLS policies and the atomic event functions.
+>
+> Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
+> idempotent and creates anything that is missing. Do not re-run the sample seed block
+> on a production database with real data.
 
 ### 2. Add your keys
 
@@ -265,7 +293,7 @@ file is out of date.
 
 ## Bulk data entry (CSV)
 
-For a full league, editing four CSV files is faster than entering every fixture in the
+For a full league, editing five CSV files is faster than entering every fixture in the
 browser. Copy the templates from [`data/examples/`](data/examples), edit the copies in
 `data/`, then run:
 
@@ -276,10 +304,10 @@ node tools/csv-to-backup.js
 This validates the data and writes `backups/kickoff-import-YYYY-MM-DD.json`, which you
 import from **Settings → Import Backup (JSON)**. See [`data/README.md`](data/README.md)
 for the column reference. Test the import in the development project first — importing
-replaces all teams, players, seasons and matches in the connected database.
+replaces all teams, players, seasons, matches and match events in the connected database.
 
 If you already have a JSON backup and want to edit it in a spreadsheet, generate the
-four CSV files from it first:
+five CSV files from it first:
 
 ```powershell
 node tools/backup-to-csv.js backups/kickoff-backup-YYYY-MM-DD.json data --force
@@ -300,17 +328,19 @@ cannot silently replace real league data by accident.
 
 ## Data model
 
-Five tables in the `public` schema. Column names are snake_case in Postgres and mapped
+Six tables in the `public` schema. Column names are snake_case in Postgres and mapped
 to camelCase by `js/backend.js`.
 
 ```
-seasons   (id text pk, name, start_date, end_date, is_active, created_at)
-teams     (id text pk, name, code, color)
-players   (id text pk, team_id → teams.id, name, pos, num, goals, yellow, red)
-matches   (id text pk, season_id → seasons.id, round, home_id → teams.id,
-           away_id → teams.id, home_score, away_score, status, datetime, venue,
-           scorers_text)
-profiles  (id uuid pk → auth.users.id, email, role: admin|viewer)
+seasons      (id text pk, name, start_date, end_date, is_active, created_at)
+teams        (id text pk, name, code, color)
+players      (id text pk, team_id → teams.id, name, pos, num, goals, yellow, red)
+matches      (id text pk, season_id → seasons.id, round, home_id → teams.id,
+              away_id → teams.id, home_score, away_score, status, datetime, venue,
+              scorers_text, events_counted)
+match_events (id text pk, match_id → matches.id, team_id → teams.id,
+              player_id → players.id, event_type: goal|yellow|red, minute, created_at)
+profiles     (id uuid pk → auth.users.id, email, role: admin|viewer)
 ```
 
 `status` is one of `SCHEDULED`, `LIVE`, `FINISHED`. Only `FINISHED` matches count
@@ -318,6 +348,18 @@ towards the league table. Deleting a team cascades to its players and matches.
 A unique partial index guarantees that at most one season is active. The
 `create_season` and `activate_season` database functions are admin-only and run in
 a single transaction, so the active season always switches cleanly.
+
+`match_events` powers the scorer/card timeline. `replace_match_events` and
+`delete_match` are admin-only database functions that replace a match's events and
+adjust the cumulative `players.goals`, `players.yellow` and `players.red` counters by
+the difference in one transaction. Imported backups treat the player totals as
+authoritative, so events are inserted without being counted twice.
+
+`matches.events_counted` prevents double-counting historical data. Existing fixtures
+are marked `false` during the migration because their goals/cards were already entered
+manually; their event timeline is saved without touching player totals. New fixtures
+default to `true`, so events keep the totals in sync. Imported backups preserve the
+flag. See [`data/README.md`](data/README.md#eventscsv) for the CSV column.
 
 The JSON backup format is the same camelCase shape used by the app. Backups created
 before seasons existed are upgraded automatically into a single default season:
@@ -332,8 +374,20 @@ before seasons existed are upgraded automatically into a single default season:
   "matches": [{ "id": "m1", "seasonId": "s1", "round": 1, "homeId": "t1",
                 "awayId": "t2", "homeScore": 3, "awayScore": 1,
                 "status": "FINISHED", "datetime": "2026-10-03T15:00",
-                "venue": "Main Field",
-                "scorersText": "Carlos Ramos (2), David Silva (1) - Ethan Hunt (1)" }]
+                "venue": "Main Field", "eventsCounted": true,
+                "scorersText": "Carlos Ramos 23', David Silva 54', Carlos Ramos 71' - Ethan Hunt 80'" }],
+  "matchEvents": [
+    { "id": "e1", "matchId": "m1", "teamId": "t1", "playerId": "p2",
+      "type": "goal", "minute": 23 },
+    { "id": "e2", "matchId": "m1", "teamId": "t1", "playerId": "p1",
+      "type": "goal", "minute": 54 },
+    { "id": "e3", "matchId": "m1", "teamId": "t1", "playerId": "p2",
+      "type": "goal", "minute": 71 },
+    { "id": "e4", "matchId": "m1", "teamId": "t2", "playerId": "p3",
+      "type": "goal", "minute": 80 },
+    { "id": "e5", "matchId": "m1", "teamId": "t2", "playerId": "p3",
+      "type": "yellow", "minute": 42 }
+  ]
 }
 ```
 
@@ -356,9 +410,12 @@ before seasons existed are upgraded automatically into a single default season:
   then becomes the archive.
 - An archived season with no fixtures shows **Delete season** in the season bar.
   The active season and any season that still has fixtures cannot be deleted.
-- Player goals and cards are cumulative player totals, so the top-scorer card is
-  all-time rather than per-season. Per-season player statistics would require
-  structured match events.
+- Player goals and cards remain cumulative totals, so the top-scorer card is all-time
+  rather than per-season. For fixtures with `events_counted = true`, adding or removing
+  a match event adjusts those totals by one in the same database transaction.
+- Match events are optional for backward compatibility. Until the match-events
+  migration is run, the app keeps working with the free-text `scorersText` field and
+  shows a one-time migration notice in the match modal.
 - Tailwind is compiled locally, so there is no Play CDN warning and no runtime
   dependency on the Tailwind CDN. The generated stylesheet is committed; rebuild it
   with `npm run build:css` after changing classes.

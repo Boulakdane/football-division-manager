@@ -79,7 +79,19 @@ function mapMatch(row) {
     status: row.status,
     datetime: row.datetime || '',
     venue: row.venue || '',
-    scorersText: row.scorers_text || ''
+    scorersText: row.scorers_text || '',
+    eventsCounted: row.events_counted !== false
+  };
+}
+
+function mapMatchEvent(row) {
+  return {
+    id: row.id,
+    matchId: row.match_id,
+    teamId: row.team_id,
+    playerId: row.player_id,
+    type: row.event_type,
+    minute: row.minute
   };
 }
 
@@ -123,17 +135,42 @@ function matchToRow(match) {
     venue: match.venue,
     scorers_text: match.scorersText
   };
-  // Omitted while the database has not been migrated to seasons yet.
+  // Omitted while the database has not been migrated to seasons/events yet.
   if (match.seasonId) row.season_id = match.seasonId;
+  if (appState && appState.eventsReady) row.events_counted = match.eventsCounted !== false;
   return row;
 }
 
-/** True when the seasons table has not been created yet. */
-function isMissingSeasonsTable(error) {
+function matchEventToRow(event) {
+  return {
+    id: event.id,
+    match_id: event.matchId,
+    team_id: event.teamId,
+    player_id: event.playerId,
+    event_type: event.type,
+    minute: event.minute
+  };
+}
+
+/** True when a table (or the season migration) has not been created yet. */
+function isMissingTable(error) {
   return Boolean(error) && (
     error.code === 'PGRST205' ||
     error.code === '42P01' ||
     /Could not find the table|relation .* does not exist/i.test(error.message || '')
+  );
+}
+
+function isMissingSeasonsTable(error) {
+  return isMissingTable(error);
+}
+
+/** True when a database function has not been installed yet. */
+function isMissingFunction(error) {
+  return Boolean(error) && (
+    error.code === 'PGRST202' ||
+    error.code === '42883' ||
+    /Could not find the function|function .* does not exist/i.test(error.message || '')
   );
 }
 
@@ -144,16 +181,18 @@ async function refreshData() {
   if (!BACKEND_READY) {
     appState = normalizeState(DEFAULT_DATA);
     appState.seasonsReady = true;
+    appState.eventsReady = true;
     appState.activeSeasonId = appState.seasons.find(season => season.isActive).id;
     appState.viewSeasonId = appState.activeSeasonId;
     return;
   }
 
-  const [teamsResult, playersResult, matchesResult, seasonsResult] = await Promise.all([
+  const [teamsResult, playersResult, matchesResult, seasonsResult, eventsResult] = await Promise.all([
     db.from('teams').select('*').order('name', { ascending: true }),
     db.from('players').select('*').order('num', { ascending: true }),
     db.from('matches').select('*').order('round', { ascending: true }),
-    db.from('seasons').select('*').order('created_at', { ascending: false })
+    db.from('seasons').select('*').order('created_at', { ascending: false }),
+    db.from('match_events').select('*').order('minute', { ascending: true })
   ]);
 
   const baseError = teamsResult.error || playersResult.error || matchesResult.error;
@@ -168,6 +207,16 @@ async function refreshData() {
   } else {
     seasons = (seasonsResult.data || []).map(mapSeason);
     seasonsReady = true;
+  }
+
+  // Match events are optional until the match-events migration is run.
+  let matchEvents = [];
+  let eventsReady = false;
+  if (eventsResult.error) {
+    if (!isMissingTable(eventsResult.error)) throw eventsResult.error;
+  } else {
+    matchEvents = (eventsResult.data || []).map(mapMatchEvent);
+    eventsReady = true;
   }
 
   const previousView = appState ? appState.viewSeasonId : null;
@@ -189,7 +238,9 @@ async function refreshData() {
     players: (playersResult.data || []).map(mapPlayer),
     matches: (matchesResult.data || []).map(mapMatch),
     seasons,
+    matchEvents,
     seasonsReady,
+    eventsReady,
     activeSeasonId,
     viewSeasonId
   };
@@ -221,16 +272,66 @@ async function dbDeletePlayer(playerId) {
   if (error) throw error;
 }
 
-async function dbSaveMatch(match) {
+async function dbSaveMatch(match, events) {
   assertBackend();
   const { error } = await db.from('matches').upsert(matchToRow(match));
   if (error) throw error;
+
+  // Only touch events when the caller supplied them and the table exists.
+  if (Array.isArray(events) && appState.eventsReady) {
+    await dbReplaceMatchEvents(match.id, events);
+  }
+}
+
+/** Replace a match's events and adjust player totals atomically. */
+async function dbReplaceMatchEvents(matchId, events) {
+  assertBackend();
+  const payload = (events || []).map(event => ({
+    id: event.id,
+    teamId: event.teamId,
+    playerId: event.playerId,
+    type: event.type,
+    minute: event.minute
+  }));
+
+  const { error } = await db.rpc('replace_match_events', {
+    p_match_id: matchId,
+    p_events: payload
+  });
+  if (!error) return;
+
+  // Fallback for a project that installed the table but not the RPC yet.
+  // Player aggregate totals are not adjusted in this fallback.
+  if (isMissingFunction(error)) {
+    const cleared = await db.from('match_events').delete().eq('match_id', matchId);
+    if (cleared.error) throw cleared.error;
+    if (events && events.length) {
+      const inserted = await db.from('match_events').insert(events.map(event => ({
+        ...matchEventToRow(event),
+        match_id: matchId
+      })));
+      if (inserted.error) throw inserted.error;
+    }
+    return;
+  }
+
+  throw error;
 }
 
 async function dbDeleteMatch(matchId) {
   assertBackend();
-  const { error } = await db.from('matches').delete().eq('id', matchId);
-  if (error) throw error;
+
+  // Prefer the RPC so player totals are rolled back with the deletion.
+  const { error } = await db.rpc('delete_match', { p_match_id: matchId });
+  if (!error) return;
+
+  if (isMissingFunction(error)) {
+    const { error: deleteError } = await db.from('matches').delete().eq('id', matchId);
+    if (deleteError) throw deleteError;
+    return;
+  }
+
+  throw error;
 }
 
 /** Create a season and make it the active one (atomic database function). */
@@ -280,10 +381,12 @@ async function dbReplaceAll(data) {
   assertBackend();
 
   const seasonsReady = Boolean(appState && appState.seasonsReady);
+  const eventsReady = Boolean(appState && appState.eventsReady);
   const seasons = Array.isArray(data.seasons) ? data.seasons : [];
-  const tables = seasonsReady
-    ? ['matches', 'players', 'teams', 'seasons']
-    : ['matches', 'players', 'teams'];
+  const tables = [];
+  if (eventsReady) tables.push('match_events');
+  tables.push('matches', 'players', 'teams');
+  if (seasonsReady) tables.push('seasons');
 
   for (const table of tables) {
     const { error } = await db.from(table).delete().not('id', 'is', null);
@@ -310,6 +413,14 @@ async function dbReplaceAll(data) {
         : { ...match, seasonId: null }
     ));
     const { error } = await db.from('matches').insert(rows);
+    if (error) throw error;
+  }
+
+  // Imported player totals are authoritative, so events are inserted
+  // directly without adjusting them again.
+  const matchEvents = Array.isArray(data.matchEvents) ? data.matchEvents : [];
+  if (eventsReady && matchEvents.length) {
+    const { error } = await db.from('match_events').insert(matchEvents.map(matchEventToRow));
     if (error) throw error;
   }
 }

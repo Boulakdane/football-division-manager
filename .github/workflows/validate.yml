@@ -16,6 +16,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Check for committed secrets
+        run: node tools/check-secrets.js
+
       - name: Install CSS tooling
         run: npm ci --no-audit --no-fund
 

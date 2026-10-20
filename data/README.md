@@ -1,6 +1,6 @@
 # Bulk data entry with CSV
 
-Use the four CSV files in `data/` to build a complete league, then convert them into
+Use the five CSV files in `data/` to build a complete league, then convert them into
 a JSON backup the app can import. This is much faster than typing a full fixture list
 into the browser.
 
@@ -16,7 +16,7 @@ Edit the copies in `data/`. Do not edit the files in `data/examples/`.
 
 `data/*.csv` is git-ignored, so real league data is not committed by accident.
 
-If you already have a JSON backup, you can generate the four CSV files from it instead:
+If you already have a JSON backup, you can generate the five CSV files from it instead:
 
 ```powershell
 node tools/backup-to-csv.js backups/my-backup.json data --force
@@ -77,6 +77,7 @@ used to link rows together.
 | `datetime` | no | `YYYY-MM-DDTHH:MM` |
 | `venue` | no | Free text |
 | `scorersText` | no | Free text |
+| `eventsCounted` | no | `true` (default) or `false`; see below |
 
 Wrap a field in double quotes when it contains a comma, for example:
 
@@ -85,6 +86,45 @@ m1,s1,1,t1,t2,3,1,FINISHED,2026-10-03T15:00,Main Field,"Carlos Ramos (2), David 
 ```
 
 Only `FINISHED` matches count towards the league table.
+
+### `events.csv`
+
+Optional. Add goals and cards with the minute they happened. Players are linked to a
+match and must belong to one of the two teams playing.
+
+| Column | Required | Notes |
+|---|---|---|
+| `id` | yes | e.g. `e1` |
+| `matchId` | yes | Must exist in `matches.csv` |
+| `teamId` | yes | Must be the home or away team of that match |
+| `playerId` | yes | Must exist in `players.csv` and belong to `teamId` |
+| `type` | yes | `goal`, `yellow` or `red` |
+| `minute` | yes | 1–130 |
+
+Example:
+
+```csv
+id,matchId,teamId,playerId,type,minute
+e1,m1,t1,p2,goal,23
+e2,m1,t1,p1,goal,54
+e3,m1,t2,p3,yellow,42
+e4,m1,t2,p3,red,88
+```
+
+The player totals in `players.csv` remain the aggregate career totals shown on the
+player cards. Event rows are what make the scorer/card timeline appear on the fixture.
+
+`eventsCounted` controls whether event rows adjust those aggregate totals. New matches
+default to `true`. When an existing database is migrated, its old fixtures are marked
+`false` so adding their first events does not double-count goals/cards that were already
+entered manually. Set it to `true` only when the totals in `players.csv` do **not**
+already include that match's events.
+
+For matches marked `false`, saving events updates the timeline but leaves player totals
+unchanged; update the player totals by hand if needed. New matches created in the app
+start as `true` and keep player totals in sync automatically. When converting an older
+CSV set that has no `eventsCounted` column, the default is `true`; add the column with
+`false` for any historical matches whose goals/cards are already in `players.csv`.
 
 ## 3. Build the JSON backup
 
@@ -114,9 +154,9 @@ node tools/csv-to-backup.js data backups/my-league.json
 4. Choose the generated `backups/kickoff-import-*.json` file.
 5. Check the standings and fixtures for the active season.
 
-> Import replaces **all** teams, players, seasons and matches in the connected
-> database. Do this in the development project first. When the data looks right,
-> repeat it against production.
+> Import replaces **all** teams, players, seasons, matches and match events in the
+> connected database. Do this in the development project first. When the data looks
+> right, repeat it against production.
 
 ## 5. After the import
 

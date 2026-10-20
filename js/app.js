@@ -16,6 +16,15 @@ function esc(value) {
   }[c]));
 }
 
+/**
+ * Safely embed a value as a JavaScript string inside an HTML event attribute.
+ * JSON.stringify handles quotes/backslashes/newlines; esc keeps the attribute
+ * from terminating early.
+ */
+function jsString(value) {
+  return esc(JSON.stringify(String(value == null ? '' : value)));
+}
+
 function uid(prefix) {
   return prefix + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 }
@@ -339,6 +348,126 @@ function renderStandings() {
 }
 
 /* ---------------------------------------------------------------
+ * 3b. MATCH EVENTS (goals and cards with minutes)
+ * --------------------------------------------------------------- */
+let matchEventDraft = [];
+
+function getMatchEvents(matchId) {
+  return (appState.matchEvents || []).filter(event => event.matchId === matchId);
+}
+
+function playersForTeam(teamId) {
+  return appState.players
+    .filter(player => player.teamId === teamId)
+    .slice()
+    .sort((a, b) => (toInt(a.num) - toInt(b.num)) || a.name.localeCompare(b.name));
+}
+
+function formatEventMinute(minute) {
+  const value = toInt(minute);
+  return value ? `${value}'` : '';
+}
+
+function matchEventChip(event) {
+  const player = appState.players.find(item => item.id === event.playerId);
+  const name = esc(player ? player.name : t('unknownPlayer'));
+  const minute = formatEventMinute(event.minute);
+  const minuteHtml = minute ? `<span class="text-slate-500">${esc(minute)}</span>` : '';
+
+  if (event.type === 'yellow' || event.type === 'red') {
+    const red = event.type === 'red';
+    return `<span class="inline-flex items-center gap-1" title="${esc(t(red ? 'eventRed' : 'eventYellow'))}">
+      <span class="inline-block w-2 h-3 rounded-[2px] ${red ? 'bg-rose-500' : 'bg-amber-400'}" aria-hidden="true"></span>
+      <span class="sr-only">${esc(t(red ? 'eventRed' : 'eventYellow'))}: </span>
+      <span>${name}</span>${minuteHtml}
+    </span>`;
+  }
+
+  return `<span class="inline-flex items-center gap-1" title="${esc(t('eventGoal'))}">
+    <span aria-hidden="true">⚽</span>
+    <span class="sr-only">${esc(t('eventGoal'))}: </span>
+    <span>${name}</span>${minuteHtml}
+  </span>`;
+}
+
+/** Render structured events, or fall back to the legacy free-text scorers field. */
+function renderMatchEventSummary(match) {
+  const events = getMatchEvents(match.id);
+  if (events.length) {
+    const teamRow = (teamId) => {
+      const team = getTeam(teamId);
+      if (!team) return '';
+      const teamEvents = events
+        .filter(event => event.teamId === teamId)
+        .slice()
+        .sort((a, b) => toInt(a.minute) - toInt(b.minute));
+      if (!teamEvents.length) return '';
+      return `<div class="flex items-start gap-2 text-[11px] text-slate-300">
+        <span class="w-8 shrink-0 font-bold uppercase text-slate-400">${esc(team.code || '')}</span>
+        <span class="flex flex-wrap gap-x-2 gap-y-1 min-w-0">${teamEvents.map(matchEventChip).join('')}</span>
+      </div>`;
+    };
+
+    return `<div class="mt-2 pt-2 border-t border-slate-700/40 space-y-1.5">
+      ${teamRow(match.homeId)}
+      ${teamRow(match.awayId)}
+    </div>`;
+  }
+
+  if (!match.scorersText) return '';
+  return `<div class="mt-2 pt-2 border-t border-slate-700/40 text-[11px] text-slate-400 flex items-center gap-1.5">
+    <i data-lucide="activity" class="w-3.5 h-3.5 text-pitch-400 shrink-0"></i>
+    <span class="truncate">${esc(match.scorersText)}</span>
+  </div>`;
+}
+
+function summarizeEventsForText(events, homeId, awayId) {
+  const playerName = id => {
+    const player = appState.players.find(item => item.id === id);
+    return player ? player.name : '?';
+  };
+  const teamText = teamId => events
+    .filter(event => event.teamId === teamId)
+    .slice()
+    .sort((a, b) => toInt(a.minute) - toInt(b.minute))
+    .map(event => {
+      const suffix = event.type === 'yellow' ? ' (Y)' : event.type === 'red' ? ' (R)' : '';
+      return `${playerName(event.playerId)} ${formatEventMinute(event.minute)}${suffix}`;
+    })
+    .join(', ');
+
+  return [teamText(homeId), teamText(awayId)].filter(Boolean).join(' - ');
+}
+
+function collectMatchEvents(matchId) {
+  if (!appState.eventsReady) return [];
+  const homeId = document.getElementById('match-home-team').value;
+  const awayId = document.getElementById('match-away-team').value;
+
+  return matchEventDraft.map(event => {
+    const player = appState.players.find(item => item.id === event.playerId);
+    if (!player || player.teamId !== event.teamId) {
+      throw new Error('Invalid player');
+    }
+    if (event.teamId !== homeId && event.teamId !== awayId) {
+      throw new Error('Invalid team');
+    }
+    const minute = toInt(event.minute);
+    if (!minute || minute < 1 || minute > 130) {
+      throw new Error('Invalid minute');
+    }
+    return {
+      id: event.id || uid('e'),
+      matchId,
+      teamId: event.teamId,
+      playerId: event.playerId,
+      type: ['goal', 'yellow', 'red'].includes(event.type) ? event.type : 'goal',
+      minute
+    };
+  });
+}
+
+/* ---------------------------------------------------------------
  * 4. FIXTURES & RESULTS (filters, cards, live score updates)
  * --------------------------------------------------------------- */
 function renderFixtureFilters() {
@@ -397,15 +526,11 @@ function renderFixtures() {
     // Live matches get quick +1 steppers for instant live score logging
     const liveSteppers = m.status === 'LIVE' ? `
       <div class="admin-only season-write flex items-center justify-center gap-3 mt-1.5">
-        <button onclick="bumpScore('${esc(m.id)}','home',1)" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
-        <button onclick="bumpScore('${esc(m.id)}','away',1)" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
+        <button onclick="bumpScore(${jsString(m.id)},'home',1)" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
+        <button onclick="bumpScore(${jsString(m.id)},'away',1)" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
       </div>` : '';
 
-    const scorers = m.scorersText ? `
-      <div class="mt-2 pt-2 border-t border-slate-700/40 text-[11px] text-slate-400 flex items-center gap-1.5">
-        <i data-lucide="activity" class="w-3.5 h-3.5 text-pitch-400 shrink-0"></i>
-        <span class="truncate">${esc(m.scorersText)}</span>
-      </div>` : '';
+    const scorers = renderMatchEventSummary(m);
 
     return `
       <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl p-4 shadow-sm hover:border-slate-600 transition flex flex-col justify-between">
@@ -435,10 +560,10 @@ function renderFixtures() {
         ${scorers}
 
         <div class="admin-only season-write mt-3 pt-2 border-t border-slate-700/50 flex justify-end gap-2">
-          <button onclick="editMatch('${esc(m.id)}')" class="px-2.5 py-1 text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded text-xs flex items-center gap-1 transition">
+          <button onclick="editMatch(${jsString(m.id)})" class="px-2.5 py-1 text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded text-xs flex items-center gap-1 transition">
             <i data-lucide="edit-3" class="w-3 h-3"></i> ${esc(t('editAction'))}
           </button>
-          <button onclick="deleteMatch('${esc(m.id)}')" class="px-2 py-1 text-rose-400 hover:bg-rose-500/20 rounded text-xs transition">
+          <button onclick="deleteMatch(${jsString(m.id)})" class="px-2 py-1 text-rose-400 hover:bg-rose-500/20 rounded text-xs transition">
             <i data-lucide="trash-2" class="w-3 h-3"></i>
           </button>
         </div>
@@ -511,13 +636,13 @@ function renderTeamsView() {
             </div>
           </div>
           <div class="admin-only flex items-center gap-2 shrink-0">
-            <button onclick="openPlayerModal('${esc(team.id)}')" class="px-2.5 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-xs font-medium flex items-center gap-1 transition">
+            <button onclick="openPlayerModal(${jsString(team.id)})" class="px-2.5 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-xs font-medium flex items-center gap-1 transition">
               <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddPlayer'))}
             </button>
-            <button onclick="editTeam('${esc(team.id)}')" class="p-1.5 text-slate-500 hover:text-white rounded transition">
+            <button onclick="editTeam(${jsString(team.id)})" class="p-1.5 text-slate-500 hover:text-white rounded transition">
               <i data-lucide="edit-3" class="w-4 h-4"></i>
             </button>
-            <button onclick="deleteTeam('${esc(team.id)}')" class="p-1.5 text-slate-500 hover:text-rose-400 rounded transition">
+            <button onclick="deleteTeam(${jsString(team.id)})" class="p-1.5 text-slate-500 hover:text-rose-400 rounded transition">
               <i data-lucide="trash-2" class="w-4 h-4"></i>
             </button>
           </div>
@@ -556,8 +681,8 @@ function renderTeamsView() {
                     </td>
                     <td class="py-2 ltr:text-right rtl:text-left whitespace-nowrap">
                       <span class="admin-only">
-                        <button onclick="editPlayer('${esc(p.id)}')" class="text-slate-500 hover:text-white p-1"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
-                        <button onclick="deletePlayer('${esc(p.id)}')" class="text-slate-500 hover:text-rose-400 p-1"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                        <button onclick="editPlayer(${jsString(p.id)})" class="text-slate-500 hover:text-white p-1"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+                        <button onclick="deletePlayer(${jsString(p.id)})" class="text-slate-500 hover:text-rose-400 p-1"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
                       </span>
                     </td>
                   </tr>`).join('')}
@@ -632,7 +757,12 @@ function openMatchModal(matchId) {
 
   document.getElementById('match-modal-title').textContent = t('modalMatchTitle');
 
+  matchEventDraft = matchId
+    ? getMatchEvents(matchId).map(event => ({ ...event }))
+    : [];
+
   if (matchId) prefillMatchModal(matchId);
+  renderMatchEventsEditor();
   openModal('modal-match');
 }
 
@@ -651,6 +781,145 @@ function prefillMatchModal(matchId) {
   document.getElementById('match-away-score').value = toInt(m.awayScore);
   document.getElementById('match-scorers-text').value = m.scorersText || '';
   document.getElementById('match-modal-title').textContent = t('modalMatchEditTitle');
+}
+
+function renderMatchEventsEditor() {
+  const section = document.getElementById('match-events-section');
+  const migration = document.getElementById('match-events-migration');
+  const legacy = document.getElementById('match-scorers-legacy-wrap');
+  if (!section || !migration || !legacy) return;
+
+  const ready = Boolean(appState.eventsReady);
+  section.classList.toggle('hidden', !ready);
+  migration.classList.toggle('hidden', ready);
+  legacy.classList.toggle('hidden', ready);
+
+  const note = document.getElementById('match-events-stats-note');
+  if (note) {
+    const matchId = document.getElementById('match-id').value;
+    const existing = matchId ? appState.matches.find(match => match.id === matchId) : null;
+    const showNote = ready && Boolean(existing && existing.eventsCounted === false);
+    note.classList.toggle('hidden', !showNote);
+    note.textContent = showNote ? t('matchEventsLegacyStats') : '';
+  }
+
+  if (!ready) return;
+  renderMatchEventPanel('home');
+  renderMatchEventPanel('away');
+  updateMatchGoalHint();
+}
+
+function renderMatchEventPanel(side) {
+  const select = document.getElementById(`match-${side}-team`);
+  const title = document.getElementById(`match-events-${side}-title`);
+  const list = document.getElementById(`match-events-${side}`);
+  if (!select || !title || !list) return;
+
+  const teamId = select.value;
+  const team = getTeam(teamId);
+  const players = playersForTeam(teamId);
+  title.textContent = team ? team.name : '';
+
+  if (!team || !players.length) {
+    list.innerHTML = `<p class="text-[11px] text-slate-500 py-1">${esc(t('noPlayersFound'))}</p>`;
+    return;
+  }
+
+  const events = matchEventDraft.filter(event => event.teamId === teamId);
+  if (!events.length) {
+    list.innerHTML = `<p class="text-[11px] text-slate-500 py-1">${esc(t('noMatchEvents'))}</p>`;
+    return;
+  }
+
+  list.innerHTML = events.map(event => {
+    const knownPlayer = players.some(player => player.id === event.playerId);
+    const options = (knownPlayer ? '' : `<option value="">${esc(t('unknownPlayer'))}</option>`) +
+      players.map(player => `<option value="${esc(player.id)}" ${player.id === event.playerId ? 'selected' : ''}>${esc(`#${player.num} ${player.name}`)}</option>`).join('');
+
+    return `<div class="flex flex-col gap-1.5 rounded-lg border border-slate-700/60 bg-slate-900/50 p-2">
+      <select onchange="updateMatchEvent(${jsString(event.id)}, 'playerId', this.value)" aria-label="${esc(t('thPlayer'))}" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-white focus:border-pitch-500">
+        ${options}
+      </select>
+      <div class="flex items-center gap-1.5">
+        <select onchange="updateMatchEvent(${jsString(event.id)}, 'type', this.value)" aria-label="${esc(t('lblMatchEvents'))}" class="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-white focus:border-pitch-500">
+          <option value="goal" ${event.type === 'goal' ? 'selected' : ''}>${esc(t('eventGoal'))}</option>
+          <option value="yellow" ${event.type === 'yellow' ? 'selected' : ''}>${esc(t('eventYellow'))}</option>
+          <option value="red" ${event.type === 'red' ? 'selected' : ''}>${esc(t('eventRed'))}</option>
+        </select>
+        <input type="number" min="1" max="130" value="${esc(event.minute)}" oninput="updateMatchEvent(${jsString(event.id)}, 'minute', this.value)" aria-label="${esc(t('lblMinute'))}" class="w-14 bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-[11px] text-white text-center focus:border-pitch-500">
+        <span class="text-[10px] text-slate-500">'</span>
+        <button type="button" onclick="removeMatchEvent(${jsString(event.id)})" aria-label="${esc(t('btnRemove'))}" class="ml-auto rtl:ml-0 rtl:mr-auto w-6 h-6 rounded text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 text-base leading-none">&times;</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateMatchGoalHint() {
+  const hint = document.getElementById('match-goal-hint');
+  if (!hint || !appState.eventsReady) return;
+
+  const homeId = document.getElementById('match-home-team').value;
+  const awayId = document.getElementById('match-away-team').value;
+  const goals = teamId => matchEventDraft.filter(event => event.teamId === teamId && event.type === 'goal').length;
+  const homeScore = toInt(document.getElementById('match-home-score').value);
+  const awayScore = toInt(document.getElementById('match-away-score').value);
+  const mismatch = goals(homeId) !== homeScore || goals(awayId) !== awayScore;
+
+  hint.textContent = mismatch ? t('eventGoalMismatch') : '';
+}
+
+function onMatchTeamChange() {
+  const homeId = document.getElementById('match-home-team').value;
+  const awayId = document.getElementById('match-away-team').value;
+  const validTeams = new Set([homeId, awayId]);
+
+  matchEventDraft = matchEventDraft.filter(event => {
+    if (!validTeams.has(event.teamId)) return false;
+    const player = appState.players.find(item => item.id === event.playerId);
+    return Boolean(player && player.teamId === event.teamId);
+  });
+
+  renderMatchEventsEditor();
+}
+
+function addMatchEvent(side, type) {
+  const select = document.getElementById(`match-${side}-team`);
+  const teamId = select ? select.value : '';
+  const players = playersForTeam(teamId);
+  if (!players.length) {
+    alert(t('alertNoPlayersForTeam'));
+    return;
+  }
+
+  matchEventDraft.push({
+    id: uid('e'),
+    matchId: document.getElementById('match-id').value || '',
+    teamId,
+    playerId: players[0].id,
+    type: type === 'yellow' || type === 'red' ? type : 'goal',
+    minute: 1
+  });
+  renderMatchEventsEditor();
+}
+
+function updateMatchEvent(eventId, field, value) {
+  const event = matchEventDraft.find(item => item.id === eventId);
+  if (!event) return;
+
+  if (field === 'minute') {
+    event.minute = value === '' ? '' : toInt(value);
+  } else if (field === 'type') {
+    event.type = ['goal', 'yellow', 'red'].includes(value) ? value : 'goal';
+  } else if (field === 'playerId') {
+    event.playerId = value;
+  }
+
+  updateMatchGoalHint();
+}
+
+function removeMatchEvent(eventId) {
+  matchEventDraft = matchEventDraft.filter(event => event.id !== eventId);
+  renderMatchEventsEditor();
 }
 
 function editMatch(matchId) {
@@ -693,8 +962,33 @@ async function saveMatch(e) {
     return;
   }
 
+  const matchId = id || uid('m');
+  const existing = id ? appState.matches.find(m => m.id === id) : null;
+  let events = [];
+
+  if (appState.eventsReady) {
+    try {
+      events = collectMatchEvents(matchId);
+    } catch (err) {
+      alert(t('alertInvalidMatchEvent'));
+      return;
+    }
+  }
+
+  const legacyText = document.getElementById('match-scorers-text').value.trim();
+  let scorersText = legacyText;
+  if (appState.eventsReady) {
+    if (events.length) {
+      scorersText = summarizeEventsForText(events, homeId, awayId);
+    } else if (existing && getMatchEvents(existing.id).length) {
+      scorersText = '';
+    } else {
+      scorersText = existing ? (existing.scorersText || '') : '';
+    }
+  }
+
   const matchData = {
-    id: id || uid('m'),
+    id: matchId,
     seasonId: appState.seasonsReady ? appState.activeSeasonId : null,
     round,
     status: document.getElementById('match-status').value,
@@ -704,11 +998,12 @@ async function saveMatch(e) {
     awayId,
     homeScore: toInt(document.getElementById('match-home-score').value),
     awayScore: toInt(document.getElementById('match-away-score').value),
-    scorersText: document.getElementById('match-scorers-text').value.trim()
+    scorersText,
+    eventsCounted: existing ? existing.eventsCounted !== false : true
   };
 
   try {
-    await dbSaveMatch(matchData);
+    await dbSaveMatch(matchData, appState.eventsReady ? events : undefined);
     closeModal('modal-match');
     await refreshData();
     renderApp();
@@ -1001,7 +1296,8 @@ function exportData() {
     seasons: appState.seasons,
     teams: appState.teams,
     players: appState.players,
-    matches: appState.matches
+    matches: appState.matches,
+    matchEvents: appState.matchEvents || []
   };
   const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(payload, null, 2));
   const anchor = document.createElement('a');
@@ -1076,18 +1372,22 @@ function buildFixturesCsvRows() {
 
   return [
     [t('seasonLabel'), t('lblRound'), t('lblDateTime'), t('lblHomeTeam'), t('csvHomeScore'), t('csvAwayScore'), t('lblAwayTeam'), t('lblStatus'), t('lblVenue'), t('csvScorers')],
-    ...matches.map(match => [
-      seasonName,
-      match.round,
-      match.datetime || '',
-      teamName(match.homeId),
-      match.homeScore == null ? 0 : match.homeScore,
-      match.awayScore == null ? 0 : match.awayScore,
-      teamName(match.awayId),
-      match.status,
-      match.venue || '',
-      match.scorersText || ''
-    ])
+    ...matches.map(match => {
+      const events = getMatchEvents(match.id);
+      const eventSummary = events.length ? summarizeEventsForText(events, match.homeId, match.awayId) : '';
+      return [
+        seasonName,
+        match.round,
+        match.datetime || '',
+        teamName(match.homeId),
+        match.homeScore == null ? 0 : match.homeScore,
+        match.awayScore == null ? 0 : match.awayScore,
+        teamName(match.awayId),
+        match.status,
+        match.venue || '',
+        eventSummary || match.scorersText || ''
+      ];
+    })
   ];
 }
 
@@ -1130,13 +1430,17 @@ function validateImport(data) {
   if (!data || typeof data !== 'object') return null;
   if (!Array.isArray(data.teams) || !Array.isArray(data.matches)) return null;
   if (data.seasons !== undefined && !Array.isArray(data.seasons)) return null;
+  if (data.matchEvents !== undefined && !Array.isArray(data.matchEvents)) return null;
 
   const teams = data.teams;
   const players = Array.isArray(data.players) ? data.players : [];
   const matches = data.matches;
   const seasons = Array.isArray(data.seasons) ? data.seasons : [];
+  const matchEvents = Array.isArray(data.matchEvents) ? data.matchEvents : [];
   const ids = new Set();
   const seasonIds = new Set();
+  const playerIds = new Set();
+  const matchIds = new Set();
 
   for (const team of teams) {
     if (!team || typeof team.id !== 'string' || !team.id || typeof team.name !== 'string' || !team.name) return null;
@@ -1154,6 +1458,8 @@ function validateImport(data) {
   for (const player of players) {
     if (!player || typeof player.id !== 'string' || !player.id) return null;
     if (!ids.has(player.teamId) || typeof player.name !== 'string' || !player.name) return null;
+    if (playerIds.has(player.id)) return null;
+    playerIds.add(player.id);
   }
 
   for (const match of matches) {
@@ -1161,6 +1467,25 @@ function validateImport(data) {
     if (!ids.has(match.homeId) || !ids.has(match.awayId) || match.homeId === match.awayId) return null;
     // Season references are optional in old backups, but must be valid when supplied.
     if (seasons.length && match.seasonId && !seasonIds.has(match.seasonId)) return null;
+    if (match.eventsCounted !== undefined && typeof match.eventsCounted !== 'boolean') return null;
+    if (matchIds.has(match.id)) return null;
+    matchIds.add(match.id);
+  }
+
+  const eventIds = new Set();
+  for (const event of matchEvents) {
+    if (!event || typeof event.id !== 'string' || !event.id) return null;
+    if (eventIds.has(event.id)) return null;
+    eventIds.add(event.id);
+    if (!matchIds.has(event.matchId) || !ids.has(event.teamId) || !playerIds.has(event.playerId)) return null;
+    if (!['goal', 'yellow', 'red'].includes(event.type)) return null;
+    const minute = Number(event.minute);
+    if (!Number.isInteger(minute) || minute < 1 || minute > 130) return null;
+
+    const match = matches.find(item => item.id === event.matchId);
+    if (!match || (event.teamId !== match.homeId && event.teamId !== match.awayId)) return null;
+    const player = players.find(item => item.id === event.playerId);
+    if (!player || player.teamId !== event.teamId) return null;
   }
 
   return normalizeState(data);
@@ -1176,6 +1501,10 @@ function importData(event) {
     try {
       const imported = validateImport(JSON.parse(e.target.result));
       if (!imported) throw new Error('Invalid schema');
+      if ((imported.matchEvents || []).length && !appState.eventsReady) {
+        alert(t('matchEventsImportBlocked'));
+        return;
+      }
 
       await dbReplaceAll(imported);
       await refreshData();

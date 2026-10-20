@@ -79,14 +79,18 @@ function parseCsv(text) {
   return rows.filter(cells => cells.some(cell => String(cell).trim() !== ''));
 }
 
-function readTable(fileName, requiredHeaders, allowEmpty) {
+function readTable(fileName, requiredHeaders, allowEmpty, optional) {
   const file = path.join(inputDir, fileName);
   if (!fs.existsSync(file)) {
+    if (optional) return [];
     fail(`Missing ${file}. Copy data/examples/${fileName} to data/${fileName} first.`);
   }
 
   const rows = parseCsv(fs.readFileSync(file, 'utf8'));
-  if (!rows.length) fail(`${fileName} is empty.`);
+  if (!rows.length) {
+    if (optional) return [];
+    fail(`${fileName} is empty.`);
+  }
 
   const header = rows[0].map(value => value.trim());
   const missing = requiredHeaders.filter(name => !header.includes(name));
@@ -164,8 +168,17 @@ function checkDateTime(value, fileName, record) {
 }
 
 function unique(set, value, label, fileName, record) {
-  if (set.has(value)) fail(`${fileName}:${record.__line} — duplicate ${label} "${value}".`);
+  if (set.has(value)) fail(`${fileName}:${record.__line} - duplicate ${label} "${value}".`);
   set.add(value);
+}
+
+function optionalBoolean(record, field, fileName, fallback) {
+  const raw = record[field];
+  if (raw === undefined || raw === '') return fallback;
+  const value = String(raw).toLowerCase();
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  fail(`${fileName}:${record.__line} - "${field}" must be true or false.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +197,12 @@ const playerRows = readTable(
 const matchRows = readTable(
   'matches.csv',
   ['id', 'seasonId', 'round', 'homeId', 'awayId', 'homeScore', 'awayScore', 'status', 'datetime', 'venue', 'scorersText'],
+  true
+);
+const eventRows = readTable(
+  'events.csv',
+  ['id', 'matchId', 'teamId', 'playerId', 'type', 'minute'],
+  true,
   true
 );
 
@@ -276,15 +295,57 @@ const matches = matchRows.map(record => {
     status,
     datetime: checkDateTime(record.datetime, 'matches.csv', record),
     venue: record.venue || '',
-    scorersText: record.scorersText || ''
+    scorersText: record.scorersText || '',
+    eventsCounted: optionalBoolean(record, 'eventsCounted', 'matches.csv', true)
   };
 });
 
-const payload = { seasons, teams, players, matches };
+const matchById = new Map(matches.map(match => [match.id, match]));
+const playerById = new Map(players.map(player => [player.id, player]));
+
+const eventIds = new Set();
+const matchEvents = eventRows.map(record => {
+  const id = required(record, 'id', 'events.csv');
+  unique(eventIds, id, 'event id', 'events.csv', record);
+
+  const matchId = required(record, 'matchId', 'events.csv');
+  const match = matchById.get(matchId);
+  if (!match) {
+    fail(`events.csv:${record.__line} — matchId "${matchId}" does not exist in matches.csv.`);
+  }
+
+  const teamId = required(record, 'teamId', 'events.csv');
+  if (teamId !== match.homeId && teamId !== match.awayId) {
+    fail(`events.csv:${record.__line} — teamId "${teamId}" is not playing in match "${matchId}".`);
+  }
+
+  const playerId = required(record, 'playerId', 'events.csv');
+  const player = playerById.get(playerId);
+  if (!player) {
+    fail(`events.csv:${record.__line} — playerId "${playerId}" does not exist in players.csv.`);
+  }
+  if (player.teamId !== teamId) {
+    fail(`events.csv:${record.__line} — playerId "${playerId}" does not belong to team "${teamId}".`);
+  }
+
+  const type = required(record, 'type', 'events.csv').toLowerCase();
+  if (!['goal', 'yellow', 'red'].includes(type)) {
+    fail(`events.csv:${record.__line} — type must be goal, yellow or red.`);
+  }
+
+  const minute = integer(record, 'minute', 'events.csv', 1);
+  if (minute > 130) {
+    fail(`events.csv:${record.__line} — minute must be between 1 and 130.`);
+  }
+
+  return { id, matchId, teamId, playerId, type, minute };
+});
+
+const payload = { seasons, teams, players, matches, matchEvents };
 fs.mkdirSync(path.dirname(outputFile), { recursive: true });
 fs.writeFileSync(outputFile, JSON.stringify(payload, null, 2) + '\n');
 
 console.log('CSV import file created:\n  ' + outputFile + '\n');
-console.log(`  ${seasons.length} season(s), ${teams.length} team(s), ${players.length} player(s), ${matches.length} match(es)`);
+console.log(`  ${seasons.length} season(s), ${teams.length} team(s), ${players.length} player(s), ${matches.length} match(es), ${matchEvents.length} event(s)`);
 console.log(`  Active season: ${activeSeasons[0].name}`);
 console.log('\nNext: open the app as admin, then Settings -> Import Backup (JSON) and choose this file.\n');

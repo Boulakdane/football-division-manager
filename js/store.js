@@ -39,6 +39,18 @@ const DEFAULT_DATA = {
     { id: 'm7', seasonId: 's1', round: 3, homeId: 't1', awayId: 't3', homeScore: 0, awayScore: 0, status: 'SCHEDULED', datetime: '2026-10-24T15:00', venue: 'Main Field - Pitch 1',       scorersText: '' },
     { id: 'm8', seasonId: 's1', round: 3, homeId: 't2', awayId: 't5', homeScore: 0, awayScore: 0, status: 'SCHEDULED', datetime: '2026-10-25T17:00', venue: 'United Arena',               scorersText: '' },
     { id: 'm9', seasonId: 's1', round: 3, homeId: 't4', awayId: 't6', homeScore: 0, awayScore: 0, status: 'SCHEDULED', datetime: '2026-10-25T19:30', venue: 'Vanguard Ground',            scorersText: '' }
+  ],
+  matchEvents: [
+    { id: 'e1',  matchId: 'm1', teamId: 't1', playerId: 'p2', type: 'goal',   minute: 23 },
+    { id: 'e2',  matchId: 'm1', teamId: 't1', playerId: 'p1', type: 'goal',   minute: 54 },
+    { id: 'e3',  matchId: 'm1', teamId: 't1', playerId: 'p2', type: 'goal',   minute: 71 },
+    { id: 'e4',  matchId: 'm1', teamId: 't2', playerId: 'p3', type: 'goal',   minute: 80 },
+    { id: 'e5',  matchId: 'm1', teamId: 't2', playerId: 'p3', type: 'yellow', minute: 42 },
+    { id: 'e6',  matchId: 'm2', teamId: 't3', playerId: 'p4', type: 'goal',   minute: 12 },
+    { id: 'e7',  matchId: 'm2', teamId: 't3', playerId: 'p4', type: 'goal',   minute: 66 },
+    { id: 'e8',  matchId: 'm2', teamId: 't4', playerId: 'p5', type: 'goal',   minute: 33 },
+    { id: 'e9',  matchId: 'm2', teamId: 't4', playerId: 'p5', type: 'yellow', minute: 58 },
+    { id: 'e10', matchId: 'm3', teamId: 't5', playerId: 'p6', type: 'goal',   minute: 77 }
   ]
 };
 
@@ -75,11 +87,23 @@ function normalizeState(data) {
     seasonId: hadSeasons && match.seasonId ? match.seasonId : active.id
   }));
 
-  return { teams, players, matches, seasons };
+  const matchEvents = (Array.isArray(source.matchEvents) ? source.matchEvents : [])
+    .filter(event => event && typeof event === 'object')
+    .map(event => ({
+      id: event.id,
+      matchId: event.matchId,
+      teamId: event.teamId,
+      playerId: event.playerId,
+      type: event.type,
+      minute: Number(event.minute)
+    }));
+
+  return { teams, players, matches, seasons, matchEvents };
 }
 
 /** Current application state. */
 let appState = normalizeState(DEFAULT_DATA);
 appState.seasonsReady = true;
+appState.eventsReady = true;
 appState.activeSeasonId = appState.seasons.find(season => season.isActive).id;
 appState.viewSeasonId = appState.activeSeasonId;

@@ -5,7 +5,8 @@
   "description": "KickOff Division — zero-server football league manager",
   "scripts": {
     "build:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --minify",
-    "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch"
+    "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch",
+    "check:secrets": "node tools/check-secrets.js"
   },
   "devDependencies": {
     "tailwindcss": "3.4.17"

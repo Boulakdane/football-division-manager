@@ -1,0 +1,11 @@
+id,matchId,teamId,playerId,type,minute
+e1,m1,t1,p2,goal,23
+e2,m1,t1,p1,goal,54
+e3,m1,t1,p2,goal,71
+e4,m1,t2,p3,goal,80
+e5,m1,t2,p3,yellow,42
+e6,m2,t3,p4,goal,12
+e7,m2,t3,p4,goal,66
+e8,m2,t4,p5,goal,33
+e9,m2,t4,p5,yellow,58
+e10,m3,t5,p6,goal,77

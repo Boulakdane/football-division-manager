@@ -140,6 +140,7 @@ create table if not exists public.matches (
   datetime text,
   venue text,
   scorers_text text,
+  events_counted boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -170,12 +171,47 @@ end $$;
 
 alter table public.matches alter column season_id set not null;
 
+-- Existing fixtures already contributed to the manually maintained player
+-- totals. Keep their events out of the counters to avoid double-counting;
+-- new fixtures default to events_counted = true.
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'matches'
+      and column_name = 'events_counted'
+  ) then
+    alter table public.matches add column events_counted boolean not null default true;
+    update public.matches set events_counted = false;
+  end if;
+end $$;
+
+-- Goals and cards with a minute. Player totals remain the aggregate
+-- counters on public.players; the event functions below keep them in sync.
+create table if not exists public.match_events (
+  id text primary key,
+  match_id text not null references public.matches (id) on delete cascade,
+  team_id text not null references public.teams (id) on delete cascade,
+  player_id text not null references public.players (id) on delete cascade,
+  event_type text not null check (event_type in ('goal', 'yellow', 'red')),
+  minute int not null check (minute between 1 and 130),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists match_events_match_id_idx
+  on public.match_events (match_id);
+
+create index if not exists match_events_player_id_idx
+  on public.match_events (player_id);
+
 -- ------------------------------------------------------------
 -- 4. GRANTS (RLS still decides what each role may do)
 -- ------------------------------------------------------------
 grant usage on schema public to anon, authenticated;
-grant select on public.seasons, public.teams, public.players, public.matches to anon, authenticated;
-grant insert, update, delete on public.seasons, public.teams, public.players, public.matches to authenticated;
+grant select on public.seasons, public.teams, public.players, public.matches, public.match_events to anon, authenticated;
+grant insert, update, delete on public.seasons, public.teams, public.players, public.matches, public.match_events to authenticated;
 grant select on public.profiles to authenticated;
 
 -- ------------------------------------------------------------
@@ -186,6 +222,7 @@ alter table public.seasons enable row level security;
 alter table public.teams enable row level security;
 alter table public.players enable row level security;
 alter table public.matches enable row level security;
+alter table public.match_events enable row level security;
 
 -- Profiles: users see their own role; admins see everyone.
 drop policy if exists profiles_select_own on public.profiles;
@@ -267,6 +304,23 @@ drop policy if exists matches_delete_admin on public.matches;
 create policy matches_delete_admin on public.matches
   for delete to authenticated using (public.is_admin());
 
+-- Match events: public read, admin write.
+drop policy if exists match_events_select_all on public.match_events;
+create policy match_events_select_all on public.match_events
+  for select to anon, authenticated using (true);
+
+drop policy if exists match_events_insert_admin on public.match_events;
+create policy match_events_insert_admin on public.match_events
+  for insert to authenticated with check (public.is_admin());
+
+drop policy if exists match_events_update_admin on public.match_events;
+create policy match_events_update_admin on public.match_events
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists match_events_delete_admin on public.match_events;
+create policy match_events_delete_admin on public.match_events
+  for delete to authenticated using (public.is_admin());
+
 -- ------------------------------------------------------------
 -- 6. SEASON FUNCTIONS (atomic, admin-only)
 -- ------------------------------------------------------------
@@ -335,6 +389,149 @@ grant execute on function public.create_season(text, text, date, date) to authen
 grant execute on function public.activate_season(text) to authenticated;
 
 -- ------------------------------------------------------------
+-- 6b. MATCH EVENT FUNCTIONS (atomic, admin-only)
+-- ------------------------------------------------------------
+create or replace function public.replace_match_events(
+  p_match_id text,
+  p_events jsonb default '[]'::jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_event jsonb;
+  v_old record;
+  v_id text;
+  v_team_id text;
+  v_player_id text;
+  v_type text;
+  v_minute int;
+  v_counted boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can change match events' using errcode = '42501';
+  end if;
+
+  if not exists (select 1 from public.matches where id = p_match_id) then
+    raise exception 'Match not found';
+  end if;
+
+  select events_counted into v_counted
+  from public.matches
+  where id = p_match_id;
+
+  if p_events is null then
+    p_events := '[]'::jsonb;
+  end if;
+  if jsonb_typeof(p_events) <> 'array' then
+    raise exception 'Events must be an array';
+  end if;
+
+  if v_counted then
+    for v_old in
+      select * from public.match_events where match_id = p_match_id
+    loop
+      update public.players
+         set goals = greatest(0, goals - case when v_old.event_type = 'goal' then 1 else 0 end),
+             yellow = greatest(0, yellow - case when v_old.event_type = 'yellow' then 1 else 0 end),
+             red = greatest(0, red - case when v_old.event_type = 'red' then 1 else 0 end)
+       where id = v_old.player_id;
+    end loop;
+  end if;
+
+  delete from public.match_events where match_id = p_match_id;
+
+  for v_event in select * from jsonb_array_elements(p_events)
+  loop
+    v_id := nullif(v_event->>'id', '');
+    v_team_id := nullif(v_event->>'teamId', '');
+    v_player_id := nullif(v_event->>'playerId', '');
+    v_type := nullif(v_event->>'type', '');
+    v_minute := nullif(v_event->>'minute', '')::int;
+
+    if v_id is null then
+      v_id := 'e_' || replace(gen_random_uuid()::text, '-', '');
+    end if;
+    if v_team_id is null or v_player_id is null then
+      raise exception 'Every event needs a team and a player';
+    end if;
+    if v_type is null or v_type not in ('goal', 'yellow', 'red') then
+      raise exception 'Invalid event type: %', v_type;
+    end if;
+    if v_minute is null or v_minute < 1 or v_minute > 130 then
+      raise exception 'Event minute must be between 1 and 130';
+    end if;
+    if not exists (
+      select 1
+      from public.players p
+      join public.matches m on m.id = p_match_id
+      where p.id = v_player_id
+        and p.team_id = v_team_id
+        and v_team_id in (m.home_id, m.away_id)
+    ) then
+      raise exception 'Player % does not belong to this match', v_player_id;
+    end if;
+
+    insert into public.match_events (id, match_id, team_id, player_id, event_type, minute)
+    values (v_id, p_match_id, v_team_id, v_player_id, v_type, v_minute);
+
+    if v_counted then
+      update public.players
+         set goals = goals + case when v_type = 'goal' then 1 else 0 end,
+             yellow = yellow + case when v_type = 'yellow' then 1 else 0 end,
+             red = red + case when v_type = 'red' then 1 else 0 end
+       where id = v_player_id;
+    end if;
+  end loop;
+end;
+$$;
+
+create or replace function public.delete_match(p_match_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old record;
+  v_counted boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can delete matches' using errcode = '42501';
+  end if;
+
+  if not exists (select 1 from public.matches where id = p_match_id) then
+    raise exception 'Match not found';
+  end if;
+
+  select events_counted into v_counted
+  from public.matches
+  where id = p_match_id;
+
+  if v_counted then
+    for v_old in
+      select * from public.match_events where match_id = p_match_id
+    loop
+      update public.players
+         set goals = greatest(0, goals - case when v_old.event_type = 'goal' then 1 else 0 end),
+             yellow = greatest(0, yellow - case when v_old.event_type = 'yellow' then 1 else 0 end),
+             red = greatest(0, red - case when v_old.event_type = 'red' then 1 else 0 end)
+       where id = v_old.player_id;
+    end loop;
+  end if;
+
+  delete from public.matches where id = p_match_id;
+end;
+$$;
+
+revoke execute on function public.replace_match_events(text, jsonb) from public, anon;
+revoke execute on function public.delete_match(text) from public, anon;
+grant execute on function public.replace_match_events(text, jsonb) to authenticated;
+grant execute on function public.delete_match(text) to authenticated;
+
+-- ------------------------------------------------------------
 -- 7. SEED DATA (optional — delete this block to start empty)
 -- ------------------------------------------------------------
 insert into public.teams (id, name, code, color) values
@@ -370,6 +567,30 @@ insert into public.matches (id, season_id, round, home_id, away_id, home_score, 
   ('m9', 's1', 3, 't4', 't6', 0, 0, 'SCHEDULED', '2026-10-25T19:30', 'Vanguard Ground',          '')
 on conflict (id) do nothing;
 
+-- Only seed events when the sample match/team/player relations still hold.
+insert into public.match_events (id, match_id, team_id, player_id, event_type, minute)
+select v.id, v.match_id, v.team_id, v.player_id, v.event_type, v.minute
+from (values
+  ('e1',  'm1', 't1', 'p2', 'goal',   23),
+  ('e2',  'm1', 't1', 'p1', 'goal',   54),
+  ('e3',  'm1', 't1', 'p2', 'goal',   71),
+  ('e4',  'm1', 't2', 'p3', 'goal',   80),
+  ('e5',  'm1', 't2', 'p3', 'yellow', 42),
+  ('e6',  'm2', 't3', 'p4', 'goal',   12),
+  ('e7',  'm2', 't3', 'p4', 'goal',   66),
+  ('e8',  'm2', 't4', 'p5', 'goal',   33),
+  ('e9',  'm2', 't4', 'p5', 'yellow', 58),
+  ('e10', 'm3', 't5', 'p6', 'goal',   77)
+) as v(id, match_id, team_id, player_id, event_type, minute)
+where exists (
+  select 1
+  from public.matches m
+  join public.players p on p.id = v.player_id and p.team_id = v.team_id
+  where m.id = v.match_id
+    and v.team_id in (m.home_id, m.away_id)
+)
+on conflict (id) do nothing;
+
 -- ============================================================
 -- 8. MAKE YOURSELF ADMIN
 --    ️Sign up once in the app (Admin Login → Create account),
@@ -381,3 +602,6 @@ on conflict (id) do nothing;
 --
 --    Log out and back in — write controls will appear.
 -- ============================================================
+
+-- Ask PostgREST to pick up new tables/functions immediately.
+notify pgrst, 'reload schema';

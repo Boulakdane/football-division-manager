@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Convert a KickOff Division JSON backup into the four CSV files used by
+ * Convert a KickOff Division JSON backup into the five CSV files used by
  * tools/csv-to-backup.js.
  *
  * Usage:
@@ -47,6 +47,10 @@ if (!Array.isArray(data.matches)) fail('The backup has no "matches" array.');
 if (!data.teams.length) fail('The backup has no teams.');
 
 const sourcePlayers = Array.isArray(data.players) ? data.players : [];
+if (data.matchEvents !== undefined && !Array.isArray(data.matchEvents)) {
+  fail('matchEvents must be an array when present.');
+}
+const sourceEvents = Array.isArray(data.matchEvents) ? data.matchEvents : [];
 let seasons = (Array.isArray(data.seasons) ? data.seasons : [])
   .filter(season => season && typeof season.id === 'string' && season.id);
 
@@ -129,7 +133,44 @@ const matches = data.matches.map(match => {
     status: match.status || 'SCHEDULED',
     datetime: match.datetime || '',
     venue: match.venue || '',
-    scorersText: match.scorersText || ''
+    scorersText: match.scorersText || '',
+    eventsCounted: match.eventsCounted !== false
+  };
+});
+
+const playerById = new Map(players.map(player => [player.id, player]));
+const matchById = new Map(matches.map(match => [match.id, match]));
+const eventIds = new Set();
+const events = sourceEvents.map(event => {
+  if (!event || !event.id) fail('Every match event needs an id.');
+  if (eventIds.has(event.id)) fail(`Duplicate match event id "${event.id}".`);
+  eventIds.add(event.id);
+
+  const match = matchById.get(event.matchId);
+  if (!match) fail(`Match event "${event.id}" refers to missing match "${event.matchId}".`);
+
+  const player = playerById.get(event.playerId);
+  if (!player) fail(`Match event "${event.id}" refers to missing player "${event.playerId}".`);
+  if (!event.teamId || (event.teamId !== match.homeId && event.teamId !== match.awayId)) {
+    fail(`Match event "${event.id}" has a team that is not playing in its match.`);
+  }
+  if (player.teamId !== event.teamId) {
+    fail(`Match event "${event.id}" has a player from a different team.`);
+  }
+  if (!['goal', 'yellow', 'red'].includes(event.type)) {
+    fail(`Match event "${event.id}" has an invalid type.`);
+  }
+  if (!Number.isInteger(Number(event.minute)) || Number(event.minute) < 1 || Number(event.minute) > 130) {
+    fail(`Match event "${event.id}" needs a minute between 1 and 130.`);
+  }
+
+  return {
+    id: event.id,
+    matchId: event.matchId,
+    teamId: event.teamId,
+    playerId: event.playerId,
+    type: event.type,
+    minute: Number(event.minute)
   };
 });
 
@@ -157,8 +198,13 @@ const files = [
   },
   {
     name: 'matches.csv',
-    headers: ['id', 'seasonId', 'round', 'homeId', 'awayId', 'homeScore', 'awayScore', 'status', 'datetime', 'venue', 'scorersText'],
+    headers: ['id', 'seasonId', 'round', 'homeId', 'awayId', 'homeScore', 'awayScore', 'status', 'datetime', 'venue', 'scorersText', 'eventsCounted'],
     rows: matches
+  },
+  {
+    name: 'events.csv',
+    headers: ['id', 'matchId', 'teamId', 'playerId', 'type', 'minute'],
+    rows: events
   }
 ];
 
@@ -187,6 +233,6 @@ for (const file of files) {
 }
 
 console.log('CSV files written to:\n  ' + outputDir + '\n');
-console.log(`  ${seasons.length} season(s), ${teams.length} team(s), ${players.length} player(s), ${matches.length} match(es)`);
+console.log(`  ${seasons.length} season(s), ${teams.length} team(s), ${players.length} player(s), ${matches.length} match(es), ${events.length} event(s)`);
 console.log(`  Active season: ${activeSeason.name}`);
 console.log('\nNext: edit the CSV files, then run node tools/csv-to-backup.js and import the generated JSON.\n');

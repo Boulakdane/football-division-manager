@@ -1,0 +1,520 @@
+# KickOff Division — Security Review and Remediation Plan
+
+- **Review date:** 2026-10-20
+- **Scope:** static frontend, Supabase schema/RLS/RPCs, authentication flow, CSV/JSON tooling, GitHub Actions
+- **Method:** manual code review, dependency audit, browser smoke tests, source-level abuse cases, and review of the deployed architecture. No destructive testing was performed against production data.
+
+## 1. Executive summary
+
+The application has a sensible security model for a free, zero-server deployment:
+
+- Anonymous visitors can read league data.
+- Only authenticated users with `role = 'admin'` can write.
+- The real boundary is Postgres Row Level Security, not hidden buttons.
+- Only publishable Supabase keys are shipped to the browser.
+- Signups are disabled.
+- Admin-only RPCs check `public.is_admin()` and run with a fixed `search_path`.
+
+No critical vulnerability was found in this review. The largest residual risks are:
+
+1. **Admin account/session compromise.** An admin can legitimately replace or delete the entire dataset. There is no MFA, step-up authentication, session policy or audit trail.
+2. **XSS and supply-chain exposure.** The app has no strict Content Security Policy, uses inline event handlers, and still loads Google Fonts from a third party. A successful script injection could read the Supabase session from browser storage.
+3. **Destructive imports are not atomic.** `dbReplaceAll` deletes and re-inserts data over multiple HTTP requests. A network failure or validation gap can leave the league partially deleted.
+
+The current pass already reduced some risk: Lucide and Supabase JS are pinned with SRI, a secret scanner runs in CI, Dependabot is configured, and event-handler IDs are escaped with a JSON-aware helper. The plan below closes the remaining gaps.
+
+## 2. Trust boundaries and assets
+
+| Asset | Why it matters |
+|---|---|
+| Supabase admin session | Grants full league write access; stored in browser storage by `supabase-js` |
+| `profiles.role` | The only privilege flag; promotion is manual SQL |
+| League data | Public to read, but integrity matters for standings and history |
+| JSON/CSV backups | Complete dataset; may contain personal names and contact-adjacent data |
+| CI workflow | Can publish to GitHub Pages and run with repository permissions |
+| Publishable Supabase key | Public by design; not a secret, but abuse still costs quota |
+
+```text
+Visitor ──read──► Supabase REST ──RLS──► public tables
+Admin   ──login─► Supabase Auth ──JWT──► PostgREST ──RLS/RPC──► tables
+Admin   ──import─► browser ──multiple requests──► tables
+CI      ──push──► GitHub Pages
+```
+
+## 3. Threat model
+
+| Actor | Capability | Desired outcome |
+|---|---|---|
+| Anonymous visitor | Read-only API, can inspect JS and call REST directly | Cannot write, cannot read private profiles |
+| Authenticated viewer | Valid account without admin role | Cannot write even with crafted requests |
+| Compromised admin | Valid admin session or stolen password | Limit blast radius, detect changes, restore data |
+| Malicious backup | Crafted JSON/CSV imported by an admin | Cannot execute script, corrupt stats or inject spreadsheet formulas |
+| Compromised CDN | Serves modified third-party JS | SRI/CSP prevents execution |
+| Lost admin device | Cached session | Session expiry/revocation, MFA, device sign-out |
+| Abusive client | Repeated RPC calls | Rate limits, statement timeouts, quotas |
+
+## 4. Findings
+
+### Summary
+
+| ID | Severity | Finding | Status |
+|---|---|---|---|
+| SEC-01 | High | No MFA/step-up authentication for a role that can erase the league | Open |
+| SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Partially mitigated |
+| SEC-03 | High | Full-data import is client-orchestrated and non-atomic | Open |
+| SEC-04 | Medium | Third-party CDN and font dependency | Partially mitigated |
+| SEC-05 | Medium | No audit log, soft delete or restore path | Open |
+| SEC-06 | Medium | Archived seasons are read-only only in the UI | Open |
+| SEC-07 | Medium | Server-side data validation is incomplete | Open |
+| SEC-08 | Medium | Security headers cannot be set on GitHub Pages | Open |
+| SEC-09 | Medium | CSV formula injection in exported files | Open |
+| SEC-10 | Low | Environment override (`?env=prod`) can point local work at production | Open |
+| SEC-11 | Low | No rate limiting or statement timeout for admin RPCs | Open |
+| SEC-12 | Low | Local backups are unencrypted | Open |
+
+### SEC-01 — Admin account takeover has no second factor
+
+**Severity:** High
+**Evidence:** `js/auth.js` uses email + password only. Password minimum is 6 characters. There is no MFA prompt, no `aal2` check in `is_admin()`, no session timeout, no “sign out all devices”, and no notification on admin login. The admin role can call `replace_match_events`, `delete_match`, `activate_season` and full-data replacement.
+
+**Impact:** A phished or reused admin password gives an attacker full control of the league. They can delete seasons, rewrite results, corrupt player totals or replace the entire dataset.
+
+**Remediation:**
+
+1. Enable Supabase Auth MFA (TOTP) and require enrollment for admins.
+2. Enforce assurance level in the database, not just the UI:
+
+   ```sql
+   -- Example policy helper: require aal2 for admin writes.
+   create or replace function public.is_admin()
+   returns boolean
+   language sql
+   stable
+   security definer
+   set search_path = public
+   as $$
+     select exists (
+       select 1
+       from public.profiles
+       where id = auth.uid()
+         and role = 'admin'
+     )
+     and coalesce(auth.jwt() ->> 'aal', 'aal1') = 'aal2';
+   $$;
+   ```
+
+   Test this carefully: existing sessions without MFA would lose write access until they enroll.
+3. Require a fresh password or MFA challenge before destructive actions (“step-up auth”).
+4. Raise the password minimum to 12 characters and enable Supabase leaked-password protection.
+5. Add a “sign out all sessions” action and a short admin session lifetime.
+6. Add login notifications or an admin activity digest.
+
+**Acceptance criteria:**
+
+- A password-only admin session cannot execute write RPCs.
+- An `aal2` admin can write.
+- A viewer or anonymous caller receives `42501` for every write RPC.
+- The UI explains how to enroll MFA.
+
+### SEC-02 — XSS impact remains high without a strict CSP
+
+**Severity:** High
+**Evidence:** `index.html` contains many inline `onclick`, `onchange` and `oninput` attributes. `js/app.js` builds UI with `innerHTML` and template strings. The Supabase session is persisted client-side by `supabase-js` (local storage by default). There is no `Content-Security-Policy` header or meta tag.
+
+This pass added `jsString()` and replaced interpolated IDs in inline handlers. A test payload (`x'); window.__xss = true; //`) rendered as a string literal and did not execute. That closes the identified ID-injection path, but it does not remove the broader risk.
+
+**Impact:** Any future unescaped field, malicious imported value or compromised dependency that executes script can read the admin session and perform admin actions.
+
+**Remediation:**
+
+1. Remove inline event handlers. Use event delegation or `addEventListener` with `data-action` / `data-id` attributes.
+2. Replace `innerHTML` rendering with DOM construction or a small escaping/template layer with a lint rule. Do not interpolate untrusted values into HTML strings.
+3. Add a strict CSP:
+   - `default-src 'self'`
+   - `script-src 'self'` plus only the exact CDN origins if self-hosting is not possible
+   - `style-src 'self' 'unsafe-inline'` temporarily for inline team-colour styles
+   - `img-src 'self' data:`
+   - `font-src 'self'`
+   - `connect-src 'self' https://<project>.supabase.co`
+   - `frame-ancestors 'none'`
+   - `base-uri 'self'`
+   - `form-action 'self'`
+4. Prefer Cloudflare Pages or a Cloudflare proxy for real headers. A meta CSP is possible but cannot enforce `frame-ancestors` or report-only headers reliably.
+5. Add `Trusted Types` after the DOM rendering refactor.
+6. Add an automated axe/Lighthouse check and a small XSS regression test.
+
+**Acceptance criteria:**
+
+- No inline `on*` attributes remain in shipped HTML/JS.
+- A strict CSP blocks an injected inline script in a browser test.
+- Admin session data is not readable by injected script.
+
+### SEC-03 — Full-data import is non-atomic
+
+**Severity:** High
+**Evidence:** `js/backend.js` `dbReplaceAll()` deletes `match_events`, `matches`, `players`, `teams` and `seasons` in separate requests, then inserts each table in separate requests. RLS protects who can do it, but not what happens if a request fails halfway.
+
+**Impact:** A network error, constraint violation or malformed import can leave the league partially deleted or with orphaned/incomplete data. The admin may not have a fresh backup. This is the most likely way to lose real data.
+
+**Remediation:**
+
+1. Implement one admin-only `replace_all_data(payload jsonb)` RPC:
+
+   ```sql
+   create or replace function public.replace_all_data(payload jsonb)
+   returns void
+   language plpgsql
+   security definer
+   set search_path = public
+   as $$
+   begin
+     if not public.is_admin() then
+       raise exception 'Only admins can import data' using errcode = '42501';
+     end if;
+     -- Validate shape, IDs and references before touching data.
+     -- Use one transaction: delete + insert; any error rolls everything back.
+   end;
+   $$;
+   ```
+
+2. Add `pg_advisory_xact_lock` so two admins cannot import concurrently.
+3. Validate references and value ranges server-side; do not trust the browser.
+4. Add a dry-run mode that returns counts and a diff summary before commit.
+5. Store an import checksum/idempotency key and a “last import” record.
+6. Require a fresh JSON backup download before the replacement, and keep the previous snapshot for rollback.
+7. Show a clear confirmation with counts of rows to be deleted.
+
+**Acceptance criteria:**
+
+- An intentionally invalid import leaves every table byte-for-byte unchanged.
+- A successful import is atomic and completes in one transaction.
+- Concurrent imports are rejected or serialized.
+- The admin sees a dry-run summary before commit.
+
+### SEC-04 — Third-party CDN and font dependency
+
+**Severity:** Medium (reduced from High by this pass)
+**Evidence:** Lucide and Supabase JS were previously loaded from unpinned `latest`/`@2` URLs. This pass pins them and adds SRI. Google Fonts is still a remote CSS/font dependency with no SRI.
+
+**Impact:** A compromised CDN could serve malicious JavaScript; Google Fonts sees visitor IPs and is an extra CSP exception.
+
+**Remediation:**
+
+1. Self-host Supabase JS and Lucide in `vendor/` and serve from the same origin.
+2. Self-host subsetted Inter and Cairo WOFF2 files.
+3. If a CDN remains, pin exact versions and keep SRI; add a CSP allowlist and a quarterly review.
+4. Do not use `@latest` in production.
+
+**Acceptance criteria:**
+
+- The production page has no third-party script origins.
+- Fonts are served from the same origin.
+- A CDN outage or compromise cannot break or alter the app.
+
+### SEC-05 — No audit log, soft delete or restore path
+
+**Severity:** Medium
+**Evidence:** Deletes are hard deletes. There is no `audit_log` table, no `deleted_at`, and no restore action. Player totals and match events can change with no record of who changed them.
+
+**Impact:** Accidental or malicious changes are difficult to investigate and may be unrecoverable without a manual backup.
+
+**Remediation:**
+
+1. Add `public.audit_log` (`id`, `actor_id`, `action`, `entity`, `entity_id`, `before`, `after`, `created_at`, client metadata).
+2. Write audit rows from triggers on `teams`, `players`, `matches`, `match_events`, `seasons`, and from import RPCs.
+3. Add `deleted_at` soft delete for teams, players, matches and seasons; filter deleted rows in views.
+4. Add an admin-only restore action and a purge job.
+5. Keep archived seasons immutable at the database level.
+
+**Acceptance criteria:**
+
+- Every admin write produces an audit row.
+- A deleted match can be restored with its events and totals.
+- Audit rows are admin-readable only and cannot be edited by clients.
+
+### SEC-06 — Archived seasons are not write-protected in the database
+
+**Severity:** Medium
+**Evidence:** The UI blocks edits when a season is archived, but `matches_insert_admin`, `matches_update_admin` and `matches_delete_admin` only check `public.is_admin()`. An admin can write to an archived season through the API.
+
+**Impact:** The “archive” promise is not enforced. If archive immutability is required, a compromised or careless admin can rewrite history.
+
+**Remediation:**
+
+- Add a trigger or policy that rejects match/event writes when the target season is not active, unless the season is explicitly activated first.
+- Or add an `archived` flag and a `can_write_season(season_id)` helper used by policies.
+- Keep “Make active” as the explicit escape hatch.
+
+**Acceptance criteria:**
+
+- Direct REST writes to archived-season matches are rejected.
+- Activating the season restores write access.
+- The UI error message is clear.
+
+### SEC-07 — Server-side validation is incomplete
+
+**Severity:** Medium
+**Evidence:** Client-side validation covers most forms, but the database has limited checks: scores are plain integers, names have no length limits, colours are text, dates are text, and IDs are client-generated. A crafted admin request can bypass UI validation. Import validation is client-side only.
+
+**Impact:** Corrupt data, broken layouts, negative scores, invalid dates, duplicate IDs or extremely long values. A malicious or buggy client can make standings nonsensical.
+
+**Remediation:**
+
+1. Add `CHECK` constraints:
+   - `home_score between 0 and 99`, `away_score between 0 and 99`
+   - `round between 1 and 99`
+   - `length(name) between 1 and 80`
+   - `length(code) between 2 and 5`
+   - `color ~ '^#[0-9a-fA-F]{6}$'`
+   - `status in (...)`
+   - date format checks where possible
+2. Move import validation into the `replace_all_data` RPC.
+3. Use server-generated UUIDs for new rows.
+4. Add a JSON schema version to backups and reject unknown versions.
+
+**Acceptance criteria:**
+
+- Invalid values are rejected by Postgres, not just the UI.
+- A malformed import is rejected before any delete.
+- IDs are unique and server-generated for new records.
+
+### SEC-08 — GitHub Pages cannot set security headers
+
+**Severity:** Medium
+**Evidence:** GitHub Pages does not allow custom response headers. The app has no `Content-Security-Policy`, `X-Content-Type-Options`, `Permissions-Policy` or frame protection. A `Referrer-Policy` meta tag was added this pass.
+
+**Impact:** Reduced defence in depth against XSS, clickjacking and MIME sniffing.
+
+**Remediation:**
+
+1. Move hosting to Cloudflare Pages (free) and add a `_headers` file:
+
+   ```text
+   /*
+     Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://<project>.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+     X-Content-Type-Options: nosniff
+     Referrer-Policy: strict-origin-when-cross-origin
+     Permissions-Policy: geolocation=(), camera=(), microphone=()
+   ```
+
+2. If GitHub Pages must remain, put Cloudflare in front and inject headers at the edge.
+3. Keep the meta `Referrer-Policy` as a fallback.
+
+**Acceptance criteria:**
+
+- Security headers are present on the production response.
+- A CSP violation test blocks an injected inline script.
+- Clickjacking is blocked by `frame-ancestors 'none'`.
+
+### SEC-09 — CSV formula injection
+
+**Severity:** Medium
+**Evidence:** both `js/app.js` `csvEscape()` and `tools/backup-to-csv.js` `csvCell()` quote commas/quotes/newlines but do not neutralise cells beginning with `=`, `+`, `-` or `@`. Team names, player names and scorer text are user-controlled.
+
+**Impact:** Opening an exported CSV in Excel/Sheets can execute a formula (for example a command or data exfiltration payload) when an admin or league official opens the file.
+
+**Remediation:**
+
+1. Prefix dangerous cells with a single quote or a tab before export, and document the behaviour.
+2. Or export with a safe formula prefix and strip it on import.
+3. Add a regression test with names such as `=HYPERLINK(...)` and `+cmd|...`.
+4. Keep the UTF-8 BOM for Excel compatibility.
+
+**Acceptance criteria:**
+
+- A player named `=1+1` is exported as text in Excel, not as a formula.
+- CSV round-trip remains stable.
+- A test covers `=`, `+`, `-` and `@` prefixes.
+
+### SEC-10 — Environment override can point local work at production
+
+**Severity:** Low
+**Evidence:** `js/config.js` accepts `?env=prod` on localhost and `?env=dev` on the deployed site. This is useful for testing but increases the chance of editing real data by mistake.
+
+**Impact:** Accidental production changes from a local test or a shared link.
+
+**Remediation:**
+
+- Remove `?env=prod` from production builds, or require an explicit confirmation dialog.
+- Show a persistent red banner when localhost is connected to production.
+- Consider a compile-time environment flag instead of a query parameter.
+
+**Acceptance criteria:**
+
+- Production data cannot be edited from localhost without a clear, deliberate confirmation.
+- The environment banner is impossible to miss.
+
+### SEC-11 — No rate limiting or statement timeout for admin RPCs
+
+**Severity:** Low
+**Evidence:** Admin RPCs are authenticated but can be called repeatedly. Supabase Auth has rate limits; Postgres RPCs do not have an application-level limit.
+
+**Impact:** Quota exhaustion, accidental loops, or a compromised admin token causing excessive writes.
+
+**Remediation:**
+
+- Add a statement timeout for API roles.
+- Add a simple Postgres token bucket or an Edge Function rate limit for imports and destructive RPCs.
+- Monitor Supabase logs and set alerts for unusual write volume.
+
+**Acceptance criteria:**
+
+- Repeated import RPCs are throttled.
+- A long-running query is cancelled by statement timeout.
+- Alerts fire on abnormal write volume.
+
+### SEC-12 — Local backups are unencrypted
+
+**Severity:** Low
+**Evidence:** `backups/` is gitignored (good), but JSON backups contain the full league and player names in plain text on the local filesystem.
+
+**Impact:** Device loss or shared-folder access exposes league data.
+
+**Remediation:**
+
+- Store backups in an encrypted archive (7-Zip/Age) or an encrypted cloud folder.
+- Define a retention policy and a restore drill.
+- Do not commit backups; keep the existing `.gitignore` rule.
+
+**Acceptance criteria:**
+
+- Backups at rest are encrypted.
+- A restore from the archive is tested quarterly.
+
+## 5. Controls currently working well
+
+- RLS is enabled on every league table.
+- Public read policies are explicit; writes require `public.is_admin()`.
+- `is_admin()` is `security definer` with `set search_path = public`, avoiding recursive profile RLS.
+- Admin RPCs check the role inside the function, not only in the UI.
+- Match-event RPCs revoke `PUBLIC`/`anon` execute.
+- `profiles` has no client update policy; role promotion requires SQL.
+- Signups are disabled server-side.
+- Only publishable keys are in the repository; the secret scanner checks for leaked privileged keys.
+- CDN scripts are pinned with SRI.
+- The app uses parameterised Supabase client calls, not string-concatenated SQL.
+- `esc()` and the new `jsString()` helper cover the identified rendering paths.
+- Backups and working CSV data are gitignored.
+- `npm audit --omit=dev` reports 0 vulnerabilities.
+
+## 6. Prioritised remediation plan
+
+### P0 — next 7 days
+
+| Task | Acceptance |
+|---|---|
+| Apply `match-events-migration.sql` in development, then production | Migration is idempotent; admin RPC smoke test passes |
+| Re-run anonymous/viewer/admin RLS matrix | Anon and viewer writes return `42501`; admin writes succeed |
+| Add MFA for admins and enforce `aal2` for writes | Password-only admin cannot write |
+| Replace `dbReplaceAll` with an atomic import RPC | Invalid import leaves data unchanged |
+| Remove inline handlers and add a strict CSP | Inline script injection is blocked |
+| Add CSV formula-injection protection | Dangerous cells export as text |
+| Add audit log and soft delete | Every write is attributable and restorable |
+
+### P1 — 1 to 4 weeks
+
+- Add database `CHECK` constraints and server-side JSON validation.
+- Enforce archived-season immutability in the database.
+- Move hosting to Cloudflare Pages for security headers, or add an edge proxy.
+- Self-host Supabase JS, Lucide and fonts.
+- Add a Playwright smoke test and a pgTAP/RLS test suite.
+- Add rate limits/statement timeouts and Supabase log alerts.
+- Encrypt backups and document a restore drill.
+
+### P2 — 1 to 3 months
+
+- Add `updated_at`/version optimistic concurrency to prevent lost updates.
+- Add idempotency keys for imports and destructive actions.
+- Add a security regression suite: XSS payloads, CSV formulas, RLS matrix, CSP checks.
+- Add a private vulnerability disclosure workflow and a release security checklist.
+- Add dependency review and pinned GitHub Actions by SHA.
+- Add a staging project for release candidates; never test destructive migrations on production first.
+
+## 7. Verification checklist
+
+Run these before every production release:
+
+```powershell
+# 1. No privileged secrets in source
+npm.cmd run check:secrets
+
+# 2. Dependency audit
+npm.cmd audit --omit=dev
+
+# 3. JavaScript syntax
+Get-ChildItem js/*.js, tools/*.js | ForEach-Object { node --check $_.FullName }
+
+# 4. CSV round trip
+node tools/csv-to-backup.js data/examples "$env:TEMP\kickoff-first.json"
+node tools/backup-to-csv.js "$env:TEMP\kickoff-first.json" "$env:TEMP\kickoff-csv"
+node tools/csv-to-backup.js "$env:TEMP\kickoff-csv" "$env:TEMP\kickoff-second.json"
+```
+
+### Anonymous write test
+
+Use the publishable key and an anonymous request. The expected result is `401`/`403`, never a successful insert:
+
+```powershell
+$headers = @{
+  apikey = '<publishable-key>'
+  Authorization = 'Bearer <publishable-key>'
+  Prefer = 'return=minimal'
+}
+Invoke-RestMethod -Method Post `
+  -Uri 'https://<project>.supabase.co/rest/v1/teams' `
+  -Headers $headers `
+  -ContentType 'application/json' `
+  -Body '{"id":"sec-test","name":"Should fail","code":"SEC","color":"#000000"}'
+```
+
+### Database RLS matrix
+
+Run in a transaction against a test project:
+
+```sql
+begin;
+set local role anon;
+select count(*) from public.teams; -- allowed
+insert into public.teams (id, name, code, color)
+values ('sec-test', 'Should fail', 'SEC', '#000000'); -- must fail
+rollback;
+```
+
+Repeat for an authenticated viewer and an admin. For authenticated tests, use a real test account or a Supabase test harness that sets the JWT claims correctly.
+
+### Admin RPC smoke test
+
+1. Sign in as an admin in development.
+2. Add a goal and a yellow card to a test match.
+3. Confirm the fixture timeline and `players.goals` / `players.yellow`.
+4. Edit the minute and type; confirm totals change by delta.
+5. Remove the events; confirm totals return to the original values.
+6. Delete the match; confirm events and totals are cleaned up.
+
+## 8. Incident response
+
+If an admin account is suspected compromised:
+
+1. Demote the account in `profiles` and sign out all sessions.
+2. Rotate the password and require MFA re-enrollment.
+3. Inspect Supabase Auth and Postgres logs; export a backup immediately.
+4. Compare current data with the last known-good backup.
+5. Restore from backup if integrity is in doubt.
+6. If a publishable key is being abused, rotate it in Supabase and update `js/config.js`; never rotate to a service-role key in the frontend.
+7. If a CDN is compromised, remove the CDN script and rely on self-hosted assets.
+
+## 9. Out of scope and accepted risks
+
+- The publishable Supabase key is public by design. It is not a secret.
+- Public league data is intentionally readable by anyone.
+- GitHub Pages availability, Supabase free-tier limits and DDoS protection are provider responsibilities.
+- Sample/demo data is not sensitive.
+- The app does not process payments or store government IDs.
+
+## 10. Review cadence
+
+- Re-run this review before each production release and after any schema/RPC change.
+- Review Dependabot PRs weekly.
+- Re-test RLS whenever a table, policy or `security definer` function changes.
+- Review Supabase Auth settings quarterly.
+- Keep this document and the [modernization plan](MODERNIZATION_PLAN.md) in sync.
