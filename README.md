@@ -22,8 +22,9 @@ accounts live in a free [Supabase](https://supabase.com) project.
   non-admins even if they tamper with the page or call the API directly.
 - **Shared data** — every visitor sees the same league, from any device.
 - **JSON backup** — export/import the full dataset from the admin settings menu.
-- **CSV tools** — export the current season's standings, fixtures and squads, or
-  bulk-build a league from four CSV files.
+- **CSV tools** — export the current season's standings, fixtures and squads,
+  bulk-build a league from four CSV files, or turn a JSON backup back into
+  editable CSV files.
 - **Live score shortcuts** — matches in `LIVE` state get `+` buttons on the fixture card.
 - **Read-only demo mode** — until Supabase is configured, the site shows the sample
   league with all write controls hidden and a banner explaining how to connect it.
@@ -47,7 +48,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── README.md              # CSV column reference and workflow
 │   └── examples/              # Template seasons/teams/players/matches CSV files
 ├── tools/
-│   └── csv-to-backup.js       # Validate CSVs and build an importable JSON backup
+│   ├── csv-to-backup.js       # Validate CSVs and build an importable JSON backup
+│   └── backup-to-csv.js       # Turn a JSON backup into editable CSV files
 └── supabase/
     ├── schema.sql             # Tables, RLS policies, trigger and seed data
     └── seasons-migration.sql  # Upgrade an existing database to seasons
@@ -255,6 +257,16 @@ This validates the data and writes `backups/kickoff-import-YYYY-MM-DD.json`, whi
 import from **Settings → Import Backup (JSON)**. See [`data/README.md`](data/README.md)
 for the column reference. Test the import in the development project first — importing
 replaces all teams, players, seasons and matches in the connected database.
+
+If you already have a JSON backup and want to edit it in a spreadsheet, generate the
+four CSV files from it first:
+
+```powershell
+node tools/backup-to-csv.js backups/kickoff-backup-YYYY-MM-DD.json data --force
+```
+
+The tool refuses to overwrite existing CSV files unless `--force` is supplied, so it
+cannot silently replace real league data by accident.
 
 ## Deploy to GitHub Pages (free)
 

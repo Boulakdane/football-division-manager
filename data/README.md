@@ -16,6 +16,15 @@ Edit the copies in `data/`. Do not edit the files in `data/examples/`.
 
 `data/*.csv` is git-ignored, so real league data is not committed by accident.
 
+If you already have a JSON backup, you can generate the four CSV files from it instead:
+
+```powershell
+node tools/backup-to-csv.js backups/my-backup.json data --force
+```
+
+The tool refuses to overwrite existing CSV files unless `--force` is supplied. This is
+useful for editing an existing league in a spreadsheet before importing it again.
+
 ## 2. Columns
 
 All files must be UTF-8 CSV. The first row is the header. IDs must be unique and are
