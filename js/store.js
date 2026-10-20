@@ -1,12 +1,11 @@
 /* ---------------------------------------------------------------
    KickOff Division — data store
-   Owns the application state, localStorage persistence and the
-   demo dataset used on first launch.
+   Holds the in-memory league state and the demo dataset. Real data
+   is loaded from Supabase in js/backend.js.
    --------------------------------------------------------------- */
 'use strict';
 
-const STORAGE_KEY = 'kickoff_division_data';
-
+/** Demo dataset shown in read-only mode (and used by "Reset sample data"). */
 const DEFAULT_DATA = {
   teams: [
     { id: 't1', name: 'Spartan FC',        code: 'SFC', color: '#3b82f6' },
@@ -41,18 +40,7 @@ const DEFAULT_DATA = {
 };
 
 /** Current application state: { teams: [], players: [], matches: [] } */
-let appState = loadState();
-
-/** Read state from localStorage, falling back to the demo dataset. */
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return normalizeState(JSON.parse(raw));
-  } catch (e) {
-    /* Corrupted storage → fall back to sample data */
-  }
-  return JSON.parse(JSON.stringify(DEFAULT_DATA));
-}
+let appState = JSON.parse(JSON.stringify(DEFAULT_DATA));
 
 /** Ensure an imported/parsed object always has the three expected arrays. */
 function normalizeState(data) {
@@ -61,14 +49,4 @@ function normalizeState(data) {
     players: Array.isArray(data.players) ? data.players : [],
     matches: Array.isArray(data.matches) ? data.matches : []
   };
-}
-
-/** Persist the current state and re-render every view. */
-function saveState() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
-  } catch (e) {
-    alert('Could not save data to LocalStorage: ' + e.message);
-  }
-  renderApp();
 }

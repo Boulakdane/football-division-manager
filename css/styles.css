@@ -9,11 +9,9 @@ body {
   font-family: 'Inter', sans-serif;
 }
 
-/* While the login gate is active, hide the app chrome (auth screen stays visible) */
-body.locked > header,
-body.locked > main,
-body.locked > footer {
-  display: none;
+/* Admin-only controls (login buttons + RLS are the real protection) */
+body:not(.is-admin) .admin-only {
+  display: none !important;
 }
 
 /* Arabic / RTL typography */

@@ -1,139 +1,88 @@
 /* ---------------------------------------------------------------
-   KickOff Division — local password gate
-   A client-side access gate. The password is salted and hashed
-   (PBKDF2-SHA256 when crypto.subtle is available) and stored in
-   localStorage. This is NOT server-side security: anyone with
-   access to the browser can bypass or reset it.
+   KickOff Division — authentication & UI roles
+   Uses Supabase Auth (email + password). Spectators browse without
+   an account; only profiles with role = 'admin' get write controls.
+   Actual write protection is enforced by Row Level Security in
+   Postgres — hiding buttons is only a UX nicety.
    --------------------------------------------------------------- */
 'use strict';
 
-const AUTH_KEY = 'kickoff_auth';
-const AUTH_SESSION_KEY = 'kickoff_auth_session';
-const AUTH_ITERATIONS = 150000;
-const AUTH_MIN_LENGTH = 6;
+let currentUser = null;
+let currentRole = null;
 
-/* ---------- helpers ---------- */
-
-function bytesToHex(bytes) {
-  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+function isAdmin() {
+  return currentRole === 'admin';
 }
 
-function hexToBytes(hex) {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-  }
-  return bytes;
+function isSignedIn() {
+  return Boolean(currentUser);
 }
 
-function randomHex(byteCount) {
-  const bytes = new Uint8Array(byteCount);
-  crypto.getRandomValues(bytes);
-  return bytesToHex(bytes);
-}
+/* ---------- session handling ---------- */
 
-function cryptoAvailable() {
-  return typeof crypto !== 'undefined' && crypto.subtle && typeof crypto.subtle.deriveBits === 'function';
-}
-
-/** PBKDF2-SHA256 → hex digest. */
-async function pbkdf2Hash(password, saltHex) {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  );
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt: hexToBytes(saltHex), iterations: AUTH_ITERATIONS, hash: 'SHA-256' },
-    key,
-    256
-  );
-  return bytesToHex(new Uint8Array(bits));
-}
-
-/**
- * Fallback hash for non-secure contexts (e.g. file://) where crypto.subtle
- * is unavailable. Salted, but NOT cryptographically secure.
- */
-function fallbackHash(password, saltHex) {
-  const input = saltHex + '|' + password;
-  let h1 = 0xdeadbeef ^ saltHex.length;
-  let h2 = 0x41c6ce57 ^ saltHex.length;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
-}
-
-/* ---------- credential storage ---------- */
-
-function getCredential() {
-  try {
-    const raw = localStorage.getItem(AUTH_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-async function createCredential(password) {
-  const algo = cryptoAvailable() ? 'pbkdf2' : 'fallback';
-  const salt = randomHex(16);
-  const hash = algo === 'pbkdf2'
-    ? await pbkdf2Hash(password, salt)
-    : fallbackHash(password, salt);
-
-  const credential = {
-    v: 1,
-    algo,
-    iterations: algo === 'pbkdf2' ? AUTH_ITERATIONS : 0,
-    salt,
-    hash,
-    createdAt: new Date().toISOString()
-  };
-  localStorage.setItem(AUTH_KEY, JSON.stringify(credential));
-  return credential;
-}
-
-/** Returns true/false, or null when the credential can't be checked (no crypto.subtle). */
-async function verifyPassword(password, credential) {
-  let candidate;
-  if (credential.algo === 'pbkdf2') {
-    if (!cryptoAvailable()) return null;
-    candidate = await pbkdf2Hash(password, credential.salt);
-  } else {
-    candidate = fallbackHash(password, credential.salt);
+async function initAuth() {
+  if (!BACKEND_READY) {
+    updateAuthUI();
+    return;
   }
 
-  if (candidate.length !== credential.hash.length) return false;
-  let diff = 0;
-  for (let i = 0; i < candidate.length; i++) {
-    diff |= candidate.charCodeAt(i) ^ credential.hash.charCodeAt(i);
+  const { data, error } = await db.auth.getSession();
+  if (!error) await applySession(data.session);
+
+  db.auth.onAuthStateChange(async (event, session) => {
+    // INITIAL_SESSION is already handled above; TOKEN_REFRESHED needs no UI work.
+    if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return;
+    await applySession(session);
+    renderApp();
+  });
+}
+
+async function applySession(session) {
+  currentUser = session ? session.user : null;
+  currentRole = null;
+
+  if (currentUser) {
+    const { data, error } = await db
+      .from('profiles')
+      .select('role')
+      .eq('id', currentUser.id)
+      .maybeSingle();
+
+    if (!error && data) currentRole = data.role;
   }
-  return diff === 0;
+
+  updateAuthUI();
 }
 
-/* ---------- session ---------- */
+function updateAuthUI() {
+  const admin = isAdmin();
 
-function startSession(credential) {
-  sessionStorage.setItem(AUTH_SESSION_KEY, credential.hash);
+  document.body.classList.toggle('is-admin', admin);
+  document.body.classList.toggle('is-authed', isSignedIn());
+
+  const loginBtn = document.getElementById('btn-admin-login');
+  const logoutBtn = document.getElementById('btn-logout');
+  const badge = document.getElementById('role-badge');
+
+  if (loginBtn) loginBtn.classList.toggle('hidden', isSignedIn());
+  if (logoutBtn) logoutBtn.classList.toggle('hidden', !isSignedIn());
+
+  if (badge) {
+    badge.classList.toggle('hidden', !isSignedIn());
+    badge.textContent = admin ? t('adminBadge') : t('viewerBadge');
+    badge.className = admin
+      ? 'hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide bg-pitch-500/15 text-pitch-400 border border-pitch-500/30'
+      : 'hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide bg-slate-700/60 text-slate-300 border border-slate-600';
+    badge.classList.toggle('hidden', !isSignedIn());
+  }
+
+  const demoBanner = document.getElementById('demo-banner');
+  if (demoBanner) demoBanner.classList.toggle('hidden', BACKEND_READY);
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-function endSession() {
-  sessionStorage.removeItem(AUTH_SESSION_KEY);
-}
-
-function sessionValid(credential) {
-  return sessionStorage.getItem(AUTH_SESSION_KEY) === credential.hash;
-}
-
-/* ---------- UI state ---------- */
+/* ---------- error helpers ---------- */
 
 function setAuthError(elementId, key) {
   const el = document.getElementById(elementId);
@@ -147,131 +96,205 @@ function setAuthError(elementId, key) {
   el.classList.remove('hidden');
 }
 
-function clearAuthErrors() {
-  ['setup-error', 'login-error', 'pw-error'].forEach(id => setAuthError(id, null));
+function setAuthNotice(elementId, key) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  if (!key) {
+    el.textContent = '';
+    el.classList.add('hidden');
+    return;
+  }
+  el.textContent = t(key);
+  el.classList.remove('hidden');
 }
 
-function lockApp(panel) {
-  document.body.classList.add('locked');
-  document.getElementById('auth-screen').classList.remove('hidden');
-  document.getElementById('auth-setup-panel').classList.toggle('hidden', panel !== 'setup');
-  document.getElementById('auth-login-panel').classList.toggle('hidden', panel !== 'login');
-  clearAuthErrors();
+function clearAuthMessages() {
+  ['login-error', 'signup-error', 'signup-success', 'pw-error'].forEach(id => {
+    setAuthError(id, null);
+    setAuthNotice(id, null);
+  });
+}
 
-  const focusId = panel === 'setup' ? 'setup-password' : 'login-password';
+/* ---------- login / signup modal ---------- */
+
+function openLoginModal() {
+  const loginForm = document.getElementById('form-login');
+  const signupForm = document.getElementById('form-signup');
+  if (loginForm) loginForm.reset();
+  if (signupForm) signupForm.reset();
+  clearAuthMessages();
+  showLoginPanel(true);
+  openModal('modal-login');
+
+  const email = document.getElementById('login-email');
+  if (email) email.focus();
+
+  if (!BACKEND_READY) setAuthError('login-error', 'authConfigMissing');
+}
+
+function showLoginPanel(showLogin) {
+  document.getElementById('login-panel').classList.toggle('hidden', !showLogin);
+  document.getElementById('signup-panel').classList.toggle('hidden', showLogin);
+  clearAuthMessages();
+}
+
+function toggleSignup(e) {
+  if (e) e.preventDefault();
+  const signupVisible = !document.getElementById('signup-panel').classList.contains('hidden');
+  showLoginPanel(signupVisible);
+  const focusId = signupVisible ? 'login-email' : 'signup-email';
   const input = document.getElementById(focusId);
   if (input) input.focus();
-
-  if (typeof lucide !== 'undefined') lucide.createIcons();
-}
-
-function unlockApp() {
-  document.body.classList.remove('locked');
-  document.getElementById('auth-screen').classList.add('hidden');
-  document.getElementById('form-auth-setup').reset();
-  document.getElementById('form-auth-login').reset();
-  clearAuthErrors();
-  if (typeof lucide !== 'undefined') lucide.createIcons();
-}
-
-/* ---------- flows ---------- */
-
-/** Decide what the user sees on load: setup, login, or unlocked app. */
-function initAuth() {
-  const credential = getCredential();
-  if (!credential) lockApp('setup');
-  else if (sessionValid(credential)) unlockApp();
-  else lockApp('login');
-}
-
-async function handleSetup(e) {
-  e.preventDefault();
-  const password = document.getElementById('setup-password').value;
-  const confirmation = document.getElementById('setup-confirm').value;
-
-  if (password.length < AUTH_MIN_LENGTH) { setAuthError('setup-error', 'authTooShort'); return; }
-  if (password !== confirmation) { setAuthError('setup-error', 'authMismatch'); return; }
-
-  const button = e.target.querySelector('button[type="submit"]');
-  button.disabled = true;
-
-  try {
-    const credential = await createCredential(password);
-    startSession(credential);
-    unlockApp();
-  } catch (err) {
-    setAuthError('setup-error', 'authUnsupported');
-  } finally {
-    button.disabled = false;
-  }
 }
 
 async function handleLogin(e) {
   e.preventDefault();
+  clearAuthMessages();
+
+  if (!BACKEND_READY) {
+    setAuthError('login-error', 'authConfigMissing');
+    return;
+  }
+
+  const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
-  const credential = getCredential();
-  if (!credential) { initAuth(); return; }
+  if (!email || !password) return;
 
   const button = e.target.querySelector('button[type="submit"]');
   button.disabled = true;
 
   try {
-    const result = await verifyPassword(password, credential);
-    if (result === null) {
-      setAuthError('login-error', 'authUnsupported');
-    } else if (result) {
-      startSession(credential);
-      unlockApp();
-    } else {
-      setAuthError('login-error', 'authWrongPassword');
-      document.getElementById('login-password').select();
+    const { data, error } = await db.auth.signInWithPassword({ email, password });
+    if (error) {
+      setAuthError('login-error', 'authLoginInvalid');
+      return;
     }
+
+    await applySession(data.session);
+
+    try {
+      await refreshData();
+      renderApp();
+    } catch (err) {
+      showDataError();
+    }
+
+    if (!isAdmin()) {
+      setAuthError('login-error', 'authNotAdmin');
+      return;
+    }
+
+    closeModal('modal-login');
+    clearAuthMessages();
+  } catch (err) {
+    setAuthError('login-error', 'authLoginInvalid');
   } finally {
     button.disabled = false;
   }
 }
 
-function logout() {
-  endSession();
-  if (typeof closeAllModals === 'function') closeAllModals();
-  document.getElementById('data-menu').classList.add('hidden');
-  lockApp('login');
+async function handleSignup(e) {
+  e.preventDefault();
+  clearAuthMessages();
+
+  if (!BACKEND_READY) {
+    setAuthError('signup-error', 'authConfigMissing');
+    return;
+  }
+
+  const email = document.getElementById('signup-email').value.trim();
+  const password = document.getElementById('signup-password').value;
+  const confirmation = document.getElementById('signup-confirm').value;
+
+  if (password.length < 6) { setAuthError('signup-error', 'authTooShort'); return; }
+  if (password !== confirmation) { setAuthError('signup-error', 'authMismatch'); return; }
+
+  const button = e.target.querySelector('button[type="submit"]');
+  button.disabled = true;
+
+  try {
+    const { data, error } = await db.auth.signUp({ email, password });
+    if (error) {
+      setAuthError('signup-error', 'authSignupFailed');
+      return;
+    }
+
+    if (data.session) {
+      await applySession(data.session);
+      setAuthNotice('signup-success', 'authSignupDone');
+    } else {
+      // Email confirmation is enabled in the Supabase project
+      setAuthNotice('signup-success', 'authSignupConfirm');
+    }
+    document.getElementById('form-signup').reset();
+  } catch (err) {
+    setAuthError('signup-error', 'authSignupFailed');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function logout() {
+  if (BACKEND_READY && db) {
+    try { await db.auth.signOut(); } catch (e) { /* ignore */ }
+  }
+  currentUser = null;
+  currentRole = null;
+  updateAuthUI();
+  closeAllModals();
+  const menu = document.getElementById('data-menu');
+  if (menu) menu.classList.add('hidden');
 }
 
 /* ---------- change password ---------- */
 
 function openPasswordModal() {
+  if (!isSignedIn()) return;
   document.getElementById('form-password').reset();
-  setAuthError('pw-error', null);
+  clearAuthMessages();
   openModal('modal-password');
-  document.getElementById('pw-current').focus();
+  document.getElementById('pw-new').focus();
 }
 
 async function saveNewPassword(e) {
   e.preventDefault();
-  const credential = getCredential();
-  if (!credential) return;
+  clearAuthMessages();
+
+  if (!BACKEND_READY || !isSignedIn()) {
+    setAuthError('pw-error', 'authConfigMissing');
+    return;
+  }
 
   const current = document.getElementById('pw-current').value;
   const next = document.getElementById('pw-new').value;
   const confirmation = document.getElementById('pw-confirm').value;
 
-  if (next.length < AUTH_MIN_LENGTH) { setAuthError('pw-error', 'authTooShort'); return; }
+  if (next.length < 6) { setAuthError('pw-error', 'authTooShort'); return; }
   if (next !== confirmation) { setAuthError('pw-error', 'authMismatch'); return; }
 
   const button = e.target.querySelector('button[type="submit"]');
   button.disabled = true;
 
   try {
-    const result = await verifyPassword(current, credential);
-    if (result === null) { setAuthError('pw-error', 'authUnsupported'); return; }
-    if (!result) { setAuthError('pw-error', 'authCurrentWrong'); return; }
+    // Re-authenticate to verify the current password
+    const check = await db.auth.signInWithPassword({
+      email: currentUser.email,
+      password: current
+    });
+    if (check.error) {
+      setAuthError('pw-error', 'authCurrentWrong');
+      return;
+    }
 
-    const updated = await createCredential(next);
-    startSession(updated);
+    const { error } = await db.auth.updateUser({ password: next });
+    if (error) {
+      setAuthError('pw-error', 'authSaveFailed');
+      return;
+    }
+
     closeModal('modal-password');
   } catch (err) {
-    setAuthError('pw-error', 'authUnsupported');
+    setAuthError('pw-error', 'authSaveFailed');
   } finally {
     button.disabled = false;
   }

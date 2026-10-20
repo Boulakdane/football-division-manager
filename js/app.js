@@ -33,7 +33,29 @@ function openModal(id) { document.getElementById(id).classList.remove('hidden');
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-guide', 'modal-password'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-guide', 'modal-password', 'modal-login'].forEach(id => closeModal(id));
+}
+
+/* ---------- loading / error banners ---------- */
+
+function showDataError() {
+  const banner = document.getElementById('data-error');
+  if (banner) banner.classList.remove('hidden');
+}
+
+function hideDataError() {
+  const banner = document.getElementById('data-error');
+  if (banner) banner.classList.add('hidden');
+}
+
+async function retryLoad() {
+  try {
+    await refreshData();
+    hideDataError();
+    renderApp();
+  } catch (e) {
+    showDataError();
+  }
 }
 
 /* ---------------------------------------------------------------
@@ -235,7 +257,7 @@ function renderFixtures() {
 
     // Live matches get quick +1 steppers for instant live score logging
     const liveSteppers = m.status === 'LIVE' ? `
-      <div class="flex items-center justify-center gap-3 mt-1.5">
+      <div class="admin-only flex items-center justify-center gap-3 mt-1.5">
         <button onclick="bumpScore('${esc(m.id)}','home',1)" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
         <button onclick="bumpScore('${esc(m.id)}','away',1)" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
       </div>` : '';
@@ -273,7 +295,7 @@ function renderFixtures() {
 
         ${scorers}
 
-        <div class="mt-3 pt-2 border-t border-slate-700/50 flex justify-end gap-2">
+        <div class="admin-only mt-3 pt-2 border-t border-slate-700/50 flex justify-end gap-2">
           <button onclick="editMatch('${esc(m.id)}')" class="px-2.5 py-1 text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded text-xs flex items-center gap-1 transition">
             <i data-lucide="edit-3" class="w-3 h-3"></i> ${esc(t('editAction'))}
           </button>
@@ -286,12 +308,23 @@ function renderFixtures() {
 }
 
 /** Quick live-score update from fixture cards (used for LIVE matches). */
-function bumpScore(matchId, side, delta) {
+async function bumpScore(matchId, side, delta) {
   const match = appState.matches.find(m => m.id === matchId);
   if (!match) return;
+
   const key = side === 'home' ? 'homeScore' : 'awayScore';
-  match[key] = Math.max(0, toInt(match[key]) + delta);
-  saveState();
+  const previous = toInt(match[key]);
+  match[key] = Math.max(0, previous + delta);
+
+  try {
+    await dbSaveMatch(match);
+    await refreshData();
+    renderApp();
+  } catch (e) {
+    match[key] = previous;
+    renderApp();
+    alert(t('alertSaveFailed'));
+  }
 }
 
 /* ---------------------------------------------------------------
@@ -329,7 +362,7 @@ function renderTeamsView() {
               <p class="text-xs text-slate-400">${totalSquad} ${esc(t('lblPlayers'))} • ${esc(team.code)}</p>
             </div>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
+          <div class="admin-only flex items-center gap-2 shrink-0">
             <button onclick="openPlayerModal('${esc(team.id)}')" class="px-2.5 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-xs font-medium flex items-center gap-1 transition">
               <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddPlayer'))}
             </button>
@@ -374,8 +407,10 @@ function renderTeamsView() {
                       </span>
                     </td>
                     <td class="py-2 ltr:text-right rtl:text-left whitespace-nowrap">
-                      <button onclick="editPlayer('${esc(p.id)}')" class="text-slate-500 hover:text-white p-1"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
-                      <button onclick="deletePlayer('${esc(p.id)}')" class="text-slate-500 hover:text-rose-400 p-1"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                      <span class="admin-only">
+                        <button onclick="editPlayer('${esc(p.id)}')" class="text-slate-500 hover:text-white p-1"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+                        <button onclick="deletePlayer('${esc(p.id)}')" class="text-slate-500 hover:text-rose-400 p-1"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                      </span>
                     </td>
                   </tr>`).join('')}
               </tbody>
@@ -456,7 +491,7 @@ function editMatch(matchId) {
   openMatchModal(matchId);
 }
 
-function saveMatch(e) {
+async function saveMatch(e) {
   e.preventDefault();
   const id = document.getElementById('match-id').value;
   const homeId = document.getElementById('match-home-team').value;
@@ -491,21 +526,25 @@ function saveMatch(e) {
     scorersText: document.getElementById('match-scorers-text').value.trim()
   };
 
-  if (id) {
-    const index = appState.matches.findIndex(m => m.id === id);
-    if (index !== -1) appState.matches[index] = matchData;
-  } else {
-    appState.matches.push(matchData);
+  try {
+    await dbSaveMatch(matchData);
+    closeModal('modal-match');
+    await refreshData();
+    renderApp();
+  } catch (err) {
+    alert(t('alertSaveFailed'));
   }
-
-  saveState();
-  closeModal('modal-match');
 }
 
-function deleteMatch(matchId) {
+async function deleteMatch(matchId) {
   if (!confirm(t('confirmDeleteMatch'))) return;
-  appState.matches = appState.matches.filter(m => m.id !== matchId);
-  saveState();
+  try {
+    await dbDeleteMatch(matchId);
+    await refreshData();
+    renderApp();
+  } catch (err) {
+    alert(t('alertSaveFailed'));
+  }
 }
 
 /* ---------------------------------------------------------------
@@ -532,7 +571,7 @@ function editTeam(teamId) {
   openModal('modal-team');
 }
 
-function saveTeam(e) {
+async function saveTeam(e) {
   e.preventDefault();
   const id = document.getElementById('team-id').value;
   const teamData = {
@@ -542,23 +581,26 @@ function saveTeam(e) {
     color: document.getElementById('team-color').value
   };
 
-  if (id) {
-    const index = appState.teams.findIndex(t => t.id === id);
-    if (index !== -1) appState.teams[index] = teamData;
-  } else {
-    appState.teams.push(teamData);
+  try {
+    await dbSaveTeam(teamData);
+    closeModal('modal-team');
+    await refreshData();
+    renderApp();
+  } catch (err) {
+    alert(t('alertSaveFailed'));
   }
-
-  saveState();
-  closeModal('modal-team');
 }
 
-function deleteTeam(teamId) {
+async function deleteTeam(teamId) {
   if (!confirm(t('confirmDeleteTeam'))) return;
-  appState.teams = appState.teams.filter(t => t.id !== teamId);
-  appState.players = appState.players.filter(p => p.teamId !== teamId);
-  appState.matches = appState.matches.filter(m => m.homeId !== teamId && m.awayId !== teamId);
-  saveState();
+  try {
+    // Players and matches are removed by ON DELETE CASCADE in Postgres
+    await dbDeleteTeam(teamId);
+    await refreshData();
+    renderApp();
+  } catch (err) {
+    alert(t('alertSaveFailed'));
+  }
 }
 
 /* ---------------------------------------------------------------
@@ -593,7 +635,7 @@ function editPlayer(playerId) {
   openModal('modal-player');
 }
 
-function savePlayer(e) {
+async function savePlayer(e) {
   e.preventDefault();
   const id = document.getElementById('player-id').value;
   const playerData = {
@@ -607,21 +649,25 @@ function savePlayer(e) {
     red: toInt(document.getElementById('player-reds').value)
   };
 
-  if (id) {
-    const index = appState.players.findIndex(p => p.id === id);
-    if (index !== -1) appState.players[index] = playerData;
-  } else {
-    appState.players.push(playerData);
+  try {
+    await dbSavePlayer(playerData);
+    closeModal('modal-player');
+    await refreshData();
+    renderApp();
+  } catch (err) {
+    alert(t('alertSaveFailed'));
   }
-
-  saveState();
-  closeModal('modal-player');
 }
 
-function deletePlayer(playerId) {
+async function deletePlayer(playerId) {
   if (!confirm(t('confirmDeletePlayer'))) return;
-  appState.players = appState.players.filter(p => p.id !== playerId);
-  saveState();
+  try {
+    await dbDeletePlayer(playerId);
+    await refreshData();
+    renderApp();
+  } catch (err) {
+    alert(t('alertSaveFailed'));
+  }
 }
 
 /* ---------------------------------------------------------------
@@ -654,20 +700,51 @@ function exportData() {
   anchor.remove();
 }
 
+/**
+ * Validate an imported JSON payload before sending it to Postgres.
+ * Returns a normalized copy, or null when the schema/relations are invalid.
+ */
+function validateImport(data) {
+  if (!data || !Array.isArray(data.teams) || !Array.isArray(data.matches)) return null;
+
+  const teams = data.teams;
+  const players = Array.isArray(data.players) ? data.players : [];
+  const matches = data.matches;
+  const ids = new Set();
+
+  for (const team of teams) {
+    if (!team || typeof team.id !== 'string' || !team.id || typeof team.name !== 'string' || !team.name) return null;
+    if (ids.has(team.id)) return null;
+    ids.add(team.id);
+  }
+
+  for (const player of players) {
+    if (!player || typeof player.id !== 'string' || !player.id) return null;
+    if (!ids.has(player.teamId) || typeof player.name !== 'string' || !player.name) return null;
+  }
+
+  for (const match of matches) {
+    if (!match || typeof match.id !== 'string' || !match.id) return null;
+    if (!ids.has(match.homeId) || !ids.has(match.awayId) || match.homeId === match.awayId) return null;
+  }
+
+  return normalizeState(data);
+}
+
 function importData(event) {
   const file = event.target.files[0];
   event.target.value = ''; // allow re-importing the same file
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = function (e) {
+  reader.onload = async function (e) {
     try {
-      const imported = JSON.parse(e.target.result);
-      if (!imported || !Array.isArray(imported.teams) || !Array.isArray(imported.matches)) {
-        throw new Error('Invalid schema');
-      }
-      appState = normalizeState(imported);
-      saveState();
+      const imported = validateImport(JSON.parse(e.target.result));
+      if (!imported) throw new Error('Invalid schema');
+
+      await dbReplaceAll(imported);
+      await refreshData();
+      renderApp();
     } catch (err) {
       alert(t('alertImportError'));
     }
@@ -675,18 +752,40 @@ function importData(event) {
   reader.readAsText(file);
 }
 
-function resetData() {
+async function resetData() {
   if (!confirm(t('confirmReset'))) return;
-  appState = JSON.parse(JSON.stringify(DEFAULT_DATA));
-  saveState();
+
+  try {
+    await dbReplaceAll(normalizeState(JSON.parse(JSON.stringify(DEFAULT_DATA))));
+    await refreshData();
+    renderApp();
+  } catch (err) {
+    alert(t('alertSaveFailed'));
+  }
 }
 
 /* ---------------------------------------------------------------
  * 11. INITIALIZATION
  * --------------------------------------------------------------- */
-window.addEventListener('DOMContentLoaded', function () {
+window.addEventListener('DOMContentLoaded', async function () {
   applyLanguage();
   switchTab('standings');
   renderApp();
-  initAuth();
+
+  initBackend();
+
+  if (!BACKEND_READY) {
+    // Configuration missing, malformed, or the Supabase CDN failed to load.
+    console.warn('KickOff Division: running in read-only demo mode (Supabase not configured).');
+  } else {
+    try {
+      await refreshData();
+      hideDataError();
+    } catch (err) {
+      showDataError();
+    }
+    renderApp();
+  }
+
+  await initAuth();
 });

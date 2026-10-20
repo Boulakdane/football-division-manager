@@ -13,6 +13,9 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
+  <!-- Supabase JS client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <!-- Fonts: Inter (EN/FR) + Cairo (AR) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,87 +24,20 @@
   <!-- App styles -->
   <link rel="stylesheet" href="css/styles.css">
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200 locked">
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200">
 
-  <!-- LOGIN / FIRST-RUN PASSWORD GATE -->
-  <div id="auth-screen" class="fixed inset-0 z-[60] bg-slate-950 overflow-y-auto flex items-center justify-center p-4">
-    <div class="w-full max-w-md py-8">
+  <!-- GLOBAL BANNERS -->
+  <div id="demo-banner" class="hidden bg-amber-500/10 border-b border-amber-500/30 text-amber-300 text-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-start sm:items-center gap-2">
+      <i data-lucide="info" class="w-4 h-4 shrink-0 mt-0.5 sm:mt-0"></i>
+      <p class="leading-relaxed" data-i18n="demoBanner">Demo mode — data is read-only.</p>
+    </div>
+  </div>
 
-      <!-- Brand -->
-      <div class="flex items-center justify-center gap-3 mb-6">
-        <div class="p-2.5 bg-pitch-600 rounded-xl text-white shadow-lg shadow-pitch-600/30">
-          <i data-lucide="trophy" class="w-7 h-7"></i>
-        </div>
-        <div>
-          <h1 class="text-xl font-bold text-white" data-i18n="appTitle">KickOff Division</h1>
-          <p class="text-xs text-slate-400" data-i18n="appSubtitle">Local Football League Management</p>
-        </div>
-      </div>
-
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-
-        <!-- Language (available before login) -->
-        <div class="flex justify-end mb-1">
-          <select id="auth-language-select" onchange="changeLanguage(this.value)" aria-label="Language"
-                  class="lang-select bg-slate-800 text-slate-200 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-pitch-500 cursor-pointer">
-            <option value="en">🇬🇧 English</option>
-            <option value="fr">🇫🇷 Français</option>
-            <option value="ar">🇩🇿 العربية</option>
-          </select>
-        </div>
-
-        <!-- FIRST RUN: create a password -->
-        <div id="auth-setup-panel">
-          <div class="mb-4">
-            <h2 class="text-lg font-bold text-white" data-i18n="authSetupTitle">Create your admin password</h2>
-            <p class="text-xs text-slate-400 mt-1" data-i18n="authSetupSubtitle">Protect this league dashboard on this device.</p>
-          </div>
-
-          <form id="form-auth-setup" onsubmit="handleSetup(event)" class="space-y-3">
-            <div>
-              <label class="text-xs font-medium text-slate-400 block mb-1" for="setup-password" data-i18n="authPassword">Password</label>
-              <input type="password" id="setup-password" required minlength="6" autocomplete="new-password"
-                     class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
-            </div>
-            <div>
-              <label class="text-xs font-medium text-slate-400 block mb-1" for="setup-confirm" data-i18n="authConfirmPassword">Confirm password</label>
-              <input type="password" id="setup-confirm" required minlength="6" autocomplete="new-password"
-                     class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
-            </div>
-            <p id="setup-error" class="hidden text-xs text-rose-400"></p>
-            <button type="submit" class="w-full px-4 py-2.5 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-60 text-white rounded-lg text-sm font-semibold shadow-md flex items-center justify-center gap-2 transition">
-              <i data-lucide="lock" class="w-4 h-4"></i>
-              <span data-i18n="authCreatePassword">Create password</span>
-            </button>
-          </form>
-
-          <p class="text-[11px] text-slate-500 mt-3 leading-relaxed" data-i18n="authSetupWarning">Note it down — there is no recovery.</p>
-        </div>
-
-        <!-- RETURNING USER: log in -->
-        <div id="auth-login-panel" class="hidden">
-          <div class="mb-4">
-            <h2 class="text-lg font-bold text-white" data-i18n="authLoginTitle">Welcome back</h2>
-            <p class="text-xs text-slate-400 mt-1" data-i18n="authLoginSubtitle">Enter your password to open the league dashboard.</p>
-          </div>
-
-          <form id="form-auth-login" onsubmit="handleLogin(event)" class="space-y-3">
-            <div>
-              <label class="text-xs font-medium text-slate-400 block mb-1" for="login-password" data-i18n="authPassword">Password</label>
-              <input type="password" id="login-password" required autocomplete="current-password"
-                     class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
-            </div>
-            <p id="login-error" class="hidden text-xs text-rose-400"></p>
-            <button type="submit" class="w-full px-4 py-2.5 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-60 text-white rounded-lg text-sm font-semibold shadow-md flex items-center justify-center gap-2 transition">
-              <i data-lucide="log-in" class="w-4 h-4"></i>
-              <span data-i18n="authLoginBtn">Log in</span>
-            </button>
-          </form>
-        </div>
-
-      </div>
-
-      <p class="text-center text-[11px] text-slate-500 mt-4 leading-relaxed" data-i18n="authHint">Local gate only — data stays in this browser.</p>
+  <div id="data-error" class="hidden bg-rose-500/10 border-b border-rose-500/30 text-rose-300 text-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-3">
+      <p data-i18n="dataErrorBanner">Could not load data from the server.</p>
+      <button onclick="retryLoad()" class="px-2.5 py-1 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 rounded text-[11px] font-semibold" data-i18n="retryBtn">Retry</button>
     </div>
   </div>
 
@@ -118,7 +54,7 @@
           <div>
             <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
               <span data-i18n="appTitle">KickOff Division</span>
-              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v2.0</span>
+              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.0</span>
             </h1>
             <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Football League Management</p>
           </div>
@@ -150,8 +86,18 @@
             <option value="ar">🇩🇿 العربية</option>
           </select>
 
+          <!-- Auth controls -->
+          <button id="btn-admin-login" onclick="openLoginModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+            <i data-lucide="shield-check" class="w-4 h-4"></i>
+            <span class="hidden sm:inline" data-i18n="adminLogin">Admin Login</span>
+          </button>
+          <span id="role-badge" class="hidden"></span>
+          <button id="btn-logout" onclick="logout()" class="hidden p-2 text-slate-400 hover:text-rose-400 bg-slate-800 hover:bg-slate-700 rounded-lg transition" title="Log out">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+
           <!-- Quick Add Match Button -->
-          <button onclick="openMatchModal()" class="px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
+          <button onclick="openMatchModal()" class="admin-only px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
             <i data-lucide="plus-circle" class="w-4 h-4"></i>
             <span class="hidden sm:inline" data-i18n="btnLogMatch">Log Match</span>
           </button>
@@ -162,7 +108,7 @@
           </button>
 
           <!-- Data Settings Dropdown -->
-          <div class="relative">
+          <div class="relative admin-only">
             <button onclick="toggleDataMenu(event)" class="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition" aria-label="Data settings">
               <i data-lucide="settings" class="w-4 h-4"></i>
             </button>
@@ -263,7 +209,7 @@
           <p class="text-xs text-slate-400" data-i18n="subtitleStandings">Real-time standings, recalculated automatically from every logged result</p>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="openTeamModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
+          <button onclick="openTeamModal()" class="admin-only px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i> <span data-i18n="btnAddTeam">Add New Team</span>
           </button>
         </div>
@@ -312,7 +258,7 @@
             <option value="LIVE" data-i18n="optLiveNow">Live Now</option>
           </select>
 
-          <button onclick="openMatchModal()" class="px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
+          <button onclick="openMatchModal()" class="admin-only px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i> <span data-i18n="btnLogMatch">Log Match</span>
           </button>
         </div>
@@ -331,7 +277,7 @@
         <div class="flex items-center gap-2">
           <input type="text" id="player-search" oninput="renderTeamsView()" data-i18n-ph="searchPlaceholder" placeholder="Search players or teams..."
                  class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-3 py-1.5 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-pitch-500 w-48">
-          <button onclick="openTeamModal()" class="px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
+          <button onclick="openTeamModal()" class="admin-only px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i> <span data-i18n="btnAddTeam">Add Team</span>
           </button>
         </div>
@@ -552,6 +498,72 @@
     </div>
   </div>
 
+  <!-- MODAL: ADMIN LOGIN / SIGNUP -->
+  <div id="modal-login" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="shield-check" class="w-4 h-4 text-pitch-400"></i>
+          <span data-i18n="adminLogin">Admin Login</span>
+        </h3>
+        <button onclick="closeModal('modal-login')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <!-- LOGIN -->
+      <div id="login-panel">
+        <p class="text-xs text-slate-400 mb-3" data-i18n="authLoginSubtitle">Sign in to manage the league.</p>
+        <form id="form-login" onsubmit="handleLogin(event)" class="space-y-3">
+          <div>
+            <label class="text-xs font-medium text-slate-400 block mb-1" for="login-email" data-i18n="authEmail">Email</label>
+            <input type="email" id="login-email" required autocomplete="email"
+                   class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-400 block mb-1" for="login-password" data-i18n="authPassword">Password</label>
+            <input type="password" id="login-password" required autocomplete="current-password"
+                   class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
+          </div>
+          <p id="login-error" class="hidden text-xs text-rose-400"></p>
+          <button type="submit" class="w-full px-4 py-2.5 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-60 text-white rounded-lg text-sm font-semibold shadow-md flex items-center justify-center gap-2 transition">
+            <i data-lucide="log-in" class="w-4 h-4"></i>
+            <span data-i18n="authLoginBtn">Log in</span>
+          </button>
+        </form>
+        <p class="text-[11px] text-slate-500 mt-3 leading-relaxed" data-i18n="authRolesNote">Only admins can edit.</p>
+        <button onclick="toggleSignup(event)" class="text-[11px] text-pitch-400 hover:text-pitch-300 mt-2 font-medium" data-i18n="authNoAccount">No account? Create one</button>
+      </div>
+
+      <!-- SIGNUP -->
+      <div id="signup-panel" class="hidden">
+        <p class="text-xs text-slate-400 mb-3" data-i18n="authSignupSubtitle">New accounts are read-only until promoted.</p>
+        <form id="form-signup" onsubmit="handleSignup(event)" class="space-y-3">
+          <div>
+            <label class="text-xs font-medium text-slate-400 block mb-1" for="signup-email" data-i18n="authEmail">Email</label>
+            <input type="email" id="signup-email" required autocomplete="email"
+                   class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-400 block mb-1" for="signup-password" data-i18n="authPassword">Password</label>
+            <input type="password" id="signup-password" required minlength="6" autocomplete="new-password"
+                   class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-400 block mb-1" for="signup-confirm" data-i18n="authConfirmPassword">Confirm password</label>
+            <input type="password" id="signup-confirm" required minlength="6" autocomplete="new-password"
+                   class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
+          </div>
+          <p id="signup-error" class="hidden text-xs text-rose-400"></p>
+          <p id="signup-success" class="hidden text-xs text-emerald-400"></p>
+          <button type="submit" class="w-full px-4 py-2.5 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-60 text-white rounded-lg text-sm font-semibold shadow-md flex items-center justify-center gap-2 transition">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            <span data-i18n="authSignupBtn">Create account</span>
+          </button>
+        </form>
+        <button onclick="toggleSignup(event)" class="text-[11px] text-pitch-400 hover:text-pitch-300 mt-3 font-medium" data-i18n="authHaveAccount">Already have an account? Log in</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: CHANGE PASSWORD -->
   <div id="modal-password" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -595,6 +607,8 @@
   <!-- Application scripts (deferred, loaded in dependency order) -->
   <script src="js/i18n.js" defer></script>
   <script src="js/store.js" defer></script>
+  <script src="js/config.js" defer></script>
+  <script src="js/backend.js" defer></script>
   <script src="js/auth.js" defer></script>
   <script src="js/app.js" defer></script>
 </body>
