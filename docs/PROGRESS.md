@@ -117,6 +117,7 @@ Local CSV / JSON tools
 | CSV round trip with `data/examples` | Stable; 10 events preserved |
 | `npm audit --omit=dev` | 0 vulnerabilities |
 | Lighthouse (local, mocked events) | Accessibility 100, Best Practices 100, SEO 100 |
+| Lighthouse (production, pre-migration) | Accessibility 100, Best Practices 100, SEO 100 |
 | Browser smoke test | 9 fixtures render; no console errors after CDN/SRI load |
 | SRI load test | Lucide and Supabase JS loaded with integrity checks |
 | Inline-handler XSS test | Malicious ID rendered as a string literal; no execution |
