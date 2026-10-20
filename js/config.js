@@ -2,7 +2,7 @@
    KickOff Division — backend configuration
    1. Create a free project at https://supabase.com
    2. Run supabase/schema.sql in the SQL Editor
-   3. Copy Settings → API → Project URL and anon public key below
+   3. Copy Settings → API → Project URL and anon/publishable key below
    The anon key is safe to publish: Row Level Security protects writes.
    --------------------------------------------------------------- */
 

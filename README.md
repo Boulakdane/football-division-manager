@@ -62,7 +62,8 @@ Scripts are loaded in dependency order in `index.html`:
 In Supabase open **Project Settings → API** and copy:
 
 - **Project URL** (e.g. `https://abcdefghijkl.supabase.co`)
-- **anon public** key
+- **anon public** key (or **Publishable key** on newer dashboards, starting with
+  `sb_publishable_...`)
 
 Put both into [`js/config.js`](js/config.js):
 
@@ -73,8 +74,9 @@ window.KICKOFF_CONFIG = {
 };
 ```
 
-> The anon key is **meant to be public** — it only identifies the project. Row Level
-> Security is what protects your data. Never put the `service_role` key in this file.
+> The anon/publishable key is **meant to be public** — it only identifies the project.
+> Row Level Security is what protects your data. Never put the `service_role` or
+> `secret` key in this file.
 
 ### 3. Create your admin account
 
