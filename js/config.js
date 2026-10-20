@@ -22,9 +22,8 @@
   };
 
   const DEVELOPMENT = {
-    // Fill these after creating the development Supabase project.
-    SUPABASE_URL: '',
-    SUPABASE_ANON_KEY: ''
+    SUPABASE_URL: 'https://dcpdzyieicvtnknqlhyh.supabase.co',
+    SUPABASE_ANON_KEY: 'sb_publishable_6Nv9e0wf1BYrjHll5cSeKw_dSwYWoQB'
   };
 
   const devConfigured = Boolean(DEVELOPMENT.SUPABASE_URL && DEVELOPMENT.SUPABASE_ANON_KEY);
