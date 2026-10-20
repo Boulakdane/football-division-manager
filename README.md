@@ -22,6 +22,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
   non-admins even if they tamper with the page or call the API directly.
 - **Shared data** — every visitor sees the same league, from any device.
 - **JSON backup** — export/import the full dataset from the admin settings menu.
+- **CSV tools** — export the current season's standings, fixtures and squads, or
+  bulk-build a league from four CSV files.
 - **Live score shortcuts** — matches in `LIVE` state get `+` buttons on the fixture card.
 - **Read-only demo mode** — until Supabase is configured, the site shows the sample
   league with all write controls hidden and a banner explaining how to connect it.

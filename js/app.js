@@ -1012,6 +1012,116 @@ function exportData() {
   anchor.remove();
 }
 
+/* ---------- CSV exports (current season) ---------- */
+
+function csvEscape(value) {
+  const text = String(value == null ? '' : value);
+  return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+}
+
+function downloadCsv(filename, rows) {
+  const csv = '\uFEFF' + rows.map(row => row.map(csvEscape).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function csvSeasonSuffix() {
+  const season = viewedSeason();
+  const name = season && season.name ? season.name.replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '') : '';
+  if (name) return name;
+  return season && season.id ? String(season.id).replace(/[^\w-]+/g, '_') : 'season';
+}
+
+function buildStandingsCsvRows() {
+  const season = viewedSeason();
+  const seasonName = season ? season.name : '';
+  const rows = calculateStandings();
+  return [
+    [t('seasonLabel'), t('thPos'), t('thClub'), t('thMP'), t('thW'), t('thD'), t('thL'), t('thGF'), t('thGA'), t('thGD'), t('thPts'), t('thForm')],
+    ...rows.map((row, index) => [
+      seasonName,
+      index + 1,
+      row.team.name,
+      row.mp,
+      row.w,
+      row.d,
+      row.l,
+      row.gf,
+      row.ga,
+      row.gd,
+      row.pts,
+      row.form.join(' ')
+    ])
+  ];
+}
+
+function exportStandingsCsv() {
+  downloadCsv(`kickoff_standings_${csvSeasonSuffix()}.csv`, buildStandingsCsvRows());
+}
+
+function buildFixturesCsvRows() {
+  const season = viewedSeason();
+  const seasonName = season ? season.name : '';
+  const teamName = id => (getTeam(id) || {}).name || id;
+  const matches = visibleMatches().slice().sort((a, b) =>
+    (a.round - b.round) || (a.datetime || '').localeCompare(b.datetime || '')
+  );
+
+  return [
+    [t('seasonLabel'), t('lblRound'), t('lblDateTime'), t('lblHomeTeam'), t('csvHomeScore'), t('csvAwayScore'), t('lblAwayTeam'), t('lblStatus'), t('lblVenue'), t('csvScorers')],
+    ...matches.map(match => [
+      seasonName,
+      match.round,
+      match.datetime || '',
+      teamName(match.homeId),
+      match.homeScore == null ? 0 : match.homeScore,
+      match.awayScore == null ? 0 : match.awayScore,
+      teamName(match.awayId),
+      match.status,
+      match.venue || '',
+      match.scorersText || ''
+    ])
+  ];
+}
+
+function exportFixturesCsv() {
+  downloadCsv(`kickoff_fixtures_${csvSeasonSuffix()}.csv`, buildFixturesCsvRows());
+}
+
+function buildSquadsCsvRows() {
+  const season = viewedSeason();
+  const seasonName = season ? season.name : '';
+  const teamName = id => (getTeam(id) || {}).name || id;
+  const players = appState.players.slice().sort((a, b) =>
+    teamName(a.teamId).localeCompare(teamName(b.teamId)) || (a.num || 0) - (b.num || 0)
+  );
+
+  return [
+    [t('seasonLabel'), t('csvTeam'), t('thPlayer'), t('lblPosition'), t('lblJerseyNum'), t('lblGoals'), t('lblYellowCards'), t('lblRedCards')],
+    ...players.map(player => [
+      seasonName,
+      teamName(player.teamId),
+      player.name,
+      player.pos,
+      player.num,
+      player.goals,
+      player.yellow,
+      player.red
+    ])
+  ];
+}
+
+function exportSquadsCsv() {
+  downloadCsv(`kickoff_squads_${csvSeasonSuffix()}.csv`, buildSquadsCsvRows());
+}
+
 /**
  * Validate an imported JSON payload before sending it to Postgres.
  * Returns a normalized copy, or null when the schema/relations are invalid.

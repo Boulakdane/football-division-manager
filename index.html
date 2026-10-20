@@ -130,6 +130,18 @@
               <button onclick="exportData()" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
                 <i data-lucide="download" class="w-3.5 h-3.5"></i> <span data-i18n="btnExport">Export Backup (JSON)</span>
               </button>
+
+              <button onclick="exportStandingsCsv()" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
+                <i data-lucide="table-2" class="w-3.5 h-3.5"></i> <span data-i18n="btnExportStandingsCsv">Standings CSV</span>
+              </button>
+
+              <button onclick="exportFixturesCsv()" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
+                <i data-lucide="calendar-days" class="w-3.5 h-3.5"></i> <span data-i18n="btnExportFixturesCsv">Fixtures CSV</span>
+              </button>
+
+              <button onclick="exportSquadsCsv()" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
+                <i data-lucide="users" class="w-3.5 h-3.5"></i> <span data-i18n="btnExportSquadsCsv">Squads CSV</span>
+              </button>
               <label class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2 cursor-pointer">
                 <i data-lucide="upload" class="w-3.5 h-3.5"></i> <span data-i18n="btnImport">Import Backup (JSON)</span>
                 <input type="file" id="import-file" accept=".json,application/json" class="hidden" onchange="importData(event)">
