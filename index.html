@@ -338,12 +338,12 @@
 
   <!-- FOOTER -->
   <footer class="bg-slate-950 border-t border-slate-800/80 py-4 mt-auto">
-    <div class="max-w-7xl mx-auto px-4 text-center sm:flex sm:justify-between sm:items-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 text-center sm:flex sm:justify-between sm:items-center text-xs text-slate-400">
       <p data-i18n="footerText">© KickOff Division — Zero-server architecture, 100% free hosting on GitHub Pages</p>
       <div class="mt-2 sm:mt-0 flex justify-center space-x-4 rtl:space-x-reverse">
         <button onclick="openGuideModal()" class="hover:text-slate-300 transition" data-i18n="btnFreeHosting">Free Hosting Guide</button>
-        <span>•</span>
-        <button onclick="resetData()" class="hover:text-slate-300 transition" data-i18n="btnReset">Reset Sample Data</button>
+        <span class="admin-only">•</span>
+        <button onclick="resetData()" class="admin-only hover:text-slate-300 transition" data-i18n="btnReset">Reset Sample Data</button>
       </div>
     </div>
   </footer>
@@ -398,7 +398,7 @@
               <label class="text-[10px] uppercase font-bold text-slate-400 block mb-1" data-i18n="lblScore">Score</label>
               <div class="flex items-center justify-center gap-1">
                 <input type="number" id="match-home-score" min="0" value="0" class="w-10 text-center bg-slate-900 border border-slate-700 rounded py-1 text-sm font-bold text-white">
-                <span class="text-slate-500 font-bold">-</span>
+                <span class="text-slate-400 font-bold">-</span>
                 <input type="number" id="match-away-score" min="0" value="0" class="w-10 text-center bg-slate-900 border border-slate-700 rounded py-1 text-sm font-bold text-white">
               </div>
             </div>
@@ -621,7 +621,7 @@
             <span data-i18n="authLoginBtn">Log in</span>
           </button>
         </form>
-        <p class="text-[11px] text-slate-500 mt-3 leading-relaxed" data-i18n="authRolesNote">Only admins can edit.</p>
+        <p class="text-[11px] text-slate-400 mt-3 leading-relaxed" data-i18n="authRolesNote">Only admins can edit.</p>
         <button id="btn-show-signup" onclick="toggleSignup(event)" class="text-[11px] text-pitch-400 hover:text-pitch-300 mt-2 font-medium" data-i18n="authNoAccount">No account? Create one</button>
         <button type="button" onclick="resendConfirmation(event)" class="block text-[11px] text-slate-400 hover:text-pitch-300 mt-2 font-medium" data-i18n="authResend">Didn't get the confirmation email? Resend it</button>
       </div>

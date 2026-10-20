@@ -297,7 +297,7 @@ function renderStandings() {
   const rows = calculateStandings();
 
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-slate-500">${esc(t('noTeamsFound'))}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-slate-400">${esc(t('noTeamsFound'))}</td></tr>`;
     return;
   }
 
@@ -320,7 +320,7 @@ function renderStandings() {
           <span class="flex items-center gap-2.5">
             <span class="w-3 h-3 rounded-full shrink-0" style="background-color:${esc(s.team.color || '#22c55e')}"></span>
             <span class="truncate max-w-[140px] sm:max-w-none">${esc(s.team.name)}</span>
-            <span class="text-[10px] text-slate-500 font-normal uppercase hidden sm:inline">(${esc(s.team.code)})</span>
+            <span class="text-[10px] text-slate-400 font-normal uppercase hidden sm:inline">(${esc(s.team.code)})</span>
           </span>
         </td>
         <td class="py-3 px-3 text-center text-slate-300 font-medium">${s.mp}</td>
@@ -391,7 +391,7 @@ function renderFixtures() {
       : '—';
 
     const scoreBlock = m.status === 'SCHEDULED'
-      ? `<span class="text-xs font-bold text-slate-500 bg-slate-900 px-2 py-1 rounded">${esc(t('lblVs'))}</span>`
+      ? `<span class="text-xs font-bold text-slate-400 bg-slate-900 px-2 py-1 rounded">${esc(t('lblVs'))}</span>`
       : `<span class="text-xl font-extrabold text-white tracking-wider bg-slate-900/80 px-2.5 py-1 rounded border border-slate-700">${toInt(m.homeScore)} - ${toInt(m.awayScore)}</span>`;
 
     // Live matches get quick +1 steppers for instant live score logging
@@ -525,7 +525,7 @@ function renderTeamsView() {
 
         <div class="p-3 flex-1 overflow-x-auto">
           ${squad.length === 0 ? `
-            <p class="text-xs text-slate-500 text-center py-4">${esc(t('noPlayersFound'))}</p>
+            <p class="text-xs text-slate-400 text-center py-4">${esc(t('noPlayersFound'))}</p>
           ` : `
             <table class="w-full text-left rtl:text-right text-xs">
               <thead class="text-slate-400 border-b border-slate-700/60">
