@@ -18,3 +18,6 @@ dist/
 
 # Local data backups (may contain private league data)
 backups/
+
+# Working CSV data (data/examples/ is kept as a template)
+data/*.csv

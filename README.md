@@ -41,6 +41,11 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── backend.js             # Supabase client, reads, writes, row mapping
 │   ├── auth.js                # Login/signup, session, role-based UI
 │   └── app.js                 # Rendering, standings math, modals, import/export
+├── data/
+│   ├── README.md              # CSV column reference and workflow
+│   └── examples/              # Template seasons/teams/players/matches CSV files
+├── tools/
+│   └── csv-to-backup.js       # Validate CSVs and build an importable JSON backup
 └── supabase/
     ├── schema.sql             # Tables, RLS policies, trigger and seed data
     └── seasons-migration.sql  # Upgrade an existing database to seasons
@@ -233,6 +238,21 @@ Then open <http://localhost:8000>.
 
 > Opening `index.html` directly via `file://` also works in most browsers, but a local
 > server matches GitHub Pages behavior more closely.
+
+## Bulk data entry (CSV)
+
+For a full league, editing four CSV files is faster than entering every fixture in the
+browser. Copy the templates from [`data/examples/`](data/examples), edit the copies in
+`data/`, then run:
+
+```powershell
+node tools/csv-to-backup.js
+```
+
+This validates the data and writes `backups/kickoff-import-YYYY-MM-DD.json`, which you
+import from **Settings → Import Backup (JSON)**. See [`data/README.md`](data/README.md)
+for the column reference. Test the import in the development project first — importing
+replaces all teams, players, seasons and matches in the connected database.
 
 ## Deploy to GitHub Pages (free)
 

@@ -1,0 +1,4 @@
+id,seasonId,round,homeId,awayId,homeScore,awayScore,status,datetime,venue,scorersText
+m1,s1,1,t1,t2,3,1,FINISHED,2026-10-03T15:00,Main Field - Pitch 1,"Carlos Ramos (2), David Silva (1) - Ethan Hunt (1)"
+m2,s1,1,t3,t4,2,2,FINISHED,2026-10-03T17:30,Main Field - Pitch 2,"Leo Mendes (2) - John Terry (1), K. Diaz (1)"
+m3,s1,1,t5,t6,1,0,FINISHED,2026-10-04T16:00,Community Sports Complex,Omar Belaid (1)
