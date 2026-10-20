@@ -2,7 +2,7 @@
 
 - **Last updated:** 2026-10-20
 - **Working-tree version:** `v3.4.3`
-- **Deployed version:** `91fd32e` on `main`, also tagged `prod`
+- **Deployed version:** current `main` (tagged `prod`; latest code release `91fd32e`)
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
