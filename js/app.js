@@ -25,6 +25,22 @@ function jsString(value) {
   return esc(JSON.stringify(String(value == null ? '' : value)));
 }
 
+/** Pick black or white text for a team colour with WCAG-friendly contrast. */
+function contrastTextColor(color) {
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(color || '').trim());
+  if (!match) return '#ffffff';
+  let hex = match[1];
+  if (hex.length === 3) hex = hex.split('').map(char => char + char).join('');
+  const channel = index => parseInt(hex.slice(index, index + 2), 16) / 255;
+  const linear = value => value <= 0.03928
+    ? value / 12.92
+    : Math.pow((value + 0.055) / 1.055, 2.4);
+  const luminance = 0.2126 * linear(channel(0)) +
+    0.7152 * linear(channel(2)) +
+    0.0722 * linear(channel(4));
+  return luminance > 0.179 ? '#020617' : '#ffffff';
+}
+
 function uid(prefix) {
   return prefix + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 }
@@ -544,7 +560,7 @@ function renderFixtures() {
 
         <div class="grid grid-cols-7 items-center gap-2 my-2 text-center">
           <div class="col-span-3 flex flex-col items-center">
-            <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white mb-1 shadow" style="background-color:${esc(home.color || '#334155')}">${esc(home.code || 'H')}</span>
+            <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 shadow" style="background-color:${esc(home.color || '#334155')};color:${esc(contrastTextColor(home.color || '#334155'))}">${esc(home.code || 'H')}</span>
             <span class="font-semibold text-sm text-white truncate max-w-full">${esc(home.name)}</span>
           </div>
           <div class="col-span-1 flex flex-col items-center justify-center">
@@ -552,7 +568,7 @@ function renderFixtures() {
             ${liveSteppers}
           </div>
           <div class="col-span-3 flex flex-col items-center">
-            <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white mb-1 shadow" style="background-color:${esc(away.color || '#334155')}">${esc(away.code || 'A')}</span>
+            <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 shadow" style="background-color:${esc(away.color || '#334155')};color:${esc(contrastTextColor(away.color || '#334155'))}">${esc(away.code || 'A')}</span>
             <span class="font-semibold text-sm text-white truncate max-w-full">${esc(away.name)}</span>
           </div>
         </div>
