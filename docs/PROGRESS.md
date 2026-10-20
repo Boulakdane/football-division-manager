@@ -2,7 +2,7 @@
 
 - **Last updated:** 2026-10-20
 - **Working-tree version:** `v3.4.3`
-- **Deployed version:** the last promoted `main` commit (tracked by the `prod` tag)
+- **Deployed version:** `91fd32e` on `main`, also tagged `prod`
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -21,7 +21,7 @@
 | Production migration | ⛔ Blocked | `supabase/match-events-migration.sql` still needs to run |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable and publicly readable. The next release adds a proper match timeline, but it must not be deployed as “finished” until the database migration has run in both Supabase projects and an admin has tested the RPCs.
+**Bottom line:** the core league manager is usable, publicly readable and the `v3.4.3` code is deployed with a safe legacy fallback. Match events are not live until the database migration has run in both Supabase projects and an admin has tested the RPCs. Do not announce the match-timeline feature as finished before that.
 
 ## 2. Architecture
 
@@ -121,20 +121,23 @@ Local CSV / JSON tools
 | SRI load test | Lucide and Supabase JS loaded with integrity checks |
 | Inline-handler XSS test | Malicious ID rendered as a string literal; no execution |
 | `npm run check:secrets` | No privileged secrets found |
-| Anonymous write rejection | Previously verified; re-run before release |
+| Production deploy | `v3.4.3` live; SRI active; 6 teams and 9 fixtures load |
+| Production anonymous write | `POST /rest/v1/teams` returned `401` / `42501` |
 | Admin RPC success path | Not yet verified with a signed-in admin session |
 
 ## 5. Current blockers and risks
 
-1. **Database migration is not applied.** The development project still reports `matchEvents` unavailable. The app correctly falls back to legacy scorer text and shows the migration notice.
+1. **Database migration is not applied in development or production.** The app correctly falls back to legacy scorer text, logs an expected `404` for `match_events`, and shows the migration notice. The feature must not be announced until the SQL runs.
 2. **Admin RPCs are untested end-to-end.** A signed-in admin must add a goal/card, verify player totals, edit the event and delete the match.
-3. **Current work is uncommitted.** The working tree is dirty; no push, tag or GitHub Pages deployment has happened for this release.
-4. **Real data is not loaded.** The app still contains sample fixtures and players.
-5. **Production and development differ.** For example, `m6` is 1–1 in development but 1–3 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
-6. **Operational gaps.** There is no audit log, MFA, atomic server-side import, automated RLS test suite or automated browser test yet. These are covered in the security and modernization plans.
+3. **Real data is not loaded.** The app still contains sample fixtures and players.
+4. **Production and development differ.** For example, `m6` is 1–1 in development but 1–3 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
+5. **Operational gaps.** There is no audit log, MFA, atomic server-side import, automated RLS test suite or automated browser test yet. These are covered in the security and modernization plans.
 
 ## 6. Release checklist for the match-events release
 
+- [x] Commit the working tree, push `main`, move the `prod` tag and verify GitHub Pages.
+- [x] Confirm `v3.4.3` is live, SRI is active and the public league loads.
+- [x] Re-run the anonymous write rejection test against production (`401` / `42501`).
 - [ ] Run `supabase/match-events-migration.sql` in the **development** project SQL Editor.
 - [ ] Reload the app and confirm the migration notice disappears.
 - [ ] Sign in as a development admin and add one goal and one card to a test match.
@@ -143,18 +146,15 @@ Local CSV / JSON tools
 - [ ] Delete a test match; confirm events and totals are cleaned up.
 - [ ] Repeat the migration and smoke test in **production**.
 - [ ] Export a fresh production JSON backup.
-- [ ] Commit the working tree, push `main`, move the `prod` tag and verify GitHub Pages.
-- [ ] Re-run the anonymous write rejection test against production.
-- [ ] Confirm the live page loads with SRI and no console errors.
+- [ ] Confirm the live page has no unexpected console errors (the `match_events` `404` is expected until migration).
 
 ## 7. Recommended next work
 
 ### P0 — finish this release
 
-- Apply the migration and test the admin RPCs.
-- Commit, push and deploy.
-- Refresh the production backup.
-- Re-run the RLS checks.
+- Apply the migration and test the admin RPCs in development, then production.
+- Refresh the production backup after the admin smoke test.
+- Re-run the RLS checks after the schema change.
 
 ### P1 — data integrity
 
