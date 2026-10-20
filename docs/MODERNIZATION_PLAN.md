@@ -128,6 +128,7 @@ Effort: S = days, M = 1–3 weeks, L = 3–6 weeks.
 - Add idempotency keys to imports and destructive actions.
 - Move standings math into a SQL view/function with configurable tiebreakers.
 - Add `player_season_stats` and `team_registrations` (transfer-aware).
+- Replace team/player cascade deletes with RPCs that reverse event totals or archive history.
 - Add a restore UI for soft-deleted records.
 - Add encrypted backup guidance and a quarterly restore drill.
 - Add statement timeouts and write-volume alerts.

@@ -132,7 +132,8 @@ Local CSV / JSON tools
 2. **Admin RPCs are untested end-to-end.** A signed-in admin must add a goal/card, verify player totals, edit the event and delete the match.
 3. **Real data is not loaded.** The app still contains sample fixtures and players.
 4. **Production and development differ.** For example, `m6` is 1–1 in development but 1–3 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
-5. **Operational gaps.** There is no audit log, MFA, atomic server-side import, automated RLS test suite or automated browser test yet. These are covered in the security and modernization plans.
+5. **Destructive edits still have data-integrity gaps.** Deleting a team cascades its matches and events without reversing other players' aggregate totals; deleting a player removes their historical events; a player transfer leaves old events attached to the former team. Keep a backup and prefer the planned RPC/soft-delete work.
+6. **Operational gaps.** There is no audit log, MFA, atomic server-side import, automated RLS test suite or automated browser test yet. These are covered in the security and modernization plans.
 
 ## 6. Release checklist for the match-events release
 
