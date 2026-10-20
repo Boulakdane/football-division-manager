@@ -15,3 +15,6 @@ desktop.ini
 # Dependencies / build output (not used today, but keeps the repo clean)
 node_modules/
 dist/
+
+# Local data backups (may contain private league data)
+backups/
