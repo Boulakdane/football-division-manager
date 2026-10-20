@@ -254,6 +254,27 @@ async function dbActivateSeason(seasonId) {
   if (error) throw error;
 }
 
+/** Delete an archived season that no longer has any fixtures. Admin only. */
+async function dbDeleteSeason(seasonId) {
+  assertBackend();
+
+  const { count, error: countError } = await db
+    .from('matches')
+    .select('id', { count: 'exact', head: true })
+    .eq('season_id', seasonId);
+  if (countError) throw countError;
+  if (count) throw new Error('Season still has fixtures');
+
+  const { data, error } = await db
+    .from('seasons')
+    .delete()
+    .eq('id', seasonId)
+    .eq('is_active', false)
+    .select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Season cannot be deleted');
+}
+
 /** Replace the whole dataset (used by JSON import and reset). Admin only. */
 async function dbReplaceAll(data) {
   assertBackend();

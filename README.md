@@ -74,9 +74,10 @@ In Supabase open **Project Settings → API** and copy:
 - **anon public** key (or **Publishable key** on newer dashboards, starting with
   `sb_publishable_...`)
 
-Put the project's URL and anon key into the `PRODUCTION` block in
-[`js/config.js`](js/config.js). Leave the `DEVELOPMENT` block empty until you create
-a separate dev project (recommended — see the next section):
+Put your project's URL and anon key into the `PRODUCTION` block in
+[`js/config.js`](js/config.js). This repository is already wired to a production and a
+development project; if you fork it, replace both blocks with your own credentials
+(see the next section):
 
 ```js
 const PRODUCTION = {
@@ -158,8 +159,9 @@ non-admin writes in both projects.
 
 ### Add the development keys
 
-Open [`js/config.js`](js/config.js) and fill the `DEVELOPMENT` block with the second
-project's URL and anon/publishable key:
+The checked-in `DEVELOPMENT` block already points at the original dev project. If you
+are setting up your own copy, replace it with the second project's URL and
+anon/publishable key:
 
 ```js
 const DEVELOPMENT = {
@@ -202,6 +204,7 @@ Logging into the dev admin does not log you into production.
 | View standings, fixtures, squads | ✅ | ✅ | ✅ |
 | Add / edit / delete teams, players, matches | ❌ | ❌ | ✅ |
 | Create seasons / switch the active season | ❌ | ❌ | ✅ |
+| Delete an empty archived season | ❌ | ❌ | ✅ |
 | View archived season tables and fixtures | ✅ | ✅ | ✅ |
 | Import / reset data, export backup | ❌ | ❌ | ✅ |
 
@@ -297,6 +300,8 @@ before seasons existed are upgraded automatically into a single default season:
 - Archived seasons hide all match-writing controls. An admin can select the season
   and click **Make active** to correct an old result; the previously active season
   then becomes the archive.
+- An archived season with no fixtures shows **Delete season** in the season bar.
+  The active season and any season that still has fixtures cannot be deleted.
 - Player goals and cards are cumulative player totals, so the top-scorer card is
   all-time rather than per-season. Per-season player statistics would require
   structured match events.

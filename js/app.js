@@ -169,6 +169,13 @@ function renderSeasonBar() {
   if (activateBtn) {
     activateBtn.classList.toggle('hidden', !viewed || viewed.id === appState.activeSeasonId);
   }
+
+  const deleteBtn = document.getElementById('btn-delete-season');
+  if (deleteBtn) {
+    const hasFixtures = viewed && (appState.matches || []).some(match => match.seasonId === viewed.id);
+    const canDelete = Boolean(viewed && viewed.id !== appState.activeSeasonId && !hasFixtures);
+    deleteBtn.classList.toggle('hidden', !canDelete);
+  }
 }
 
 function selectSeason(seasonId) {
@@ -939,6 +946,32 @@ async function activateViewedSeason() {
     } else {
       alert(t('alertSaveFailed'));
     }
+  }
+}
+
+async function deleteViewedSeason() {
+  if (typeof isAdmin !== 'function' || !isAdmin() || !BACKEND_READY) return;
+
+  const season = viewedSeason();
+  if (!season) return;
+  if (season.id === appState.activeSeasonId) {
+    alert(t('alertDeleteActiveSeason'));
+    return;
+  }
+  if ((appState.matches || []).some(match => match.seasonId === season.id)) {
+    alert(t('alertDeleteSeasonFixtures'));
+    return;
+  }
+  if (!confirm(t('confirmDeleteSeason'))) return;
+
+  try {
+    await dbDeleteSeason(season.id);
+    appState.viewSeasonId = appState.activeSeasonId;
+    await refreshData();
+    hideDataError();
+    renderApp();
+  } catch (err) {
+    alert(t('alertDeleteSeasonFailed'));
   }
 }
 
