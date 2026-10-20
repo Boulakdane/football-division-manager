@@ -9,6 +9,8 @@
 
 let currentUser = null;
 let currentRole = null;
+/** Set from Supabase project settings; hides the signup UI when disabled. */
+let signupsDisabled = false;
 
 function isAdmin() {
   return currentRole === 'admin';
@@ -22,6 +24,7 @@ function isSignedIn() {
 
 async function initAuth() {
   const redirectErrorKey = consumeAuthRedirectError();
+  await loadAuthSettings();
 
   if (!BACKEND_READY) {
     updateAuthUI();
@@ -70,6 +73,22 @@ function consumeAuthRedirectError() {
   return expired ? 'authLinkExpired' : 'authLinkInvalid';
 }
 
+/** Read public project settings (no auth needed) to know whether signups are open. */
+async function loadAuthSettings() {
+  if (!BACKEND_READY) return;
+
+  try {
+    const response = await fetch(SUPABASE_URL + '/auth/v1/settings', {
+      headers: { apikey: SUPABASE_ANON_KEY }
+    });
+    if (!response.ok) return;
+    const settings = await response.json();
+    signupsDisabled = Boolean(settings.disable_signup);
+  } catch (err) {
+    // Keep signups visible if the settings endpoint is unreachable.
+  }
+}
+
 async function applySession(session) {
   currentUser = session ? session.user : null;
   currentRole = null;
@@ -111,6 +130,14 @@ function updateAuthUI() {
 
   const demoBanner = document.getElementById('demo-banner');
   if (demoBanner) demoBanner.classList.toggle('hidden', BACKEND_READY);
+
+  const signupToggle = document.getElementById('btn-show-signup');
+  if (signupToggle) signupToggle.classList.toggle('hidden', signupsDisabled);
+
+  if (signupsDisabled) {
+    const signupPanel = document.getElementById('signup-panel');
+    if (signupPanel && !signupPanel.classList.contains('hidden')) showLoginPanel(true);
+  }
 
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
@@ -178,6 +205,13 @@ function showLoginPanel(showLogin) {
 
 function toggleSignup(e) {
   if (e) e.preventDefault();
+
+  if (signupsDisabled) {
+    showLoginPanel(true);
+    setAuthError('login-error', 'authSignupDisabled');
+    return;
+  }
+
   const signupVisible = !document.getElementById('signup-panel').classList.contains('hidden');
   showLoginPanel(signupVisible);
   const focusId = signupVisible ? 'login-email' : 'signup-email';
@@ -234,6 +268,11 @@ async function handleLogin(e) {
 async function handleSignup(e) {
   e.preventDefault();
   clearAuthMessages();
+
+  if (signupsDisabled) {
+    setAuthError('signup-error', 'authSignupDisabled');
+    return;
+  }
 
   if (!BACKEND_READY) {
     setAuthError('signup-error', 'authConfigMissing');
