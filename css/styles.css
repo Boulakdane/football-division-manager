@@ -14,6 +14,11 @@ body:not(.is-admin) .admin-only {
   display: none !important;
 }
 
+/* Match-writing controls are hidden while an archived season is selected */
+body.season-readonly .season-write {
+  display: none !important;
+}
+
 /* Arabic / RTL typography */
 [dir="rtl"] body,
 [dir="rtl"] button,

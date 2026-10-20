@@ -65,7 +65,48 @@ $$;
 grant execute on function public.is_admin() to anon, authenticated;
 
 -- ------------------------------------------------------------
--- 2. LEAGUE TABLES
+-- 2. SEASONS
+-- ------------------------------------------------------------
+create table if not exists public.seasons (
+  id text primary key,
+  name text not null,
+  start_date date,
+  end_date date,
+  is_active boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+-- Keep the existing default season (or create it) without changing
+-- which season is already active on a re-run.
+insert into public.seasons (id, name, start_date, end_date, is_active)
+values ('s1', '2026 Season', null, null, false)
+on conflict (id) do nothing;
+
+-- Repair multiple active seasons before enforcing the unique index.
+update public.seasons s
+set is_active = false
+where s.is_active = true
+  and s.id <> (
+    select id from public.seasons
+    where is_active = true
+    order by created_at desc, id
+    limit 1
+  );
+
+-- If every season is archived, reactivate the oldest one.
+update public.seasons
+set is_active = true
+where id = (
+  select id from public.seasons order by created_at asc, id asc limit 1
+)
+and not exists (select 1 from public.seasons where is_active = true);
+
+create unique index if not exists seasons_one_active_idx
+  on public.seasons (is_active)
+  where is_active;
+
+-- ------------------------------------------------------------
+-- 3. LEAGUE TABLES
 -- ------------------------------------------------------------
 create table if not exists public.teams (
   id text primary key,
@@ -89,6 +130,7 @@ create table if not exists public.players (
 
 create table if not exists public.matches (
   id text primary key,
+  season_id text not null references public.seasons (id) on delete restrict,
   round int not null default 1,
   home_id text not null references public.teams (id) on delete cascade,
   away_id text not null references public.teams (id) on delete cascade,
@@ -101,18 +143,46 @@ create table if not exists public.matches (
   created_at timestamptz not null default now()
 );
 
+-- Upgrade a matches table created before seasons existed.
+alter table public.matches add column if not exists season_id text;
+
+-- Put any legacy fixture into the active season (or the oldest one).
+update public.matches
+set season_id = coalesce(
+  (select id from public.seasons where is_active order by created_at desc limit 1),
+  (select id from public.seasons order by created_at asc limit 1)
+)
+where season_id is null
+   or season_id not in (select id from public.seasons);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'matches_season_id_fkey'
+      and conrelid = 'public.matches'::regclass
+  ) then
+    alter table public.matches
+      add constraint matches_season_id_fkey
+      foreign key (season_id) references public.seasons (id) on delete restrict;
+  end if;
+end $$;
+
+alter table public.matches alter column season_id set not null;
+
 -- ------------------------------------------------------------
--- 3. GRANTS (RLS still decides what each role may do)
+-- 4. GRANTS (RLS still decides what each role may do)
 -- ------------------------------------------------------------
 grant usage on schema public to anon, authenticated;
-grant select on public.teams, public.players, public.matches to anon, authenticated;
-grant insert, update, delete on public.teams, public.players, public.matches to authenticated;
+grant select on public.seasons, public.teams, public.players, public.matches to anon, authenticated;
+grant insert, update, delete on public.seasons, public.teams, public.players, public.matches to authenticated;
 grant select on public.profiles to authenticated;
 
 -- ------------------------------------------------------------
--- 4. ROW LEVEL SECURITY
+-- 5. ROW LEVEL SECURITY
 -- ------------------------------------------------------------
 alter table public.profiles enable row level security;
+alter table public.seasons enable row level security;
 alter table public.teams enable row level security;
 alter table public.players enable row level security;
 alter table public.matches enable row level security;
@@ -127,6 +197,23 @@ drop policy if exists profiles_select_admin on public.profiles;
 create policy profiles_select_admin on public.profiles
   for select to authenticated
   using (public.is_admin());
+
+-- Seasons: public read, admin write.
+drop policy if exists seasons_select_all on public.seasons;
+create policy seasons_select_all on public.seasons
+  for select to anon, authenticated using (true);
+
+drop policy if exists seasons_insert_admin on public.seasons;
+create policy seasons_insert_admin on public.seasons
+  for insert to authenticated with check (public.is_admin());
+
+drop policy if exists seasons_update_admin on public.seasons;
+create policy seasons_update_admin on public.seasons
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists seasons_delete_admin on public.seasons;
+create policy seasons_delete_admin on public.seasons
+  for delete to authenticated using (public.is_admin());
 
 -- Teams: public read, admin write.
 drop policy if exists teams_select_all on public.teams;
@@ -162,7 +249,8 @@ drop policy if exists players_delete_admin on public.players;
 create policy players_delete_admin on public.players
   for delete to authenticated using (public.is_admin());
 
--- Matches: public read, admin write.
+-- Matches: public read, admin write. Archived seasons are made
+-- read-only in the UI; the admin role remains the security boundary.
 drop policy if exists matches_select_all on public.matches;
 create policy matches_select_all on public.matches
   for select to anon, authenticated using (true);
@@ -180,7 +268,74 @@ create policy matches_delete_admin on public.matches
   for delete to authenticated using (public.is_admin());
 
 -- ------------------------------------------------------------
--- 5. SEED DATA (optional — delete this block to start empty)
+-- 6. SEASON FUNCTIONS (atomic, admin-only)
+-- ------------------------------------------------------------
+create or replace function public.create_season(
+  p_id text,
+  p_name text,
+  p_start_date date default null,
+  p_end_date date default null
+)
+returns public.seasons
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_season public.seasons;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can create seasons' using errcode = '42501';
+  end if;
+
+  if p_id is null or btrim(p_id) = '' then
+    raise exception 'Season id is required';
+  end if;
+  if p_name is null or btrim(p_name) = '' then
+    raise exception 'Season name is required';
+  end if;
+  if p_start_date is not null and p_end_date is not null and p_end_date < p_start_date then
+    raise exception 'End date must be on or after start date';
+  end if;
+  if exists (select 1 from public.seasons where id = p_id) then
+    raise exception 'Season already exists';
+  end if;
+
+  update public.seasons set is_active = false where is_active = true;
+
+  insert into public.seasons (id, name, start_date, end_date, is_active)
+  values (p_id, btrim(p_name), p_start_date, p_end_date, true)
+  returning * into v_season;
+
+  return v_season;
+end;
+$$;
+
+create or replace function public.activate_season(p_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can activate seasons' using errcode = '42501';
+  end if;
+
+  if not exists (select 1 from public.seasons where id = p_id) then
+    raise exception 'Season not found';
+  end if;
+
+  update public.seasons set is_active = false where is_active = true;
+  update public.seasons set is_active = true where id = p_id;
+end;
+$$;
+
+grant execute on function public.create_season(text, text, date, date) to authenticated;
+grant execute on function public.activate_season(text) to authenticated;
+
+-- ------------------------------------------------------------
+-- 7. SEED DATA (optional — delete this block to start empty)
 -- ------------------------------------------------------------
 insert into public.teams (id, name, code, color) values
   ('t1', 'Spartan FC',        'SFC', '#3b82f6'),
@@ -203,20 +358,20 @@ insert into public.players (id, team_id, name, pos, num, goals, yellow, red) val
   ('p9', 't6', 'Sam Okafor',   'GK',   1, 0, 0, 0)
 on conflict (id) do nothing;
 
-insert into public.matches (id, round, home_id, away_id, home_score, away_score, status, datetime, venue, scorers_text) values
-  ('m1', 1, 't1', 't2', 3, 1, 'FINISHED',  '2026-10-03T15:00', 'Main Field - Pitch 1',     'Carlos Ramos (2), David Silva (1) - Ethan Hunt (1)'),
-  ('m2', 1, 't3', 't4', 2, 2, 'FINISHED',  '2026-10-03T17:30', 'Main Field - Pitch 2',     'Leo Mendes (2) - John Terry (1), K. Diaz (1)'),
-  ('m3', 1, 't5', 't6', 1, 0, 'FINISHED',  '2026-10-04T16:00', 'Community Sports Complex', 'Omar Belaid (1)'),
-  ('m4', 2, 't2', 't3', 0, 1, 'FINISHED',  '2026-10-10T15:30', 'United Arena',             'Leo Mendes (1)'),
-  ('m5', 2, 't4', 't5', 2, 2, 'FINISHED',  '2026-10-11T18:00', 'Vanguard Ground',          'John Terry (1), R. Cole (1) - Omar Belaid (2)'),
-  ('m6', 2, 't6', 't1', 1, 1, 'LIVE',      '2026-10-20T19:00', 'Shark Park',               'Lucas Ferrao (1) - Carlos Ramos (1)'),
-  ('m7', 3, 't1', 't3', 0, 0, 'SCHEDULED', '2026-10-24T15:00', 'Main Field - Pitch 1',     ''),
-  ('m8', 3, 't2', 't5', 0, 0, 'SCHEDULED', '2026-10-25T17:00', 'United Arena',             ''),
-  ('m9', 3, 't4', 't6', 0, 0, 'SCHEDULED', '2026-10-25T19:30', 'Vanguard Ground',          '')
+insert into public.matches (id, season_id, round, home_id, away_id, home_score, away_score, status, datetime, venue, scorers_text) values
+  ('m1', 's1', 1, 't1', 't2', 3, 1, 'FINISHED',  '2026-10-03T15:00', 'Main Field - Pitch 1',     'Carlos Ramos (2), David Silva (1) - Ethan Hunt (1)'),
+  ('m2', 's1', 1, 't3', 't4', 2, 2, 'FINISHED',  '2026-10-03T17:30', 'Main Field - Pitch 2',     'Leo Mendes (2) - John Terry (1), K. Diaz (1)'),
+  ('m3', 's1', 1, 't5', 't6', 1, 0, 'FINISHED',  '2026-10-04T16:00', 'Community Sports Complex', 'Omar Belaid (1)'),
+  ('m4', 's1', 2, 't2', 't3', 0, 1, 'FINISHED',  '2026-10-10T15:30', 'United Arena',             'Leo Mendes (1)'),
+  ('m5', 's1', 2, 't4', 't5', 2, 2, 'FINISHED',  '2026-10-11T18:00', 'Vanguard Ground',          'John Terry (1), R. Cole (1) - Omar Belaid (2)'),
+  ('m6', 's1', 2, 't6', 't1', 1, 1, 'LIVE',      '2026-10-20T19:00', 'Shark Park',               'Lucas Ferrao (1) - Carlos Ramos (1)'),
+  ('m7', 's1', 3, 't1', 't3', 0, 0, 'SCHEDULED', '2026-10-24T15:00', 'Main Field - Pitch 1',     ''),
+  ('m8', 's1', 3, 't2', 't5', 0, 0, 'SCHEDULED', '2026-10-25T17:00', 'United Arena',             ''),
+  ('m9', 's1', 3, 't4', 't6', 0, 0, 'SCHEDULED', '2026-10-25T19:30', 'Vanguard Ground',          '')
 on conflict (id) do nothing;
 
 -- ============================================================
--- 6. MAKE YOURSELF ADMIN
+-- 8. MAKE YOURSELF ADMIN
 --    ️Sign up once in the app (Admin Login → Create account),
 --    confirm your email if required, then run:
 --

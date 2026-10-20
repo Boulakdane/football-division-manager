@@ -10,6 +10,9 @@ accounts live in a free [Supabase](https://supabase.com) project.
   The table is recalculated instantly whenever a result changes.
 - **Fixtures & results** — schedule matchdays, log live scores, and mark matches as
   finished. Duplicate fixtures on the same matchday are rejected.
+- **Multiple seasons** — create a new season, switch between active and archived
+  seasons, and keep every past table and fixture intact. Archived seasons are
+  read-only in the UI until an admin makes them active again.
 - **Teams & squads** — create/edit clubs, add players with positions, squad numbers,
   goals, yellow and red cards.
 - **Trilingual UI** — English, French and Arabic, with automatic RTL layout for Arabic.
@@ -39,7 +42,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── auth.js                # Login/signup, session, role-based UI
 │   └── app.js                 # Rendering, standings math, modals, import/export
 └── supabase/
-    └── schema.sql             # Tables, RLS policies, trigger and seed data
+    ├── schema.sql             # Tables, RLS policies, trigger and seed data
+    └── seasons-migration.sql  # Upgrade an existing database to seasons
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -56,6 +60,11 @@ Scripts are loaded in dependency order in `index.html`:
 3. Paste the entire contents of [`supabase/schema.sql`](supabase/schema.sql) and click **Run**.
    This creates the tables, trigger and Row Level Security policies, and inserts the
    sample league (delete the seed block if you want to start empty).
+
+> **Upgrading an existing project?** If you created the database before multiple
+> seasons were added, run [`supabase/seasons-migration.sql`](supabase/seasons-migration.sql)
+> once in the SQL Editor instead. It adds the `seasons` table, links existing
+> fixtures to a default season, and installs the season functions.
 
 ### 2. Add your keys
 
@@ -114,6 +123,8 @@ If a confirmation link redirects to `localhost:3000` or says it expired:
 |---|---|---|---|
 | View standings, fixtures, squads | ✅ | ✅ | ✅ |
 | Add / edit / delete teams, players, matches | ❌ | ❌ | ✅ |
+| Create seasons / switch the active season | ❌ | ❌ | ✅ |
+| View archived season tables and fixtures | ✅ | ✅ | ✅ |
 | Import / reset data, export backup | ❌ | ❌ | ✅ |
 
 Visitors and viewers get a read-only UI. The real enforcement is in
@@ -154,29 +165,39 @@ Then open <http://localhost:8000>.
 
 ## Data model
 
-Three tables in the `public` schema. Column names are snake_case in Postgres and mapped
+Five tables in the `public` schema. Column names are snake_case in Postgres and mapped
 to camelCase by `js/backend.js`.
 
 ```
+seasons   (id text pk, name, start_date, end_date, is_active, created_at)
 teams     (id text pk, name, code, color)
 players   (id text pk, team_id → teams.id, name, pos, num, goals, yellow, red)
-matches   (id text pk, round, home_id → teams.id, away_id → teams.id,
-           home_score, away_score, status, datetime, venue, scorers_text)
+matches   (id text pk, season_id → seasons.id, round, home_id → teams.id,
+           away_id → teams.id, home_score, away_score, status, datetime, venue,
+           scorers_text)
 profiles  (id uuid pk → auth.users.id, email, role: admin|viewer)
 ```
 
 `status` is one of `SCHEDULED`, `LIVE`, `FINISHED`. Only `FINISHED` matches count
 towards the league table. Deleting a team cascades to its players and matches.
-The JSON backup format is the same camelCase shape used by the app:
+A unique partial index guarantees that at most one season is active. The
+`create_season` and `activate_season` database functions are admin-only and run in
+a single transaction, so the active season always switches cleanly.
+
+The JSON backup format is the same camelCase shape used by the app. Backups created
+before seasons existed are upgraded automatically into a single default season:
 
 ```json
 {
+  "seasons": [{ "id": "s1", "name": "2026 Season", "startDate": "2026-08-01",
+                "endDate": "2027-05-31", "isActive": true }],
   "teams":   [{ "id": "t1", "name": "Spartan FC", "code": "SFC", "color": "#3b82f6" }],
   "players": [{ "id": "p1", "teamId": "t1", "name": "David Silva", "pos": "MID",
                 "num": 10, "goals": 5, "yellow": 1, "red": 0 }],
-  "matches": [{ "id": "m1", "round": 1, "homeId": "t1", "awayId": "t2",
-                "homeScore": 3, "awayScore": 1, "status": "FINISHED",
-                "datetime": "2026-10-03T15:00", "venue": "Main Field",
+  "matches": [{ "id": "m1", "seasonId": "s1", "round": 1, "homeId": "t1",
+                "awayId": "t2", "homeScore": 3, "awayScore": 1,
+                "status": "FINISHED", "datetime": "2026-10-03T15:00",
+                "venue": "Main Field",
                 "scorersText": "Carlos Ramos (2), David Silva (1) - Ethan Hunt (1)" }]
 }
 ```
@@ -195,6 +216,12 @@ The JSON backup format is the same camelCase shape used by the app:
 
 ## Notes
 
+- Archived seasons hide all match-writing controls. An admin can select the season
+  and click **Make active** to correct an old result; the previously active season
+  then becomes the archive.
+- Player goals and cards are cumulative player totals, so the top-scorer card is
+  all-time rather than per-season. Per-season player statistics would require
+  structured match events.
 - The Tailwind Play CDN prints a "should not be used in production" warning in the
   console. It is intentional here to keep the project build-free. For a fully optimized
   production bundle, compile Tailwind locally and replace the CDN script with the

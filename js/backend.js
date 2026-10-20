@@ -40,6 +40,16 @@ function assertBackend() {
 
 /* ---------- row mapping (snake_case ⇄ camelCase) ---------- */
 
+function mapSeason(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    startDate: row.start_date || '',
+    endDate: row.end_date || '',
+    isActive: Boolean(row.is_active)
+  };
+}
+
 function mapTeam(row) {
   return { id: row.id, name: row.name, code: row.code, color: row.color };
 }
@@ -60,6 +70,7 @@ function mapPlayer(row) {
 function mapMatch(row) {
   return {
     id: row.id,
+    seasonId: row.season_id || null,
     round: row.round,
     homeId: row.home_id,
     awayId: row.away_id,
@@ -69,6 +80,16 @@ function mapMatch(row) {
     datetime: row.datetime || '',
     venue: row.venue || '',
     scorersText: row.scorers_text || ''
+  };
+}
+
+function seasonToRow(season) {
+  return {
+    id: season.id,
+    name: season.name,
+    start_date: season.startDate || null,
+    end_date: season.endDate || null,
+    is_active: Boolean(season.isActive)
   };
 }
 
@@ -90,7 +111,7 @@ function playerToRow(player) {
 }
 
 function matchToRow(match) {
-  return {
+  const row = {
     id: match.id,
     round: match.round,
     home_id: match.homeId,
@@ -102,6 +123,18 @@ function matchToRow(match) {
     venue: match.venue,
     scorers_text: match.scorersText
   };
+  // Omitted while the database has not been migrated to seasons yet.
+  if (match.seasonId) row.season_id = match.seasonId;
+  return row;
+}
+
+/** True when the seasons table has not been created yet. */
+function isMissingSeasonsTable(error) {
+  return Boolean(error) && (
+    error.code === 'PGRST205' ||
+    error.code === '42P01' ||
+    /Could not find the table|relation .* does not exist/i.test(error.message || '')
+  );
 }
 
 /* ---------- reads ---------- */
@@ -109,23 +142,56 @@ function matchToRow(match) {
 /** Replace the in-memory state with data from Supabase (or demo data). */
 async function refreshData() {
   if (!BACKEND_READY) {
-    appState = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    appState = normalizeState(DEFAULT_DATA);
+    appState.seasonsReady = true;
+    appState.activeSeasonId = appState.seasons.find(season => season.isActive).id;
+    appState.viewSeasonId = appState.activeSeasonId;
     return;
   }
 
-  const [teams, players, matches] = await Promise.all([
+  const [teamsResult, playersResult, matchesResult, seasonsResult] = await Promise.all([
     db.from('teams').select('*').order('name', { ascending: true }),
     db.from('players').select('*').order('num', { ascending: true }),
-    db.from('matches').select('*').order('round', { ascending: true })
+    db.from('matches').select('*').order('round', { ascending: true }),
+    db.from('seasons').select('*').order('created_at', { ascending: false })
   ]);
 
-  const error = teams.error || players.error || matches.error;
-  if (error) throw error;
+  const baseError = teamsResult.error || playersResult.error || matchesResult.error;
+  if (baseError) throw baseError;
+
+  // The app remains usable (without season switching) until the season
+  // migration has been run in the Supabase SQL Editor.
+  let seasons = [];
+  let seasonsReady = false;
+  if (seasonsResult.error) {
+    if (!isMissingSeasonsTable(seasonsResult.error)) throw seasonsResult.error;
+  } else {
+    seasons = (seasonsResult.data || []).map(mapSeason);
+    seasonsReady = true;
+  }
+
+  const previousView = appState ? appState.viewSeasonId : null;
+  const dbActive = seasons.find(season => season.isActive) || null;
+  const activeSeasonId = dbActive ? dbActive.id : null;
+
+  if (seasonsReady && seasons.length) {
+    seasons = seasons.map(season => ({ ...season, isActive: season.id === activeSeasonId }));
+  }
+
+  // Fall back to the newest season for viewing if none is marked active.
+  const defaultViewId = activeSeasonId || (seasons[0] ? seasons[0].id : null);
+  const viewSeasonId = previousView && seasons.some(season => season.id === previousView)
+    ? previousView
+    : defaultViewId;
 
   appState = {
-    teams: (teams.data || []).map(mapTeam),
-    players: (players.data || []).map(mapPlayer),
-    matches: (matches.data || []).map(mapMatch)
+    teams: (teamsResult.data || []).map(mapTeam),
+    players: (playersResult.data || []).map(mapPlayer),
+    matches: (matchesResult.data || []).map(mapMatch),
+    seasons,
+    seasonsReady,
+    activeSeasonId,
+    viewSeasonId
   };
 }
 
@@ -167,15 +233,46 @@ async function dbDeleteMatch(matchId) {
   if (error) throw error;
 }
 
+/** Create a season and make it the active one (atomic database function). */
+async function dbCreateSeason(name, startDate, endDate) {
+  assertBackend();
+  const id = 's_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+  const { error } = await db.rpc('create_season', {
+    p_id: id,
+    p_name: name,
+    p_start_date: startDate || null,
+    p_end_date: endDate || null
+  });
+  if (error) throw error;
+  return id;
+}
+
+/** Make an existing season active again (atomic database function). */
+async function dbActivateSeason(seasonId) {
+  assertBackend();
+  const { error } = await db.rpc('activate_season', { p_id: seasonId });
+  if (error) throw error;
+}
+
 /** Replace the whole dataset (used by JSON import and reset). Admin only. */
 async function dbReplaceAll(data) {
   assertBackend();
 
-  for (const table of ['matches', 'players', 'teams']) {
+  const seasonsReady = Boolean(appState && appState.seasonsReady);
+  const seasons = Array.isArray(data.seasons) ? data.seasons : [];
+  const tables = seasonsReady
+    ? ['matches', 'players', 'teams', 'seasons']
+    : ['matches', 'players', 'teams'];
+
+  for (const table of tables) {
     const { error } = await db.from(table).delete().not('id', 'is', null);
     if (error) throw error;
   }
 
+  if (seasonsReady && seasons.length) {
+    const { error } = await db.from('seasons').insert(seasons.map(seasonToRow));
+    if (error) throw error;
+  }
   if (data.teams.length) {
     const { error } = await db.from('teams').insert(data.teams.map(teamToRow));
     if (error) throw error;
@@ -185,7 +282,13 @@ async function dbReplaceAll(data) {
     if (error) throw error;
   }
   if (data.matches.length) {
-    const { error } = await db.from('matches').insert(data.matches.map(matchToRow));
+    const fallbackSeason = seasons.find(season => season.isActive) || seasons[0];
+    const rows = data.matches.map(match => matchToRow(
+      seasonsReady
+        ? { ...match, seasonId: match.seasonId || (fallbackSeason && fallbackSeason.id) }
+        : { ...match, seasonId: null }
+    ));
+    const { error } = await db.from('matches').insert(rows);
     if (error) throw error;
   }
 }

@@ -33,7 +33,43 @@ function openModal(id) { document.getElementById(id).classList.remove('hidden');
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-guide', 'modal-password', 'modal-login'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-login'].forEach(id => closeModal(id));
+}
+
+/* ---------- season helpers ---------- */
+
+function getSeason(seasonId) {
+  return (appState.seasons || []).find(season => season.id === seasonId);
+}
+
+function viewedSeason() {
+  return getSeason(appState.viewSeasonId);
+}
+
+/** True when the visible season is archived (or there is no active season yet). */
+function isSeasonReadOnly() {
+  if (!appState.seasonsReady) return false;
+  return !appState.viewSeasonId || appState.viewSeasonId !== appState.activeSeasonId;
+}
+
+/** Matches for the season currently selected in the switcher. */
+function visibleMatches() {
+  if (!appState.seasonsReady || !appState.viewSeasonId) return appState.matches;
+  return appState.matches.filter(match => match.seasonId === appState.viewSeasonId);
+}
+
+/** Matches belonging to the one season that can receive new results. */
+function activeMatches() {
+  if (!appState.seasonsReady) return appState.matches;
+  if (!appState.activeSeasonId) return [];
+  return appState.matches.filter(match => match.seasonId === appState.activeSeasonId);
+}
+
+/** Admins may only log/edit matches while the active season is being viewed. */
+function canEditMatches() {
+  if (typeof isAdmin !== 'function' || !isAdmin()) return false;
+  if (!appState.seasonsReady) return true;
+  return Boolean(appState.activeSeasonId && appState.viewSeasonId === appState.activeSeasonId);
 }
 
 /* ---------- loading / error banners ---------- */
@@ -70,7 +106,57 @@ async function retryLoad() {
 /* ---------------------------------------------------------------
  * 2. MAIN RENDERER & TAB NAVIGATION
  * --------------------------------------------------------------- */
+function renderSeasonBar() {
+  const bar = document.getElementById('season-bar');
+  if (!bar) return;
+
+  const supported = Boolean(appState.seasonsReady);
+  bar.classList.toggle('hidden', !supported);
+
+  const seasons = appState.seasons || [];
+  const select = document.getElementById('season-select');
+  if (select) {
+    select.innerHTML = seasons.length
+      ? seasons.map(season => `<option value="${esc(season.id)}">${esc(season.name)}${season.isActive ? ' — ' + esc(t('seasonActive')) : ''}</option>`).join('')
+      : `<option value="">${esc(t('seasonNone'))}</option>`;
+    select.value = appState.viewSeasonId || '';
+    select.disabled = seasons.length === 0;
+  }
+
+  const viewed = viewedSeason();
+  const readOnly = isSeasonReadOnly();
+  document.body.classList.toggle('season-readonly', readOnly);
+
+  const status = document.getElementById('season-status');
+  if (status) {
+    const showStatus = supported && Boolean(viewed);
+    status.classList.toggle('hidden', !showStatus);
+    if (viewed) {
+      const active = viewed.id === appState.activeSeasonId;
+      status.textContent = t(active ? 'seasonActive' : 'seasonArchived');
+      status.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide border ' +
+        (active
+          ? 'bg-pitch-500/15 text-pitch-400 border-pitch-500/30'
+          : 'bg-amber-500/15 text-amber-300 border-amber-500/30');
+      status.classList.toggle('hidden', !showStatus);
+    }
+  }
+
+  const activateBtn = document.getElementById('btn-activate-season');
+  if (activateBtn) {
+    activateBtn.classList.toggle('hidden', !viewed || viewed.id === appState.activeSeasonId);
+  }
+}
+
+function selectSeason(seasonId) {
+  if (!appState.seasonsReady) return;
+  if (!(appState.seasons || []).some(season => season.id === seasonId)) return;
+  appState.viewSeasonId = seasonId;
+  renderApp();
+}
+
 function renderApp() {
+  renderSeasonBar();
   renderStandings();
   renderFixtureFilters();
   renderFixtures();
@@ -105,7 +191,20 @@ function switchTab(tabId) {
  * --------------------------------------------------------------- */
 function calculateStandings() {
   const stats = {};
-  appState.teams.forEach(team => {
+  const seasonMatches = visibleMatches();
+  const archived = appState.seasonsReady && appState.viewSeasonId !== appState.activeSeasonId;
+
+  // An archived table should not gain clubs that joined in a later season.
+  const seasonTeamIds = new Set();
+  seasonMatches.forEach(match => {
+    seasonTeamIds.add(match.homeId);
+    seasonTeamIds.add(match.awayId);
+  });
+  const teams = archived
+    ? appState.teams.filter(team => seasonTeamIds.has(team.id))
+    : appState.teams;
+
+  teams.forEach(team => {
     stats[team.id] = {
       team,
       mp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0,
@@ -113,8 +212,8 @@ function calculateStandings() {
     };
   });
 
-  // Only finished matches count towards the table
-  const finished = appState.matches
+  // Only finished matches in the visible season count towards the table
+  const finished = seasonMatches
     .filter(m => m.status === 'FINISHED')
     .sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
 
@@ -215,7 +314,7 @@ function renderFixtureFilters() {
   const select = document.getElementById('filter-round');
   const previous = select.value || 'ALL';
 
-  const rounds = [...new Set(appState.matches.map(m => m.round))]
+  const rounds = [...new Set(visibleMatches().map(m => m.round))]
     .sort((a, b) => a - b);
 
   select.innerHTML = `<option value="ALL">${esc(t('optAllMatchdays'))}</option>` +
@@ -229,7 +328,7 @@ function renderFixtures() {
   const roundFilter = document.getElementById('filter-round').value;
   const statusFilter = document.getElementById('filter-status').value;
 
-  let matches = appState.matches.slice();
+  let matches = visibleMatches().slice();
   if (roundFilter !== 'ALL') matches = matches.filter(m => String(m.round) === roundFilter);
   if (statusFilter !== 'ALL') matches = matches.filter(m => m.status === statusFilter);
 
@@ -266,7 +365,7 @@ function renderFixtures() {
 
     // Live matches get quick +1 steppers for instant live score logging
     const liveSteppers = m.status === 'LIVE' ? `
-      <div class="admin-only flex items-center justify-center gap-3 mt-1.5">
+      <div class="admin-only season-write flex items-center justify-center gap-3 mt-1.5">
         <button onclick="bumpScore('${esc(m.id)}','home',1)" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
         <button onclick="bumpScore('${esc(m.id)}','away',1)" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
       </div>` : '';
@@ -304,7 +403,7 @@ function renderFixtures() {
 
         ${scorers}
 
-        <div class="admin-only mt-3 pt-2 border-t border-slate-700/50 flex justify-end gap-2">
+        <div class="admin-only season-write mt-3 pt-2 border-t border-slate-700/50 flex justify-end gap-2">
           <button onclick="editMatch('${esc(m.id)}')" class="px-2.5 py-1 text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded text-xs flex items-center gap-1 transition">
             <i data-lucide="edit-3" class="w-3 h-3"></i> ${esc(t('editAction'))}
           </button>
@@ -318,8 +417,17 @@ function renderFixtures() {
 
 /** Quick live-score update from fixture cards (used for LIVE matches). */
 async function bumpScore(matchId, side, delta) {
+  if (!canEditMatches()) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+
   const match = appState.matches.find(m => m.id === matchId);
   if (!match) return;
+  if (appState.seasonsReady && match.seasonId !== appState.activeSeasonId) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
 
   const key = side === 'home' ? 'homeScore' : 'awayScore';
   const previous = toInt(match[key]);
@@ -433,7 +541,7 @@ function renderTeamsView() {
  * 6. STATS BANNER
  * --------------------------------------------------------------- */
 function renderStatsBanner() {
-  const finished = appState.matches.filter(m => m.status === 'FINISHED');
+  const finished = visibleMatches().filter(m => m.status === 'FINISHED');
   const totalGoals = finished.reduce((sum, m) => sum + toInt(m.homeScore) + toInt(m.awayScore), 0);
 
   document.getElementById('stat-teams-count').textContent = appState.teams.length;
@@ -449,6 +557,24 @@ function renderStatsBanner() {
  * 7. MATCH MODAL (schedule, log result, edit, live)
  * --------------------------------------------------------------- */
 function openMatchModal(matchId) {
+  if (!canEditMatches()) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+  if (appState.seasonsReady && !appState.activeSeasonId) {
+    alert(t('alertNoActiveSeason'));
+    return;
+  }
+
+  if (matchId) {
+    const existing = appState.matches.find(m => m.id === matchId);
+    if (!existing) return;
+    if (appState.seasonsReady && existing.seasonId !== appState.activeSeasonId) {
+      alert(t('alertArchiveReadOnly'));
+      return;
+    }
+  }
+
   if (appState.teams.length < 2) {
     alert(t('alertMinTeams'));
     openTeamModal();
@@ -465,7 +591,7 @@ function openMatchModal(matchId) {
   document.getElementById('match-id').value = '';
 
   // Sensible defaults for a new fixture
-  const nextRound = appState.matches.reduce((max, m) => Math.max(max, toInt(m.round)), 0) + 1;
+  const nextRound = activeMatches().reduce((max, m) => Math.max(max, toInt(m.round)), 0) + 1;
   document.getElementById('match-round').value = Math.max(1, nextRound);
   document.getElementById('match-status').value = 'SCHEDULED';
   document.getElementById('match-home-score').value = 0;
@@ -502,18 +628,32 @@ function editMatch(matchId) {
 
 async function saveMatch(e) {
   e.preventDefault();
+
+  if (!canEditMatches()) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+
   const id = document.getElementById('match-id').value;
   const homeId = document.getElementById('match-home-team').value;
   const awayId = document.getElementById('match-away-team').value;
   const round = toInt(document.getElementById('match-round').value, 1) || 1;
+
+  if (id) {
+    const existing = appState.matches.find(m => m.id === id);
+    if (existing && appState.seasonsReady && existing.seasonId !== appState.activeSeasonId) {
+      alert(t('alertArchiveReadOnly'));
+      return;
+    }
+  }
 
   if (homeId === awayId) {
     alert(t('alertSameTeam'));
     return;
   }
 
-  // Prevent duplicate fixtures for the same matchday
-  const duplicate = appState.matches.some(m =>
+  // Prevent duplicate fixtures for the same matchday in the active season
+  const duplicate = activeMatches().some(m =>
     m.id !== id && toInt(m.round) === round &&
     ((m.homeId === homeId && m.awayId === awayId) || (m.homeId === awayId && m.awayId === homeId))
   );
@@ -524,6 +664,7 @@ async function saveMatch(e) {
 
   const matchData = {
     id: id || uid('m'),
+    seasonId: appState.seasonsReady ? appState.activeSeasonId : null,
     round,
     status: document.getElementById('match-status').value,
     datetime: document.getElementById('match-datetime').value,
@@ -546,6 +687,18 @@ async function saveMatch(e) {
 }
 
 async function deleteMatch(matchId) {
+  if (!canEditMatches()) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+
+  const match = appState.matches.find(m => m.id === matchId);
+  if (!match) return;
+  if (appState.seasonsReady && match.seasonId !== appState.activeSeasonId) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+
   if (!confirm(t('confirmDeleteMatch'))) return;
   try {
     await dbDeleteMatch(matchId);
@@ -601,9 +754,11 @@ async function saveTeam(e) {
 }
 
 async function deleteTeam(teamId) {
-  if (!confirm(t('confirmDeleteTeam'))) return;
+  const fixtureCount = appState.matches.filter(m => m.homeId === teamId || m.awayId === teamId).length;
+  if (!confirm(t(fixtureCount ? 'confirmDeleteTeamHistory' : 'confirmDeleteTeam'))) return;
   try {
-    // Players and matches are removed by ON DELETE CASCADE in Postgres
+    // Players and matches are removed by ON DELETE CASCADE in Postgres.
+    // With seasons enabled this also removes the club's archived fixtures.
     await dbDeleteTeam(teamId);
     await refreshData();
     renderApp();
@@ -680,6 +835,90 @@ async function deletePlayer(playerId) {
 }
 
 /* ---------------------------------------------------------------
+ * 9b. SEASONS (create, switch, reactivate)
+ * --------------------------------------------------------------- */
+function openSeasonModal() {
+  if (!appState.seasonsReady) return;
+  if (typeof isAdmin !== 'function' || !isAdmin()) return;
+  if (!BACKEND_READY) {
+    alert(t('authConfigMissing'));
+    return;
+  }
+
+  document.getElementById('form-season').reset();
+
+  const year = new Date().getFullYear();
+  const alreadyUsed = (appState.seasons || []).some(season => season.name.includes(String(year)));
+  document.getElementById('season-name').value = `${alreadyUsed ? year + 1 : year} Season`;
+  document.getElementById('season-start').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('season-end').value = '';
+
+  openModal('modal-season');
+  document.getElementById('season-name').focus();
+}
+
+async function saveSeason(e) {
+  e.preventDefault();
+
+  if (typeof isAdmin !== 'function' || !isAdmin()) return;
+
+  const name = document.getElementById('season-name').value.trim();
+  const startDate = document.getElementById('season-start').value;
+  const endDate = document.getElementById('season-end').value;
+
+  if (!name) {
+    alert(t('alertSeasonName'));
+    return;
+  }
+  if (startDate && endDate && endDate < startDate) {
+    alert(t('alertSeasonDates'));
+    return;
+  }
+
+  const button = e.target.querySelector('button[type="submit"]');
+  button.disabled = true;
+
+  try {
+    const newId = await dbCreateSeason(name, startDate, endDate);
+    closeModal('modal-season');
+    await refreshData();
+    appState.viewSeasonId = newId;
+    hideDataError();
+    renderApp();
+  } catch (err) {
+    if (err && (err.code === 'PGRST202' || /Could not find the function/i.test(err.message || ''))) {
+      alert(t('alertSeasonMigration'));
+    } else {
+      alert(t('alertSaveFailed'));
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function activateViewedSeason() {
+  if (typeof isAdmin !== 'function' || !isAdmin() || !BACKEND_READY) return;
+
+  const season = viewedSeason();
+  if (!season || season.id === appState.activeSeasonId) return;
+  if (!confirm(t('confirmActivateSeason'))) return;
+
+  try {
+    await dbActivateSeason(season.id);
+    await refreshData();
+    appState.viewSeasonId = season.id;
+    hideDataError();
+    renderApp();
+  } catch (err) {
+    if (err && (err.code === 'PGRST202' || /Could not find the function/i.test(err.message || ''))) {
+      alert(t('alertSeasonMigration'));
+    } else {
+      alert(t('alertSaveFailed'));
+    }
+  }
+}
+
+/* ---------------------------------------------------------------
  * 10. DATA: export / import / reset & misc UI
  * --------------------------------------------------------------- */
 function openGuideModal() {
@@ -700,7 +939,14 @@ document.addEventListener('click', function (e) {
 });
 
 function exportData() {
-  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(appState, null, 2));
+  // Only league data belongs in a backup; omit transient view state.
+  const payload = {
+    seasons: appState.seasons,
+    teams: appState.teams,
+    players: appState.players,
+    matches: appState.matches
+  };
+  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(payload, null, 2));
   const anchor = document.createElement('a');
   anchor.setAttribute('href', dataStr);
   anchor.setAttribute('download', `kickoff_division_backup_${new Date().toISOString().slice(0, 10)}.json`);
@@ -714,17 +960,28 @@ function exportData() {
  * Returns a normalized copy, or null when the schema/relations are invalid.
  */
 function validateImport(data) {
-  if (!data || !Array.isArray(data.teams) || !Array.isArray(data.matches)) return null;
+  if (!data || typeof data !== 'object') return null;
+  if (!Array.isArray(data.teams) || !Array.isArray(data.matches)) return null;
+  if (data.seasons !== undefined && !Array.isArray(data.seasons)) return null;
 
   const teams = data.teams;
   const players = Array.isArray(data.players) ? data.players : [];
   const matches = data.matches;
+  const seasons = Array.isArray(data.seasons) ? data.seasons : [];
   const ids = new Set();
+  const seasonIds = new Set();
 
   for (const team of teams) {
     if (!team || typeof team.id !== 'string' || !team.id || typeof team.name !== 'string' || !team.name) return null;
     if (ids.has(team.id)) return null;
     ids.add(team.id);
+  }
+
+  for (const season of seasons) {
+    if (!season || typeof season.id !== 'string' || !season.id) return null;
+    if (typeof season.name !== 'string' || !season.name.trim()) return null;
+    if (seasonIds.has(season.id)) return null;
+    seasonIds.add(season.id);
   }
 
   for (const player of players) {
@@ -735,6 +992,8 @@ function validateImport(data) {
   for (const match of matches) {
     if (!match || typeof match.id !== 'string' || !match.id) return null;
     if (!ids.has(match.homeId) || !ids.has(match.awayId) || match.homeId === match.awayId) return null;
+    // Season references are optional in old backups, but must be valid when supplied.
+    if (seasons.length && match.seasonId && !seasonIds.has(match.seasonId)) return null;
   }
 
   return normalizeState(data);
