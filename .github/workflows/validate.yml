@@ -1,0 +1,50 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          for file in js/*.js tools/*.js; do
+            node --check "$file"
+          done
+
+      - name: Test CSV round trip
+        shell: bash
+        run: |
+          node tools/csv-to-backup.js data/examples /tmp/kickoff-first.json
+          node tools/backup-to-csv.js /tmp/kickoff-first.json /tmp/kickoff-csv
+          node tools/csv-to-backup.js /tmp/kickoff-csv /tmp/kickoff-second.json
+          node -e "
+            const fs = require('fs');
+            const a = JSON.parse(fs.readFileSync('/tmp/kickoff-first.json', 'utf8'));
+            const b = JSON.parse(fs.readFileSync('/tmp/kickoff-second.json', 'utf8'));
+            const canon = value => {
+              if (Array.isArray(value)) return value.map(canon);
+              if (value && typeof value === 'object') {
+                const out = {};
+                for (const key of Object.keys(value).sort()) out[key] = canon(value[key]);
+                return out;
+              }
+              return value;
+            };
+            if (JSON.stringify(canon(a)) !== JSON.stringify(canon(b))) {
+              console.error('CSV round trip changed the data.');
+              process.exit(1);
+            }
+            console.log('CSV round trip is stable.');
+          "
