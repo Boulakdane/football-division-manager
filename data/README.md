@@ -114,3 +114,5 @@ node tools/csv-to-backup.js data backups/my-league.json
 - Create a new season from the app for future competitions.
 - Keep `data/*.csv` up to date if you want to regenerate the backup later.
 - Use **Settings → Export Backup (JSON)** after making changes in the app.
+- Use **Settings → Standings CSV / Fixtures CSV / Squads CSV** to share or
+  print the season currently shown in the app.
