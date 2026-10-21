@@ -10,6 +10,6 @@
     "check:secrets": "node tools/check-secrets.js"
   },
   "devDependencies": {
-    "tailwindcss": "3.4.17"
+    "tailwindcss": "4.3.3"
   }
 }
