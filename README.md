@@ -275,10 +275,10 @@ create policy teams_insert_admin on public.teams
 ```
 
 `public.is_admin()` checks `profiles.role = 'admin'` for `auth.uid()`. The same pattern
-is applied to `update`/`delete` on `teams`, `players` and `matches`. Match and match-event
-inserts/updates/deletes additionally require the parent season to be active, so archived
-seasons are read-only at the database layer. Public `select` policies make the league
-readable without logging in.
+is applied to `update` on teams/players and to insert/update on matches/players. Match
+inserts and updates additionally require the parent season to be active. Team/match
+deletes and match-event writes are RPC-only, so the total-adjusting functions cannot be
+bypassed. Public `select` policies make the league readable without logging in.
 
 ## Run locally
 
