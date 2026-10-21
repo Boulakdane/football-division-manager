@@ -35,6 +35,9 @@ jobs:
             node --check "$file"
           done
 
+      - name: Test SQL integrity and RLS
+        run: npm run test:sql
+
       - name: Test CSV round trip
         shell: bash
         run: |

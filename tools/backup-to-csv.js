@@ -106,7 +106,8 @@ const players = sourcePlayers.map(player => {
     num: player.num == null || player.num === '' ? 10 : player.num,
     goals: player.goals == null || player.goals === '' ? 0 : player.goals,
     yellow: player.yellow == null || player.yellow === '' ? 0 : player.yellow,
-    red: player.red == null || player.red === '' ? 0 : player.red
+    red: player.red == null || player.red === '' ? 0 : player.red,
+    isActive: player.isActive !== false
   };
 });
 
@@ -193,8 +194,8 @@ const files = [
   },
   {
     name: 'players.csv',
-    headers: ['id', 'teamId', 'name', 'pos', 'num', 'goals', 'yellow', 'red'],
-    rows: players
+    headers: ['id', 'teamId', 'name', 'pos', 'num', 'goals', 'yellow', 'red', 'isActive'],
+    rows: players.map(player => ({ ...player, isActive: player.isActive ? 'true' : 'false' }))
   },
   {
     name: 'matches.csv',

@@ -69,11 +69,14 @@ Out of scope or lower priority:
 - Only authenticated users with `role = 'admin'` can write.
 - Postgres Row Level Security is the enforcement boundary; hidden UI controls are
   only a convenience.
+- Once `supabase/integrity-migration.sql` is applied, archived seasons are read-only
+  in RLS. Team/match deletion and match-event writes go through admin-only RPCs so
+  player totals stay consistent; direct destructive grants are revoked.
 - Only publishable Supabase keys are shipped to the browser. Never commit a
   service-role/secret key.
 - Admin promotion is a manual SQL operation.
 - Signups are disabled.
-- CI runs a secret scanner and Dependabot is enabled.
+- CI runs a secret scanner, SQL integrity/RLS tests and Dependabot is enabled.
 
 See [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) for the full findings and
 remediation plan.

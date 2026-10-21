@@ -105,6 +105,24 @@ create unique index if not exists seasons_one_active_idx
   on public.seasons (is_active)
   where is_active;
 
+-- Used by the write policies and RPCs to keep archived seasons read-only.
+create or replace function public.is_active_season(p_season_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.seasons
+    where id = p_season_id
+      and is_active
+  );
+$$;
+
+grant execute on function public.is_active_season(text) to anon, authenticated;
+
 -- ------------------------------------------------------------
 -- 3. LEAGUE TABLES
 -- ------------------------------------------------------------
@@ -125,8 +143,12 @@ create table if not exists public.players (
   goals int not null default 0,
   yellow int not null default 0,
   red int not null default 0,
+  is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+alter table public.players
+  add column if not exists is_active boolean not null default true;
 
 create table if not exists public.matches (
   id text primary key,
@@ -211,7 +233,13 @@ create index if not exists match_events_player_id_idx
 -- ------------------------------------------------------------
 grant usage on schema public to anon, authenticated;
 grant select on public.seasons, public.teams, public.players, public.matches, public.match_events to anon, authenticated;
-grant insert, update, delete on public.seasons, public.teams, public.players, public.matches, public.match_events to authenticated;
+grant insert, update, delete on public.seasons, public.players to authenticated;
+grant insert, update on public.teams, public.matches to authenticated;
+-- Team/match deletion and match-event writes are RPC-only so aggregate
+-- totals cannot drift. The security-definer RPCs retain owner privileges.
+revoke delete on public.teams, public.matches from authenticated;
+revoke insert, update, delete on public.match_events from authenticated;
+revoke insert, update, delete on public.match_events from anon;
 grant select on public.profiles to authenticated;
 
 -- ------------------------------------------------------------
@@ -265,9 +293,9 @@ drop policy if exists teams_update_admin on public.teams;
 create policy teams_update_admin on public.teams
   for update to authenticated using (public.is_admin()) with check (public.is_admin());
 
+-- Team deletion must go through delete_team() so opponent totals are
+-- reversed before the cascade. No direct DELETE policy is created.
 drop policy if exists teams_delete_admin on public.teams;
-create policy teams_delete_admin on public.teams
-  for delete to authenticated using (public.is_admin());
 
 -- Players: public read, admin write.
 drop policy if exists players_select_all on public.players;
@@ -282,44 +310,49 @@ drop policy if exists players_update_admin on public.players;
 create policy players_update_admin on public.players
   for update to authenticated using (public.is_admin()) with check (public.is_admin());
 
+-- A player with match history can be archived, but not hard-deleted.
 drop policy if exists players_delete_admin on public.players;
 create policy players_delete_admin on public.players
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated
+  using (
+    public.is_admin()
+    and not exists (
+      select 1
+      from public.match_events e
+      where e.player_id = players.id
+    )
+  );
 
--- Matches: public read, admin write. Archived seasons are made
--- read-only in the UI; the admin role remains the security boundary.
+-- Matches: public read, admin write. Only the active season can be
+-- written directly; archived seasons are read-only in the database.
 drop policy if exists matches_select_all on public.matches;
 create policy matches_select_all on public.matches
   for select to anon, authenticated using (true);
 
 drop policy if exists matches_insert_admin on public.matches;
 create policy matches_insert_admin on public.matches
-  for insert to authenticated with check (public.is_admin());
+  for insert to authenticated
+  with check (public.is_admin() and public.is_active_season(season_id));
 
 drop policy if exists matches_update_admin on public.matches;
 create policy matches_update_admin on public.matches
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+  for update to authenticated
+  using (public.is_admin() and public.is_active_season(season_id))
+  with check (public.is_admin() and public.is_active_season(season_id));
 
+-- Match deletion must go through delete_match() so event contributions are
+-- reversed atomically. No direct DELETE policy is created.
 drop policy if exists matches_delete_admin on public.matches;
-create policy matches_delete_admin on public.matches
-  for delete to authenticated using (public.is_admin());
 
--- Match events: public read, admin write.
+-- Match events: public read. Writes are RPC-only so the cumulative player
+-- totals cannot be changed without the matching event rows.
 drop policy if exists match_events_select_all on public.match_events;
 create policy match_events_select_all on public.match_events
   for select to anon, authenticated using (true);
 
 drop policy if exists match_events_insert_admin on public.match_events;
-create policy match_events_insert_admin on public.match_events
-  for insert to authenticated with check (public.is_admin());
-
 drop policy if exists match_events_update_admin on public.match_events;
-create policy match_events_update_admin on public.match_events
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
-
 drop policy if exists match_events_delete_admin on public.match_events;
-create policy match_events_delete_admin on public.match_events
-  for delete to authenticated using (public.is_admin());
 
 -- ------------------------------------------------------------
 -- 6. SEASON FUNCTIONS (atomic, admin-only)
@@ -409,20 +442,28 @@ declare
   v_type text;
   v_minute int;
   v_counted boolean;
+  v_season_id text;
 begin
   if not public.is_admin() then
     raise exception 'Only admins can change match events' using errcode = '42501';
   end if;
 
-  if not exists (select 1 from public.matches where id = p_match_id) then
-    raise exception 'Match not found';
-  end if;
+  -- Serialize match/event/team writes with full imports.
+  perform pg_advisory_xact_lock(748291);
 
-  select events_counted into v_counted
+  select events_counted, season_id
+    into v_counted, v_season_id
   from public.matches
   where id = p_match_id;
 
-  if p_events is null then
+  if not found then
+    raise exception 'Match not found';
+  end if;
+  if not public.is_active_season(v_season_id) then
+    raise exception 'Only the active season can be edited' using errcode = '42501';
+  end if;
+
+  if p_events is null or p_events = 'null'::jsonb then
     p_events := '[]'::jsonb;
   end if;
   if jsonb_typeof(p_events) <> 'array' then
@@ -497,18 +538,25 @@ as $$
 declare
   v_old record;
   v_counted boolean;
+  v_season_id text;
 begin
   if not public.is_admin() then
     raise exception 'Only admins can delete matches' using errcode = '42501';
   end if;
 
-  if not exists (select 1 from public.matches where id = p_match_id) then
-    raise exception 'Match not found';
-  end if;
+  perform pg_advisory_xact_lock(748291);
 
-  select events_counted into v_counted
+  select events_counted, season_id
+    into v_counted, v_season_id
   from public.matches
   where id = p_match_id;
+
+  if not found then
+    raise exception 'Match not found';
+  end if;
+  if not public.is_active_season(v_season_id) then
+    raise exception 'Only the active season can be edited' using errcode = '42501';
+  end if;
 
   if v_counted then
     for v_old in
@@ -532,7 +580,253 @@ grant execute on function public.replace_match_events(text, jsonb) to authentica
 grant execute on function public.delete_match(text) to authenticated;
 
 -- ------------------------------------------------------------
--- 6c. ATOMIC FULL-DATA IMPORT (admin only)
+-- 6c. ATOMIC MATCH + EVENTS SAVE
+-- ------------------------------------------------------------
+create or replace function public.save_match(
+  p_match jsonb,
+  p_events jsonb default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id text;
+  v_season_id text;
+  v_round int;
+  v_home_id text;
+  v_away_id text;
+  v_home_score int;
+  v_away_score int;
+  v_status text;
+  v_events_counted boolean;
+  v_existing_season_id text;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can save matches' using errcode = '42501';
+  end if;
+
+  if p_match is null or jsonb_typeof(p_match) <> 'object' then
+    raise exception 'Match payload must be a JSON object';
+  end if;
+
+  perform pg_advisory_xact_lock(748291);
+
+  v_id := nullif(p_match->>'id', '');
+  if v_id is null then
+    v_id := 'm_' || replace(gen_random_uuid()::text, '-', '');
+  end if;
+
+  v_season_id := nullif(p_match->>'season_id', '');
+  if v_season_id is null or not public.is_active_season(v_season_id) then
+    raise exception 'Matches can only be saved in the active season' using errcode = '42501';
+  end if;
+
+  v_round := coalesce((p_match->>'round')::int, 1);
+  if v_round < 1 then
+    raise exception 'Matchday must be at least 1';
+  end if;
+
+  v_home_id := nullif(p_match->>'home_id', '');
+  v_away_id := nullif(p_match->>'away_id', '');
+  if v_home_id is null or v_away_id is null or v_home_id = v_away_id then
+    raise exception 'Home and away teams must be different';
+  end if;
+  if not exists (select 1 from public.teams where id = v_home_id)
+     or not exists (select 1 from public.teams where id = v_away_id) then
+    raise exception 'One or both teams do not exist';
+  end if;
+
+  v_status := coalesce(nullif(p_match->>'status', ''), 'SCHEDULED');
+  if v_status not in ('SCHEDULED', 'LIVE', 'FINISHED') then
+    raise exception 'Invalid match status: %', v_status;
+  end if;
+
+  v_home_score := coalesce((p_match->>'home_score')::int, 0);
+  v_away_score := coalesce((p_match->>'away_score')::int, 0);
+  if v_home_score < 0 or v_away_score < 0 then
+    raise exception 'Scores cannot be negative';
+  end if;
+
+  v_events_counted := coalesce((p_match->>'events_counted')::boolean, true);
+
+  select season_id
+    into v_existing_season_id
+  from public.matches
+  where id = v_id;
+
+  if found and v_existing_season_id <> v_season_id then
+    raise exception 'A match cannot be moved to another season';
+  end if;
+  if found and not public.is_active_season(v_existing_season_id) then
+    raise exception 'Only the active season can be edited' using errcode = '42501';
+  end if;
+
+  if exists (
+    select 1
+    from public.matches m
+    where m.id <> v_id
+      and m.season_id = v_season_id
+      and m.round = v_round
+      and (
+        (m.home_id = v_home_id and m.away_id = v_away_id)
+        or (m.home_id = v_away_id and m.away_id = v_home_id)
+      )
+  ) then
+    raise exception 'This fixture already exists in this round';
+  end if;
+
+  insert into public.matches (
+    id,
+    season_id,
+    round,
+    home_id,
+    away_id,
+    home_score,
+    away_score,
+    status,
+    datetime,
+    venue,
+    scorers_text,
+    events_counted
+  )
+  values (
+    v_id,
+    v_season_id,
+    v_round,
+    v_home_id,
+    v_away_id,
+    v_home_score,
+    v_away_score,
+    v_status,
+    nullif(p_match->>'datetime', ''),
+    nullif(p_match->>'venue', ''),
+    nullif(p_match->>'scorers_text', ''),
+    v_events_counted
+  )
+  on conflict (id) do update
+    set season_id = excluded.season_id,
+        round = excluded.round,
+        home_id = excluded.home_id,
+        away_id = excluded.away_id,
+        home_score = excluded.home_score,
+        away_score = excluded.away_score,
+        status = excluded.status,
+        datetime = excluded.datetime,
+        venue = excluded.venue,
+        scorers_text = excluded.scorers_text,
+        events_counted = excluded.events_counted;
+
+  -- A null p_events means "leave the existing event list untouched"
+  -- (used by the quick LIVE +1 score buttons).
+  if p_events is not null and p_events <> 'null'::jsonb then
+    perform public.replace_match_events(v_id, p_events);
+  end if;
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- 6d. SAFE TEAM DELETION + PLAYER ARCHIVE/RESTORE
+-- ------------------------------------------------------------
+create or replace function public.delete_team(p_team_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_match record;
+  v_event record;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can delete teams' using errcode = '42501';
+  end if;
+
+  if not exists (select 1 from public.teams where id = p_team_id) then
+    raise exception 'Team not found';
+  end if;
+
+  perform pg_advisory_xact_lock(748291);
+
+  for v_match in
+    select id, events_counted
+    from public.matches
+    where home_id = p_team_id or away_id = p_team_id
+  loop
+    if v_match.events_counted then
+      for v_event in
+        select player_id, event_type
+        from public.match_events
+        where match_id = v_match.id
+      loop
+        update public.players
+           set goals = greatest(0, goals - case when v_event.event_type = 'goal' then 1 else 0 end),
+               yellow = greatest(0, yellow - case when v_event.event_type = 'yellow' then 1 else 0 end),
+               red = greatest(0, red - case when v_event.event_type = 'red' then 1 else 0 end)
+         where id = v_event.player_id;
+      end loop;
+    end if;
+  end loop;
+
+  -- Remove events before the team cascade so the history-protection
+  -- policy on players cannot block the cascade.
+  delete from public.match_events
+  where match_id in (
+    select id
+    from public.matches
+    where home_id = p_team_id or away_id = p_team_id
+  );
+
+  delete from public.teams where id = p_team_id;
+end;
+$$;
+
+create or replace function public.archive_player(p_player_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can archive players' using errcode = '42501';
+  end if;
+  if not exists (select 1 from public.players where id = p_player_id) then
+    raise exception 'Player not found';
+  end if;
+  update public.players set is_active = false where id = p_player_id;
+end;
+$$;
+
+create or replace function public.restore_player(p_player_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can restore players' using errcode = '42501';
+  end if;
+  if not exists (select 1 from public.players where id = p_player_id) then
+    raise exception 'Player not found';
+  end if;
+  update public.players set is_active = true where id = p_player_id;
+end;
+$$;
+
+revoke execute on function public.save_match(jsonb, jsonb) from public, anon;
+revoke execute on function public.delete_team(text) from public, anon;
+revoke execute on function public.archive_player(text) from public, anon;
+revoke execute on function public.restore_player(text) from public, anon;
+grant execute on function public.save_match(jsonb, jsonb) to authenticated;
+grant execute on function public.delete_team(text) to authenticated;
+grant execute on function public.archive_player(text) to authenticated;
+grant execute on function public.restore_player(text) to authenticated;
+
+-- ------------------------------------------------------------
+-- 6e. ATOMIC FULL-DATA IMPORT (admin only)
 -- ------------------------------------------------------------
 create or replace function public.replace_all_data(p_data jsonb)
 returns void
@@ -621,7 +915,7 @@ begin
     color text
   );
 
-  insert into public.players (id, team_id, name, pos, num, goals, yellow, red)
+  insert into public.players (id, team_id, name, pos, num, goals, yellow, red, is_active)
   select pl.id,
          pl.team_id,
          pl.name,
@@ -629,7 +923,8 @@ begin
          coalesce(pl.num, 10),
          coalesce(pl.goals, 0),
          coalesce(pl.yellow, 0),
-         coalesce(pl.red, 0)
+         coalesce(pl.red, 0),
+         coalesce(pl.is_active, true)
   from jsonb_to_recordset(v_players) as pl(
     id text,
     team_id text,
@@ -638,7 +933,8 @@ begin
     num int,
     goals int,
     yellow int,
-    red int
+    red int,
+    is_active boolean
   );
 
   insert into public.matches (

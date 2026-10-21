@@ -1,6 +1,6 @@
 # KickOff Division — Modernization Plan
 
-- **Status:** proposal
+- **Status:** proposal; v3.5.0 integrity work in progress
 - **Horizon:** 6 months, delivered in small reversible releases
 - **Constraints:** free hosting, no application server we operate, static frontend, Supabase free tier, separate HTML/CSS/JS files, trilingual EN/FR/AR with RTL, public read access, admin-only writes.
 
@@ -28,18 +28,19 @@
 |---|---|
 | Frontend | Vanilla HTML/CSS/JS, classic scripts loaded in dependency order |
 | Styling | Tailwind compiled locally into committed `css/tailwind.css` |
-| Data | Supabase Postgres + PostgREST; RLS public read/admin write |
+| Data | Supabase Postgres + PostgREST; RLS public read/admin write; RPC-only destructive writes; archived seasons read-only |
 | Auth | Supabase Auth email + password; `profiles.role` |
 | Realtime | Not used |
 | Imports | Client-side validation plus atomic `replace_all_data(jsonb)` RPC; legacy fallback retained for older projects |
+| History | `players.is_active` archive/restore; `save_match` atomic match + events; `delete_team` reverses opponent totals |
 | CSV | Node tools + browser exports |
-| Tests | JS syntax, CSV round trip, manual browser/Lighthouse checks |
+| Tests | JS syntax, CSV round trip, PGlite/Postgres integrity suite, manual browser/Lighthouse checks |
 | CI/CD | GitHub Actions validate workflow; GitHub Pages deploy |
 | Observability | Browser console and Supabase logs only |
 
 **Strengths:** small surface area, no build step for JS, easy to audit, cheap, portable data.
 
-**Weaknesses:** string-built UI, no type system, no component boundary, no automated browser/DB tests, atomic import dry-run pending, no audit trail, no realtime.
+**Weaknesses:** string-built UI, no type system, no component boundary, no automated hosted DB/browser tests, no audit trail, no team/match trash, no per-season stats, no realtime.
 
 ## 4. Target architecture
 
@@ -101,15 +102,17 @@ Effort: S = days, M = 1–3 weeks, L = 3–6 weeks.
 
 **Goal:** the match-events release is safe to deploy and the worst data-loss path is closed.
 
-- Apply `match-events-migration.sql` in development, test, then production.
+- ✅ Apply `match-events-migration.sql` in development, test, then production.
 - ✅ Add the atomic import RPC and switch the UI to it (development and production no-op/rollback passed).
-- Add audit logging and soft delete for matches, players, teams and seasons.
+- ✅ Add player archive/restore, database-enforced archive reads, RPC-only destructive writes and atomic `save_match` in the working tree.
+- [ ] Apply `integrity-migration.sql` in development, test, then production.
+- Add audit logging and soft delete for matches, teams and seasons.
 - Add MFA for admins and enforce `aal2` on write RPCs.
 - Remove inline handlers; introduce event delegation.
 - Add strict CSP and self-host Supabase JS/Lucide/fonts (or keep pinned SRI with a tight allowlist).
-- Add CSV formula-injection protection.
+- ✅ Add CSV formula-injection protection.
+- ✅ Add a PGlite SQL/RLS suite for anon/admin, archive locks, atomic saves and safe deletes; run it in CI.
 - Add a Playwright smoke test: public read, login, admin edit, event add/remove, import dry-run.
-- Add a pgTAP/RLS test for anon/viewer/admin.
 
 **Success metrics:**
 
@@ -122,13 +125,13 @@ Effort: S = days, M = 1–3 weeks, L = 3–6 weeks.
 
 **Goal:** the league can be run for a full season without fear of corruption.
 
-- Add `CHECK` constraints and server-side JSON validation.
-- Enforce archived-season immutability in the database.
+- Add `CHECK` constraints and extend server-side JSON validation.
+- ✅ Enforce archived-season immutability in the database (pending hosted migration).
 - Add `updated_at`/version columns and optimistic concurrency.
 - Add idempotency keys to imports and destructive actions.
 - Move standings math into a SQL view/function with configurable tiebreakers.
 - Add `player_season_stats` and `team_registrations` (transfer-aware).
-- Replace team/player cascade deletes with RPCs that reverse event totals or archive history.
+- ✅ Replace team deletion with `delete_team()` and archive players with events; match deletion already goes through `delete_match()`.
 - Add a restore UI for soft-deleted records.
 - Add encrypted backup guidance and a quarterly restore drill.
 - Add statement timeouts and write-volume alerts.

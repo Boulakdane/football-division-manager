@@ -61,6 +61,7 @@ used to link rows together.
 | `goals` | no | Defaults to `0` |
 | `yellow` | no | Defaults to `0` |
 | `red` | no | Defaults to `0` |
+| `isActive` | no | Defaults to `true`; `false` keeps the player's history but hides them from the active squad |
 
 ### `matches.csv`
 

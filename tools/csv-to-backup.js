@@ -263,7 +263,10 @@ const players = playerRows.map(record => {
     num: integer(record, 'num', 'players.csv', 1),
     goals: integer(record, 'goals', 'players.csv', 0, 0),
     yellow: integer(record, 'yellow', 'players.csv', 0, 0),
-    red: integer(record, 'red', 'players.csv', 0, 0)
+    red: integer(record, 'red', 'players.csv', 0, 0),
+    isActive: record.isActive === undefined || record.isActive === ''
+      ? true
+      : bool(record, 'isActive', 'players.csv')
   };
 });
 

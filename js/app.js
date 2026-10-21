@@ -376,7 +376,7 @@ function getMatchEvents(matchId) {
 
 function playersForTeam(teamId) {
   return appState.players
-    .filter(player => player.teamId === teamId)
+    .filter(player => player.teamId === teamId && player.isActive !== false)
     .slice()
     .sort((a, b) => (toInt(a.num) - toInt(b.num)) || a.name.localeCompare(b.name));
 }
@@ -635,13 +635,20 @@ function renderTeamsView() {
   }
 
   container.innerHTML = appState.teams.map(team => {
-    let squad = appState.players.filter(p => p.teamId === team.id);
+    const allSquad = appState.players.filter(p => p.teamId === team.id);
+    let squad = allSquad.filter(p => p.isActive !== false);
+    let archived = (typeof isAdmin === 'function' && isAdmin())
+      ? allSquad.filter(p => p.isActive === false)
+      : [];
     if (query) {
       const teamMatches = team.name.toLowerCase().includes(query);
-      squad = teamMatches ? squad : squad.filter(p => p.name.toLowerCase().includes(query));
-      if (!teamMatches && squad.length === 0) return '';
+      if (!teamMatches) {
+        squad = squad.filter(p => p.name.toLowerCase().includes(query));
+        archived = archived.filter(p => p.name.toLowerCase().includes(query));
+      }
+      if (!teamMatches && squad.length === 0 && archived.length === 0) return '';
     }
-    const totalSquad = appState.players.filter(p => p.teamId === team.id).length;
+    const totalSquad = squad.length;
 
     return `
       <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl overflow-hidden shadow-sm flex flex-col">
@@ -706,6 +713,17 @@ function renderTeamsView() {
                   </tr>`).join('')}
               </tbody>
             </table>`}
+          ${archived.length ? `
+            <div class="mt-3 pt-3 border-t border-slate-700/60 admin-only">
+              <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">${esc(t('archivedPlayers'))}</p>
+              <div class="space-y-1">
+                ${archived.map(p => `
+                  <div class="flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                    <span class="truncate">${esc(p.name)} <span class="text-slate-600">#${esc(p.num)}</span></span>
+                    <button onclick="restorePlayer(${jsString(p.id)})" class="text-pitch-400 hover:text-pitch-300 px-1.5 py-0.5 rounded border border-pitch-500/30 shrink-0">${esc(t('btnRestorePlayer'))}</button>
+                  </div>`).join('')}
+              </div>
+            </div>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -838,21 +856,26 @@ function renderMatchEventPanel(side) {
   const players = playersForTeam(teamId);
   title.textContent = team ? team.name : '';
 
-  if (!team || !players.length) {
-    list.innerHTML = `<p class="text-[11px] text-slate-500 py-1">${esc(t('noPlayersFound'))}</p>`;
-    return;
-  }
+  if (!team) return;
 
   const events = matchEventDraft.filter(event => event.teamId === teamId);
   if (!events.length) {
-    list.innerHTML = `<p class="text-[11px] text-slate-500 py-1">${esc(t('noMatchEvents'))}</p>`;
+    list.innerHTML = `<p class="text-[11px] text-slate-500 py-1">${esc(t(players.length ? 'noMatchEvents' : 'noPlayersFound'))}</p>`;
     return;
   }
 
   list.innerHTML = events.map(event => {
     const knownPlayer = players.some(player => player.id === event.playerId);
-    const options = (knownPlayer ? '' : `<option value="">${esc(t('unknownPlayer'))}</option>`) +
-      players.map(player => `<option value="${esc(player.id)}" ${player.id === event.playerId ? 'selected' : ''}>${esc(`#${player.num} ${player.name}`)}</option>`).join('');
+    const eventPlayer = appState.players.find(player => player.id === event.playerId);
+    let options = '';
+    if (!knownPlayer && eventPlayer) {
+      // Existing history can still reference an archived player. Keep it
+      // selectable so editing the match does not silently drop the event.
+      options += `<option value="${esc(eventPlayer.id)}" selected>${esc(`#${eventPlayer.num} ${eventPlayer.name}`)} (${esc(t('playerArchived'))})</option>`;
+    } else if (!knownPlayer) {
+      options += `<option value="">${esc(t('unknownPlayer'))}</option>`;
+    }
+    options += players.map(player => `<option value="${esc(player.id)}" ${player.id === event.playerId ? 'selected' : ''}>${esc(`#${player.num} ${player.name}`)}</option>`).join('');
 
     return `<div class="flex flex-col gap-1.5 rounded-lg border border-slate-700/60 bg-slate-900/50 p-2">
       <select onchange="updateMatchEvent(${jsString(event.id)}, 'playerId', this.value)" aria-label="${esc(t('thPlayer'))}" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-white focus:border-pitch-500">
@@ -1106,13 +1129,15 @@ async function deleteTeam(teamId) {
   const fixtureCount = appState.matches.filter(m => m.homeId === teamId || m.awayId === teamId).length;
   if (!confirm(t(fixtureCount ? 'confirmDeleteTeamHistory' : 'confirmDeleteTeam'))) return;
   try {
-    // Players and matches are removed by ON DELETE CASCADE in Postgres.
-    // With seasons enabled this also removes the club's archived fixtures.
+    // delete_team reverses this club's event contributions to opponent
+    // totals before Postgres cascades players, fixtures and events.
     await dbDeleteTeam(teamId);
     await refreshData();
     renderApp();
   } catch (err) {
-    alert(t('alertSaveFailed'));
+    alert(t(err && err.code === 'INTEGRITY_MIGRATION_REQUIRED'
+      ? 'alertIntegrityMigration'
+      : 'alertSaveFailed'));
   }
 }
 
@@ -1173,6 +1198,7 @@ async function savePlayer(e) {
     alert(t('alertPlayerTransferEvents'));
     return;
   }
+  playerData.isActive = existing ? existing.isActive !== false : true;
 
   try {
     await dbSavePlayer(playerData);
@@ -1186,13 +1212,56 @@ async function savePlayer(e) {
 
 async function deletePlayer(playerId) {
   const hasEvents = (appState.matchEvents || []).some(event => event.playerId === playerId);
-  if (!confirm(t(hasEvents ? 'confirmDeletePlayerEvents' : 'confirmDeletePlayer'))) return;
+
+  if (hasEvents) {
+    if (!confirm(t('confirmArchivePlayer'))) return;
+    try {
+      await dbArchivePlayer(playerId);
+      await refreshData();
+      renderApp();
+    } catch (err) {
+      alert(t(err && err.code === 'INTEGRITY_MIGRATION_REQUIRED'
+        ? 'alertIntegrityMigration'
+        : 'alertSaveFailed'));
+    }
+    return;
+  }
+
+  if (!confirm(t('confirmDeletePlayer'))) return;
   try {
     await dbDeletePlayer(playerId);
     await refreshData();
     renderApp();
   } catch (err) {
+    if (err && err.code === 'PLAYER_HAS_HISTORY') {
+      // The database refused the hard delete because events still reference
+      // the player. Fall back to archiving, which hides them but keeps history.
+      try {
+        await dbArchivePlayer(playerId);
+        await refreshData();
+        renderApp();
+        alert(t('alertPlayerArchived'));
+      } catch (archiveErr) {
+        alert(t(archiveErr && archiveErr.code === 'INTEGRITY_MIGRATION_REQUIRED'
+          ? 'alertIntegrityMigration'
+          : 'alertSaveFailed'));
+      }
+      return;
+    }
     alert(t('alertSaveFailed'));
+  }
+}
+
+async function restorePlayer(playerId) {
+  if (!confirm(t('confirmRestorePlayer'))) return;
+  try {
+    await dbRestorePlayer(playerId);
+    await refreshData();
+    renderApp();
+  } catch (err) {
+    alert(t(err && err.code === 'INTEGRITY_MIGRATION_REQUIRED'
+      ? 'alertIntegrityMigration'
+      : 'alertSaveFailed'));
   }
 }
 
@@ -1442,9 +1511,12 @@ function buildSquadsCsvRows() {
   const season = viewedSeason();
   const seasonName = season ? season.name : '';
   const teamName = id => (getTeam(id) || {}).name || id;
-  const players = appState.players.slice().sort((a, b) =>
-    teamName(a.teamId).localeCompare(teamName(b.teamId)) || (a.num || 0) - (b.num || 0)
-  );
+  const players = appState.players
+    .filter(player => player.isActive !== false)
+    .slice()
+    .sort((a, b) =>
+      teamName(a.teamId).localeCompare(teamName(b.teamId)) || (a.num || 0) - (b.num || 0)
+    );
 
   return [
     [t('seasonLabel'), t('csvTeam'), t('thPlayer'), t('lblPosition'), t('lblJerseyNum'), t('lblGoals'), t('lblYellowCards'), t('lblRedCards')],
@@ -1501,6 +1573,7 @@ function validateImport(data) {
   for (const player of players) {
     if (!player || typeof player.id !== 'string' || !player.id) return null;
     if (!ids.has(player.teamId) || typeof player.name !== 'string' || !player.name) return null;
+    if (player.isActive !== undefined && typeof player.isActive !== 'boolean') return null;
     if (playerIds.has(player.id)) return null;
     playerIds.add(player.id);
   }

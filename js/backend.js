@@ -15,6 +15,9 @@ let BACKEND_READY = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase
 /** Supabase client (null in demo mode). */
 let db = null;
 
+/** True once the players table has the is_active column (integrity migration). */
+let PLAYERS_ARCHIVE_READY = false;
+
 function initBackend() {
   if (!BACKEND_READY) return;
   try {
@@ -63,7 +66,8 @@ function mapPlayer(row) {
     num: row.num,
     goals: row.goals,
     yellow: row.yellow,
-    red: row.red
+    red: row.red,
+    isActive: row.is_active !== false
   };
 }
 
@@ -109,8 +113,8 @@ function teamToRow(team) {
   return { id: team.id, name: team.name, code: team.code, color: team.color };
 }
 
-function playerToRow(player) {
-  return {
+function playerToRow(player, includeActive = true) {
+  const row = {
     id: player.id,
     team_id: player.teamId,
     name: player.name,
@@ -120,6 +124,8 @@ function playerToRow(player) {
     yellow: player.yellow,
     red: player.red
   };
+  if (includeActive) row.is_active = player.isActive !== false;
+  return row;
 }
 
 function matchToRow(match) {
@@ -152,6 +158,17 @@ function matchEventToRow(event) {
   };
 }
 
+/** Event shape consumed by replace_match_events and save_match. */
+function matchEventRpcPayload(events) {
+  return (events || []).map(event => ({
+    id: event.id,
+    teamId: event.teamId,
+    playerId: event.playerId,
+    type: event.type,
+    minute: event.minute
+  }));
+}
+
 /** True when a table (or the season migration) has not been created yet. */
 function isMissingTable(error) {
   return Boolean(error) && (
@@ -179,6 +196,7 @@ function isMissingFunction(error) {
 /** Replace the in-memory state with data from Supabase (or demo data). */
 async function refreshData() {
   if (!BACKEND_READY) {
+    PLAYERS_ARCHIVE_READY = true;
     appState = normalizeState(DEFAULT_DATA);
     appState.seasonsReady = true;
     appState.eventsReady = true;
@@ -219,6 +237,18 @@ async function refreshData() {
     eventsReady = true;
   }
 
+  // The integrity migration adds players.is_active. Detect it from the
+  // selected rows so the frontend can stay compatible with older projects.
+  const playerRows = playersResult.data || [];
+  PLAYERS_ARCHIVE_READY = playerRows.some(row =>
+    Object.prototype.hasOwnProperty.call(row, 'is_active')
+  );
+  if (!PLAYERS_ARCHIVE_READY && playerRows.length === 0) {
+    // An empty table returns no rows, so probe the column once.
+    const probe = await db.from('players').select('is_active').limit(1);
+    PLAYERS_ARCHIVE_READY = !probe.error;
+  }
+
   const previousView = appState ? appState.viewSeasonId : null;
   const dbActive = seasons.find(season => season.isActive) || null;
   const activeSeasonId = dbActive ? dbActive.id : null;
@@ -256,25 +286,89 @@ async function dbSaveTeam(team) {
 
 async function dbDeleteTeam(teamId) {
   assertBackend();
-  const { error } = await db.from('teams').delete().eq('id', teamId);
-  if (error) throw error;
+
+  // Prefer the RPC so opponent totals are adjusted before the cascade.
+  const { error } = await db.rpc('delete_team', { p_team_id: teamId });
+  if (!error) return;
+  if (!isMissingFunction(error)) throw error;
+
+  // Before the integrity migration, only allow the unsafe cascade when
+  // there are no structured events that could leave stale totals.
+  const teamMatches = new Set(
+    (appState.matches || [])
+      .filter(match => match.homeId === teamId || match.awayId === teamId)
+      .map(match => match.id)
+  );
+  const hasEvents = (appState.matchEvents || []).some(event => teamMatches.has(event.matchId));
+  if (hasEvents) throw integrityMigrationError(error);
+
+  const { data, error: deleteError } = await db
+    .from('teams')
+    .delete()
+    .eq('id', teamId)
+    .select('id');
+  if (deleteError) throw deleteError;
+  if (!data || !data.length) throw new Error('Team delete was blocked');
 }
 
 async function dbSavePlayer(player) {
   assertBackend();
-  const { error } = await db.from('players').upsert(playerToRow(player));
+  // Older projects do not have players.is_active yet.
+  const { error } = await db.from('players').upsert(playerToRow(player, PLAYERS_ARCHIVE_READY));
   if (error) throw error;
 }
 
 async function dbDeletePlayer(playerId) {
   assertBackend();
-  const { error } = await db.from('players').delete().eq('id', playerId);
+  const { data, error } = await db.from('players').delete().eq('id', playerId).select('id');
   if (error) throw error;
+  if (!data || !data.length) {
+    // RLS blocks deletes for players with match events. Report it so the UI
+    // can archive them instead of silently claiming success.
+    const historyError = new Error('Player has match history; archive instead');
+    historyError.code = 'PLAYER_HAS_HISTORY';
+    throw historyError;
+  }
+}
+
+async function dbArchivePlayer(playerId) {
+  assertBackend();
+  const { error } = await db.rpc('archive_player', { p_player_id: playerId });
+  if (error) throw integrityMigrationError(error);
+}
+
+async function dbRestorePlayer(playerId) {
+  assertBackend();
+  const { error } = await db.rpc('restore_player', { p_player_id: playerId });
+  if (error) throw integrityMigrationError(error);
+}
+
+/** Mark a missing integrity-migration function so the UI can explain it. */
+function integrityMigrationError(error) {
+  if (isMissingFunction(error)) {
+    const migrationError = new Error('Run supabase/integrity-migration.sql');
+    migrationError.code = 'INTEGRITY_MIGRATION_REQUIRED';
+    return migrationError;
+  }
+  return error;
 }
 
 async function dbSaveMatch(match, events) {
   assertBackend();
-  const { error } = await db.from('matches').upsert(matchToRow(match));
+  const row = matchToRow(match);
+
+  // Prefer the single-transaction RPC so a rejected event cannot leave a
+  // half-saved match behind.
+  if (appState.eventsReady) {
+    const { error } = await db.rpc('save_match', {
+      p_match: row,
+      p_events: Array.isArray(events) ? matchEventRpcPayload(events) : null
+    });
+    if (!error) return;
+    if (!isMissingFunction(error)) throw error;
+  }
+
+  const { error } = await db.from('matches').upsert(row);
   if (error) throw error;
 
   // Only touch events when the caller supplied them and the table exists.
@@ -286,13 +380,7 @@ async function dbSaveMatch(match, events) {
 /** Replace a match's events and adjust player totals atomically. */
 async function dbReplaceMatchEvents(matchId, events) {
   assertBackend();
-  const payload = (events || []).map(event => ({
-    id: event.id,
-    teamId: event.teamId,
-    playerId: event.playerId,
-    type: event.type,
-    minute: event.minute
-  }));
+  const payload = matchEventRpcPayload(events);
 
   const { error } = await db.rpc('replace_match_events', {
     p_match_id: matchId,
@@ -326,8 +414,13 @@ async function dbDeleteMatch(matchId) {
   if (!error) return;
 
   if (isMissingFunction(error)) {
-    const { error: deleteError } = await db.from('matches').delete().eq('id', matchId);
+    const { data, error: deleteError } = await db
+      .from('matches')
+      .delete()
+      .eq('id', matchId)
+      .select('id');
     if (deleteError) throw deleteError;
+    if (!data || !data.length) throw new Error('Match delete was blocked');
     return;
   }
 
@@ -430,7 +523,9 @@ async function dbReplaceAll(data) {
     if (error) throw error;
   }
   if (data.players.length) {
-    const { error } = await db.from('players').insert(data.players.map(playerToRow));
+    const { error } = await db.from('players').insert(
+      data.players.map(player => playerToRow(player, PLAYERS_ARCHIVE_READY))
+    );
     if (error) throw error;
   }
   if (data.matches.length) {

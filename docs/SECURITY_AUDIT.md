@@ -1,6 +1,6 @@
 # KickOff Division — Security Review and Remediation Plan
 
-- **Review date:** 2026-10-20
+- **Review date:** 2026-10-21
 - **Scope:** static frontend, Supabase schema/RLS/RPCs, authentication flow, CSV/JSON tooling, GitHub Actions
 - **Method:** manual code review, dependency audit, browser smoke tests, source-level abuse cases, and review of the deployed architecture. No destructive testing was performed against production data.
 
@@ -21,7 +21,7 @@ No critical vulnerability was found in this review. The largest residual risks a
 2. **XSS and supply-chain exposure.** The app has no strict Content Security Policy, uses inline event handlers, and still loads Google Fonts from a third party. A successful script injection could read the Supabase session from browser storage.
 3. **Destructive imports still lack a preview and audit trail.** Atomic rollback is now live-tested in production, but an admin can still replace all data without a dry-run diff or audit record. See SEC-05 for the audit/restore work.
 
-The current pass already reduced some risk: Lucide and Supabase JS are pinned with SRI, a secret scanner runs in CI, Dependabot is configured, and event-handler IDs are escaped with a JSON-aware helper. The plan below closes the remaining gaps.
+The current pass already reduced some risk: Lucide and Supabase JS are pinned with SRI, a secret scanner runs in CI, Dependabot is configured, event-handler IDs are escaped with a JSON-aware helper, imports are atomic, and the working tree adds database-enforced archive reads, player archiving, safe team deletion and atomic match saves. The integrity SQL has passed local Postgres-compatible tests but still has to be applied to the hosted development and production projects. The plan below closes the remaining gaps.
 
 ## 2. Trust boundaries and assets
 
@@ -63,14 +63,15 @@ CI      ──push──► GitHub Pages
 | SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Partially mitigated |
 | SEC-03 | High | Atomic full-data import RPC installed and live-tested; no-op and rollback verified | Mitigated |
 | SEC-04 | Medium | Third-party CDN and font dependency | Partially mitigated |
-| SEC-05 | Medium | No audit log, soft delete or restore path | Open |
-| SEC-06 | Medium | Archived seasons are read-only only in the UI | Open |
-| SEC-07 | Medium | Server-side data validation is incomplete | Open |
+| SEC-05 | Medium | No audit log, soft delete or restore path | Partially mitigated: player archive/restore; no audit or team/match trash |
+| SEC-06 | Medium | Archived seasons are read-only only in the UI | Mitigated in code; integrity migration pending |
+| SEC-07 | Medium | Server-side data validation is incomplete | Partially mitigated: import references validated in RPC; CHECK constraints still open |
 | SEC-08 | Medium | Security headers cannot be set on GitHub Pages | Open |
 | SEC-09 | Medium | CSV formula injection in exported files | Mitigated |
 | SEC-10 | Low | Environment override (`?env=prod`) can point local work at production | Open |
 | SEC-11 | Low | No rate limiting or statement timeout for admin RPCs | Open |
 | SEC-12 | Low | Local backups are unencrypted | Open |
+| SEC-13 | Medium | Destructive deletes could leave aggregate totals inconsistent | Mitigated in code; integrity migration pending |
 
 ### SEC-01 — Admin account takeover has no second factor
 
@@ -204,7 +205,7 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 ### SEC-05 — No audit log, soft delete or restore path
 
 **Severity:** Medium
-**Evidence:** Deletes are hard deletes. There is no `audit_log` table, no `deleted_at`, and no restore action. Player totals and match events can change with no record of who changed them.
+**Evidence:** There is no `audit_log` table, no `deleted_at` for teams/matches/seasons, and no restore action for them. Player totals and match events can change with no record of who changed them. The integrity release adds `players.is_active`, so players with history can be archived and restored, but this is not a full audit or trash system.
 
 **Impact:** Accidental or malicious changes are difficult to investigate and may be unrecoverable without a manual backup.
 
@@ -212,7 +213,7 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 
 1. Add `public.audit_log` (`id`, `actor_id`, `action`, `entity`, `entity_id`, `before`, `after`, `created_at`, client metadata).
 2. Write audit rows from triggers on `teams`, `players`, `matches`, `match_events`, `seasons`, and from import RPCs.
-3. Add `deleted_at` soft delete for teams, players, matches and seasons; filter deleted rows in views.
+3. Add `deleted_at` soft delete for teams, matches and seasons; filter deleted rows in views. Keep `players.is_active` for squad archiving.
 4. Add an admin-only restore action and a purge job.
 5. Keep archived seasons immutable at the database level.
 
@@ -222,29 +223,34 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 - A deleted match can be restored with its events and totals.
 - Audit rows are admin-readable only and cannot be edited by clients.
 
-### SEC-06 — Archived seasons are not write-protected in the database
+### SEC-06 - Archived seasons were not write-protected in the database
 
 **Severity:** Medium
-**Evidence:** The UI blocks edits when a season is archived, but `matches_insert_admin`, `matches_update_admin` and `matches_delete_admin` only check `public.is_admin()`. An admin can write to an archived season through the API.
+**Status:** Mitigated in code by `supabase/integrity-migration.sql`; hosted projects need the migration.
 
-**Impact:** The “archive” promise is not enforced. If archive immutability is required, a compromised or careless admin can rewrite history.
+**Evidence:** The UI blocked edits when a season was archived, but the old `matches_insert_admin`, `matches_update_admin` and `matches_delete_admin` policies only checked `public.is_admin()`. The integrity migration adds `public.is_active_season(text)` and applies it to match insert/update policies, drops direct match delete in favour of `delete_match()`, and makes match events RPC-only. The RPCs reject archived seasons with `Matches can only be saved in the active season` or `Only the active season can be edited`.
 
-**Remediation:**
+**Impact before fix:** The "archive" promise was not enforced. A careless or compromised admin could rewrite history through the API.
 
-- Add a trigger or policy that rejects match/event writes when the target season is not active, unless the season is explicitly activated first.
-- Or add an `archived` flag and a `can_write_season(season_id)` helper used by policies.
-- Keep “Make active” as the explicit escape hatch.
+**Remediation applied:**
+
+- Added `is_active_season(season_id)` and active-season policies for `matches`.
+- Forced match deletion through `delete_match()` so event totals are reversed.
+- Forced match-event writes through `replace_match_events()` / `save_match()`.
+- Kept "Make active" as the explicit escape hatch.
 
 **Acceptance criteria:**
 
-- Direct REST writes to archived-season matches are rejected.
-- Activating the season restores write access.
-- The UI error message is clear.
+- Direct REST writes to archived-season matches are rejected. (Verified in PGlite/Postgres tests.)
+- Activating the season restores write access. (Verified by the active-season RPC tests.)
+- The UI error message is clear. (Existing archived-season alert retained.)
 
 ### SEC-07 — Server-side validation is incomplete
 
 **Severity:** Medium
-**Evidence:** Client-side validation covers most forms, but the database has limited checks: scores are plain integers, names have no length limits, colours are text, dates are text, and IDs are client-generated. A crafted admin request can bypass UI validation. Import validation is client-side only.
+**Status:** Partially mitigated. `replace_all_data` now validates the active-season count, fixture references and event team/player membership atomically; CHECK constraints are still missing.
+
+**Evidence:** Client-side validation covers most forms, but the database has limited checks: scores are plain integers, names have no length limits, colours are text, dates are text, and IDs are client-generated. A crafted admin request can bypass UI validation. Import validation is no longer client-side only: the RPC rejects malformed references and rolls back the whole import.
 
 **Impact:** Corrupt data, broken layouts, negative scores, invalid dates, duplicate IDs or extremely long values. A malicious or buggy client can make standings nonsensical.
 
@@ -372,6 +378,31 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 - Backups at rest are encrypted.
 - A restore from the archive is tested quarterly.
 
+### SEC-13 - Destructive deletes could leave aggregate totals inconsistent
+
+**Severity:** Medium
+**Status:** Mitigated in code by `supabase/integrity-migration.sql`; hosted projects need the migration.
+
+**Evidence:** Before this pass, deleting a team cascaded its matches and `match_events`, but opponent players' cumulative goals/cards stayed counted. Deleting a player removed their historical events. A match and its events were saved with separate client requests, so a rejected event could leave a half-saved match. Direct REST deletes could bypass the total-adjusting RPCs.
+
+**Impact:** Standings and player statistics could silently drift from the event history.
+
+**Remediation applied:**
+
+- `delete_team(p_team_id)` locks writes, reverses event contributions to opponents, deletes the team's events, then deletes the team.
+- `delete_match(p_match_id)` reverses the match's counted events before deletion.
+- `save_match(p_match, p_events)` upserts the fixture and replaces events in one transaction; any invalid event rolls back the whole save.
+- `players.is_active` lets the app archive players who have events instead of hard-deleting them; the delete policy blocks hard deletion while events exist.
+- Direct `DELETE` on `teams` and `matches`, and all direct writes on `match_events`, are denied. These operations go through the admin-only RPCs (security-definer functions and full import bypass RLS internally).
+- All four write paths share advisory lock `748291`.
+
+**Acceptance criteria:**
+
+- A rejected event leaves no new match. (Verified in PGlite/Postgres tests.)
+- Deleting a team reverses opponent totals. (Verified.)
+- A player with events cannot be hard-deleted. (Verified.)
+- Archived seasons reject match/event writes. (Verified.)
+
 ## 5. Controls currently working well
 
 - RLS is enabled on every league table.
@@ -379,6 +410,9 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 - `is_admin()` is `security definer` with `set search_path = public`, avoiding recursive profile RLS.
 - Admin RPCs check the role inside the function, not only in the UI.
 - Match-event RPCs revoke `PUBLIC`/`anon` execute.
+- Team/match deletion and match-event writes are RPC-only; direct destructive policies are dropped and write/delete grants are revoked from `authenticated`.
+- `save_match` and `replace_all_data` use shared advisory lock `748291`.
+- `players` hard deletion is blocked while events reference the player.
 - `profiles` has no client update policy; role promotion requires SQL.
 - Signups are disabled server-side.
 - Only publishable keys are in the repository; the secret scanner checks for leaked privileged keys.
@@ -394,9 +428,9 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 
 | Task | Acceptance |
 |---|---|
-| Apply `match-events-migration.sql` in development, then production | Migration is idempotent; admin RPC smoke test passes |
+| ✅ Apply `match-events-migration.sql` in development, then production | Migration applied; admin RPC smoke test passed |
 | ✅ Re-apply patched `atomic-import-migration.sql` in development and production | Both passed no-op/hash/anon/rollback checks |
-
+| Apply `integrity-migration.sql` in development, then production | Archived-season writes rejected; archive/restore, atomic save and safe team delete pass live |
 | Re-run anonymous/viewer/admin RLS matrix | Anon and viewer writes return `42501`; admin writes succeed |
 | Add MFA for admins and enforce `aal2` for writes | Password-only admin cannot write |
 | ✅ Replace `dbReplaceAll` with an atomic import RPC | RPC installed and live-tested in production; no-op import and rollback passed |
@@ -406,11 +440,12 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 
 ### P1 — 1 to 4 weeks
 
-- Add database `CHECK` constraints and server-side JSON validation.
-- Enforce archived-season immutability in the database.
+- Add database `CHECK` constraints and extend server-side JSON validation.
+- ✅ Enforce archived-season immutability in the database (pending hosted migration).
+- ✅ Make match saves, team deletes and event writes atomic/RPC-only (pending hosted migration).
 - Move hosting to Cloudflare Pages for security headers, or add an edge proxy.
 - Self-host Supabase JS, Lucide and fonts.
-- Add a Playwright smoke test and a pgTAP/RLS test suite.
+- ✅ Add an in-memory SQL/RLS regression suite (PGlite) and run it in CI; Playwright is still pending.
 - Add rate limits/statement timeouts and Supabase log alerts.
 - Encrypt backups and document a restore drill.
 
@@ -437,7 +472,10 @@ npm.cmd audit --omit=dev
 # 3. JavaScript syntax
 Get-ChildItem js/*.js, tools/*.js | ForEach-Object { node --check $_.FullName }
 
-# 4. CSV round trip
+# 4. SQL integrity/RLS suite (in-memory Postgres, no Docker)
+npm.cmd run test:sql
+
+# 5. CSV round trip
 node tools/csv-to-backup.js data/examples "$env:TEMP\kickoff-first.json"
 node tools/backup-to-csv.js "$env:TEMP\kickoff-first.json" "$env:TEMP\kickoff-csv"
 node tools/csv-to-backup.js "$env:TEMP\kickoff-csv" "$env:TEMP\kickoff-second.json"

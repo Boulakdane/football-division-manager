@@ -15,9 +15,10 @@ accounts live in a free [Supabase](https://supabase.com) project.
   update the player's goal/card totals.
 - **Multiple seasons** — create a new season, switch between active and archived
   seasons, and keep every past table and fixture intact. Archived seasons are
-  read-only in the UI until an admin makes them active again.
+  read-only in both the UI and the database until an admin makes them active again.
 - **Teams & squads** — create/edit clubs, add players with positions, squad numbers,
-  goals, yellow and red cards.
+  goals, yellow and red cards. Players with history can be archived and restored
+  without losing their events.
 - **Trilingual UI** — English, French and Arabic, with automatic RTL layout for Arabic.
 - **Real accounts & roles** — Supabase Auth with email + password. Spectators browse
   without an account; only users with the `admin` role can add, edit or delete.
@@ -76,7 +77,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── schema.sql                   # Tables, RLS policies, triggers and seed data
     ├── seasons-migration.sql        # Upgrade an existing database to seasons
     ├── match-events-migration.sql   # Upgrade an existing database to match events
-    └── atomic-import-migration.sql  # Install the one-transaction full-data import RPC
+    ├── atomic-import-migration.sql  # Install the one-transaction full-data import RPC
+    └── integrity-migration.sql      # Archive players, lock archived seasons and make deletes safe
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -107,10 +109,20 @@ Scripts are loaded in dependency order in `index.html`:
 >    either commits completely or leaves every table unchanged. The frontend uses
 >    it automatically and keeps the older client-side path as a fallback for projects
 >    where the migration has not been applied.
+> 4. [`supabase/integrity-migration.sql`](supabase/integrity-migration.sql) —
+>    adds player archiving, makes archived seasons read-only in the database, installs
+>    the atomic `save_match` and safe `delete_team` RPCs, and protects players with
+>    match history from hard deletion. **Run this last**; if you re-run an earlier
+>    migration later, run this one again.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. Do not re-run the sample seed block
 > on a production database with real data.
+>
+> After the integrity migration, team/match deletion and match-event writes are
+> intentionally RPC-only. The app uses `delete_team`, `delete_match`, `save_match` and
+> `replace_match_events`; direct REST deletes/writes are denied so player totals cannot
+> drift from the event history.
 
 ### 2. Add your keys
 
@@ -263,8 +275,10 @@ create policy teams_insert_admin on public.teams
 ```
 
 `public.is_admin()` checks `profiles.role = 'admin'` for `auth.uid()`. The same pattern
-is applied to `update`/`delete` on `teams`, `players` and `matches`. Public `select`
-policies make the league readable without logging in.
+is applied to `update`/`delete` on `teams`, `players` and `matches`. Match and match-event
+inserts/updates/deletes additionally require the parent season to be active, so archived
+seasons are read-only at the database layer. Public `select` policies make the league
+readable without logging in.
 
 ## Run locally
 
@@ -296,6 +310,16 @@ npm run watch:css    # rebuild while editing
 
 The GitHub Actions workflow rebuilds the CSS on every push and fails if the committed
 file is out of date.
+
+### Tests
+
+```bash
+npm run test:sql        # in-memory Postgres: RLS, archive locks, atomic saves, safe deletes
+npm run check:secrets   # fail if a privileged key is committed
+```
+
+`test:sql` uses PGlite (Postgres compiled to WASM), so it needs no Docker daemon or
+hosted database. CI also runs the JavaScript syntax check and the CSV round-trip test.
 
 ## Bulk data entry (CSV)
 
@@ -340,7 +364,8 @@ to camelCase by `js/backend.js`.
 ```
 seasons      (id text pk, name, start_date, end_date, is_active, created_at)
 teams        (id text pk, name, code, color)
-players      (id text pk, team_id → teams.id, name, pos, num, goals, yellow, red)
+players      (id text pk, team_id → teams.id, name, pos, num, goals, yellow, red,
+              is_active)
 matches      (id text pk, season_id → seasons.id, round, home_id → teams.id,
               away_id → teams.id, home_score, away_score, status, datetime, venue,
               scorers_text, events_counted)
@@ -350,16 +375,23 @@ profiles     (id uuid pk → auth.users.id, email, role: admin|viewer)
 ```
 
 `status` is one of `SCHEDULED`, `LIVE`, `FINISHED`. Only `FINISHED` matches count
-towards the league table. Deleting a team cascades to its players and matches.
-A unique partial index guarantees that at most one season is active. The
+towards the league table. Deleting a team cascades to its players and matches, but the
+`delete_team` RPC first reverses that team's event contributions to opponent player
+totals. A unique partial index guarantees that at most one season is active. The
 `create_season` and `activate_season` database functions are admin-only and run in
 a single transaction, so the active season always switches cleanly.
 
-`match_events` powers the scorer/card timeline. `replace_match_events` and
-`delete_match` are admin-only database functions that replace a match's events and
-adjust the cumulative `players.goals`, `players.yellow` and `players.red` counters by
-the difference in one transaction. Imported backups treat the player totals as
-authoritative, so events are inserted without being counted twice.
+`players.is_active` is `false` for archived players. Archived players keep their goals,
+cards and match history, are hidden from public squads and new event dropdowns, and can
+be restored by an admin. A player with match events cannot be hard-deleted; the app
+archives them instead.
+
+`match_events` powers the scorer/card timeline. `save_match` saves a fixture and its
+event list in one transaction, while `replace_match_events` and `delete_match` adjust
+the cumulative `players.goals`, `players.yellow` and `players.red` counters by the
+difference in one transaction. Match and event writes are rejected for archived
+seasons in the database, not just in the UI. Imported backups treat the player totals
+as authoritative, so events are inserted without being counted twice.
 
 `matches.events_counted` prevents double-counting historical data. Existing fixtures
 are marked `false` during the migration because their goals/cards were already entered
@@ -376,7 +408,7 @@ before seasons existed are upgraded automatically into a single default season:
                 "endDate": "2027-05-31", "isActive": true }],
   "teams":   [{ "id": "t1", "name": "Spartan FC", "code": "SFC", "color": "#3b82f6" }],
   "players": [{ "id": "p1", "teamId": "t1", "name": "David Silva", "pos": "MID",
-                "num": 10, "goals": 5, "yellow": 1, "red": 0 }],
+                "num": 10, "goals": 5, "yellow": 1, "red": 0, "isActive": true }],
   "matches": [{ "id": "m1", "seasonId": "s1", "round": 1, "homeId": "t1",
                 "awayId": "t2", "homeScore": 3, "awayScore": 1,
                 "status": "FINISHED", "datetime": "2026-10-03T15:00",
@@ -419,6 +451,10 @@ before seasons existed are upgraded automatically into a single default season:
 - Player goals and cards remain cumulative totals, so the top-scorer card is all-time
   rather than per-season. For fixtures with `events_counted = true`, adding or removing
   a match event adjusts those totals by one in the same database transaction.
+- To remove a player who already has match events, use **Delete** and confirm the
+  archive prompt: the player disappears from the active squad but their history stays
+  intact. Archived players appear in a small **Archived players** section under the
+  squad for admins, with a **Restore** button.
 - Match events are optional for backward compatibility. Until the match-events
   migration is run, the app keeps working with the free-text `scorersText` field and
   shows a one-time migration notice in the match modal.

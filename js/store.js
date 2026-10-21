@@ -62,7 +62,10 @@ const DEFAULT_DATA = {
 function normalizeState(data) {
   const source = data || {};
   const teams = (Array.isArray(source.teams) ? source.teams : []).map(team => ({ ...team }));
-  const players = (Array.isArray(source.players) ? source.players : []).map(player => ({ ...player }));
+  const players = (Array.isArray(source.players) ? source.players : []).map(player => ({
+    ...player,
+    isActive: player.isActive !== false
+  }));
 
   let seasons = (Array.isArray(source.seasons) ? source.seasons : [])
     .filter(season => season && typeof season.id === 'string' && season.id)
