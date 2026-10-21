@@ -102,7 +102,7 @@ Effort: S = days, M = 1–3 weeks, L = 3–6 weeks.
 **Goal:** the match-events release is safe to deploy and the worst data-loss path is closed.
 
 - Apply `match-events-migration.sql` in development, test, then production.
-- ✅ Add the atomic import RPC and switch the UI to it (production no-op and rollback passed).
+- ✅ Add the atomic import RPC and switch the UI to it (development and production no-op/rollback passed).
 - Add audit logging and soft delete for matches, players, teams and seasons.
 - Add MFA for admins and enforce `aal2` on write RPCs.
 - Remove inline handlers; introduce event delegation.
@@ -471,7 +471,7 @@ This is a larger change; do it only when a second competition is a real requirem
 
 ## 19. First PRs to open next
 
-1. `feat(db): add atomic replace_all_data RPC with dry-run` — RPC installed and live-tested; dry-run and real-data confirmation pending
+1. `feat(db): add atomic replace_all_data RPC with dry-run` — RPC installed and live-tested in both environments; dry-run and real-data confirmation pending
 2. `feat(db): add audit_log, soft delete and restore RPC`
 3. `feat(auth): require MFA aal2 for admin writes`
 4. `refactor(ui): replace inline handlers with event delegation`

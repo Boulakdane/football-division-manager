@@ -16,13 +16,13 @@
 | Multiple seasons and archive | ✅ Done | Archived seasons are read-only in the UI |
 | CSV bulk entry and admin exports | ✅ Done | Five-file workflow including `events.csv` |
 | JSON backup and restore | ✅ Done | Full replacement; development round-trip and production no-op import passed |
-| Atomic full-data import | ✅ Deployed and live-tested | Patched RPC invoked successfully in production; no-op import kept the data hash unchanged and did not use the fallback |
+| Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
 | Security hardening pass | 🟡 In progress | SRI, secret scanning, dependency updates, XSS helper |
 | Production migration | ✅ Applied | `match_events` and `events_counted` exist with RLS and RPCs |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.4.5` is deployed. The admin-only, single-transaction `replace_all_data(jsonb)` import RPC is installed and live-tested in production: the patched function completed a no-op import through the RPC, did not use the client fallback, and kept the pre/post data hash identical. An invalid event import was also rejected and rolled back. Public filtering, language/RTL, login/logout, team/player CRUD, seasons, results, live score updates, CSV/JSON exports and the admin event flow have all been exercised live. The next step is to load the real league data into development, then import it into production only after a fresh backup.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.4.5` is deployed. The admin-only, single-transaction `replace_all_data(jsonb)` import RPC is installed and live-tested in both development and production: the patched function completed no-op imports through the RPC, did not use the client fallback, and kept each pre/post data hash identical. Invalid event imports were rejected and rolled back in both projects. Public filtering, language/RTL, login/logout, team/player CRUD, seasons, results, live score updates, CSV/JSON exports and the admin event flow have all been exercised live. The next step is to load the real league data into development, then import it into production only after a fresh backup.
 
 ## 2. Architecture
 
@@ -146,6 +146,8 @@ Local CSV / JSON tools
 | Atomic import payload (local) | Backend sends snake-case arrays, active-season fallback, `events_counted` and event rows to `replace_all_data` |
 | Atomic import invalid request (production) | Admin request with no seasons rejected with `Import needs at least one season`; all counts unchanged |
 | Atomic import first attempt (production) | Reached RPC, then safely failed on `pg-safeupdate`: `DELETE requires a WHERE clause`; data hash unchanged |
+| Development atomic no-op import (patched) | Admin `demo@kickoff.com`; `dbReplaceAll` called only `replace_all_data`, no fallback; pre/post SHA-256 `a3b72e56...6b5a25` identical with 1/6/9/9/0 rows |
+| Development atomic rollback (patched) | Invalid event rejected with `Every imported event must belong to its fixture team and player`; test row absent, hash unchanged at `a3b72e56...6b5a25` |
 | Production atomic no-op import (patched) | `dbReplaceAll` called only `replace_all_data`, no fallback; pre/post SHA-256 `bc03039b...7e3dde` identical with 1/6/9/9/0 rows |
 | Production atomic rollback (patched) | Invalid event rejected with `Every imported event must belong to its fixture team and player`; test row absent and counts unchanged |
 | Historical flag RPC | `events_counted = false` stored an event without changing player totals in development and production |
@@ -183,13 +185,13 @@ Local CSV / JSON tools
 ### Atomic import migration (v3.4.5)
 
 - [x] Run the initial `supabase/atomic-import-migration.sql` in development and production.
-- [ ] Re-run the patched migration (`DELETE ... WHERE id IS NOT NULL`) in **development** and confirm it live.
+- [x] Re-run the patched migration (`DELETE ... WHERE id IS NOT NULL`) in **development** and confirm it live.
 - [x] Re-run the patched migration in **production**.
-- [x] Reload production and confirm an admin no-op import succeeds through `replace_all_data` only.
+- [x] Confirm an admin no-op import succeeds through `replace_all_data` only in development and production.
 - [x] Submit an invalid import with no seasons; production rejected it and left every count unchanged.
-- [x] Submit an invalid event import; production rejected it, the test row was absent, and counts were unchanged.
+- [x] Submit an invalid event import; both projects rejected it, the test row was absent, and counts/hashes were unchanged.
 - [x] Confirm an anonymous `replace_all_data` call returns `401` / `42501` in both projects.
-- [x] Confirm the post-import production hash matches the pre-import backup.
+- [x] Confirm the post-import hash matches the pre-import state in development and production.
 - [x] Export a fresh production backup after the live import.
 - [ ] Decide whether to keep the single event that appeared during the live test window.
 

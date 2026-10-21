@@ -152,7 +152,7 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 ### SEC-03 - Full-data import atomic RPC (live-tested)
 
 **Severity:** High
-**Status:** Installed and live-tested in production. The first attempt was safely rejected by Supabase `pg-safeupdate`; the patched function now uses qualified deletes. A no-op admin import completed through `replace_all_data` with no client fallback and an identical pre/post data hash, and an invalid event import rolled back without inserting its test row.
+**Status:** Installed and live-tested in development and production. The first production attempt was safely rejected by Supabase `pg-safeupdate`; the patched function now uses qualified deletes. No-op admin imports completed through `replace_all_data` with no client fallback and identical pre/post data hashes in both projects, and invalid event imports rolled back without inserting their test rows.
 **Evidence:** before this change, `js/backend.js` `dbReplaceAll()` deleted `match_events`, `matches`, `players`, `teams` and `seasons` in separate requests, then inserted each table in separate requests. RLS protects who can do it, but not what happens if a request fails halfway. The new `public.replace_all_data(jsonb)` performs the delete and insert in one database transaction and the frontend prefers it automatically.
 
 **Impact:** A network error, constraint violation or malformed import can leave the league partially deleted or with orphaned/incomplete data only if the RPC is unavailable and the frontend falls back. The admin may not have a fresh backup. This is the most likely way to lose real data.
@@ -174,10 +174,10 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 **Acceptance criteria:**
 
 - ✅ An intentionally invalid import leaves every table byte-for-byte unchanged
-  (verified locally and in production with an invalid match event; the test row was absent).
+  (verified locally, in development and in production; the test rows were absent).
 - ✅ A successful import is atomic and completes in one transaction.
-- ✅ A production no-op import preserved the pre/post SHA-256 hash and used only
-  `replace_all_data`, with no client fallback.
+- ✅ No-op imports in development and production preserved the pre/post SHA-256
+  hashes and used only `replace_all_data`, with no client fallback.
 - ✅ Concurrent imports are serialized by the advisory lock.
 - ❌ The admin sees a dry-run summary before commit.
 
@@ -394,7 +394,7 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 | Task | Acceptance |
 |---|---|
 | Apply `match-events-migration.sql` in development, then production | Migration is idempotent; admin RPC smoke test passes |
-| 🟡 Re-apply patched `atomic-import-migration.sql` in development | Production passed no-op/hash/anon checks; development patch is still live-unverified |
+| ✅ Re-apply patched `atomic-import-migration.sql` in development and production | Both passed no-op/hash/anon/rollback checks |
 
 | Re-run anonymous/viewer/admin RLS matrix | Anon and viewer writes return `42501`; admin writes succeed |
 | Add MFA for admins and enforce `aal2` for writes | Password-only admin cannot write |
