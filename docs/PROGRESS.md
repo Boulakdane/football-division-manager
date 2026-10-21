@@ -147,6 +147,7 @@ Local CSV / JSON tools
 | Production JSON import | Not run: destructive full replacement; test with real data in development first |
 | Historical flag RPC | `events_counted = false` stored an event without changing player totals in development and production |
 | Production backup | Fresh JSON export validated: 1 season, 6 teams, 9 players, 9 matches, 0 events; no smoke data |
+| Production backup after migration | `prod-backup-2026-10-21-post-atomic.json` matches the 2026-10-20 backup exactly; data unchanged |
 | Admin RPC success path | Verified in development and production |
 
 ## 5. Current blockers and risks
