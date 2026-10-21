@@ -222,8 +222,9 @@ Local CSV / JSON tools
 - [ ] Export and validate a fresh **production** JSON backup before touching production.
 - [ ] Run `supabase/integrity-migration.sql` in the **production** project.
 - [ ] Re-run the anonymous write and anonymous RPC checks in production.
-- [ ] Commit, push `main`, move the `prod` tag and verify the live `v3.5.0` badge/assets.
-- [ ] Re-run the public smoke test and the admin archive/match-save flows on the live site.
+- [x] Commit, push `main`, move the `prod` tag and verify the live `v3.5.0` badge/assets.
+- [x] Re-run the public smoke test: production reads 1 season / 6 teams / 9 players / 9 matches / 1 event; 6 standings rows and 9 fixtures render.
+- [ ] After the migration, test the admin archive/restore, atomic match-save and safe team-delete flows on the live site.
 
 ### v3.4.6 bug-fix release
 
