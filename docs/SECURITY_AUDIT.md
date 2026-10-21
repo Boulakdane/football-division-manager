@@ -19,7 +19,7 @@ No critical vulnerability was found in this review. The largest residual risks a
 
 1. **Admin account/session compromise.** An admin can legitimately replace or delete the entire dataset. There is no MFA, step-up authentication, session policy or audit trail.
 2. **XSS and supply-chain exposure.** The app has no strict Content Security Policy, uses inline event handlers, and still loads Google Fonts from a third party. A successful script injection could read the Supabase session from browser storage.
-3. **The atomic import is not deployed yet.** `replace_all_data(jsonb)` is implemented and tested, but until `atomic-import-migration.sql` is applied in both projects, the frontend still falls back to deleting and re-inserting data over multiple HTTP requests. A network failure or validation gap can then leave the league partially deleted.
+3. **The atomic import has not been exercised through the live admin UI since deployment.** `replace_all_data(jsonb)` is installed in development and production, local rollback tests passed, and anonymous calls are denied. The first real admin import is the remaining live confirmation.
 
 The current pass already reduced some risk: Lucide and Supabase JS are pinned with SRI, a secret scanner runs in CI, Dependabot is configured, and event-handler IDs are escaped with a JSON-aware helper. The plan below closes the remaining gaps.
 
@@ -61,7 +61,7 @@ CI      ──push──► GitHub Pages
 |---|---|---|---|
 | SEC-01 | High | No MFA/step-up authentication for a role that can erase the league | Open |
 | SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Partially mitigated |
-| SEC-03 | High | Atomic full-data import RPC is implemented; deployed fallback remains non-atomic | Mitigated in code, migration pending |
+| SEC-03 | High | Atomic full-data import RPC installed; anonymous calls denied | Mitigated; live admin import pending |
 | SEC-04 | Medium | Third-party CDN and font dependency | Partially mitigated |
 | SEC-05 | Medium | No audit log, soft delete or restore path | Open |
 | SEC-06 | Medium | Archived seasons are read-only only in the UI | Open |
@@ -149,13 +149,13 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 - A strict CSP blocks an injected inline script in a browser test.
 - Admin session data is not readable by injected script.
 
-### SEC-03 — Full-data import atomic RPC (migration pending)
+### SEC-03 - Full-data import atomic RPC (live admin confirmation pending)
 
 **Severity:** High
-**Status:** Code complete and locally tested; run `supabase/atomic-import-migration.sql` in development and production to close the fallback path.
+**Status:** Installed in development and production. Local rollback tests passed and anonymous calls return `401` / `42501`; the first live admin import is the remaining confirmation.
 **Evidence:** before this change, `js/backend.js` `dbReplaceAll()` deleted `match_events`, `matches`, `players`, `teams` and `seasons` in separate requests, then inserted each table in separate requests. RLS protects who can do it, but not what happens if a request fails halfway. The new `public.replace_all_data(jsonb)` performs the delete and insert in one database transaction and the frontend prefers it automatically.
 
-**Impact:** A network error, constraint violation or malformed import can leave the league partially deleted or with orphaned/incomplete data while the fallback remains active. The admin may not have a fresh backup. This is the most likely way to lose real data.
+**Impact:** A network error, constraint violation or malformed import can leave the league partially deleted or with orphaned/incomplete data only if the RPC is unavailable and the frontend falls back. The admin may not have a fresh backup. This is the most likely way to lose real data.
 
 **Remediation:**
 
@@ -392,7 +392,7 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 | Task | Acceptance |
 |---|---|
 | Apply `match-events-migration.sql` in development, then production | Migration is idempotent; admin RPC smoke test passes |
-| Apply `atomic-import-migration.sql` in development, then production | RPC exists; invalid import rolls back; anonymous call is denied |
+| ✅ Apply `atomic-import-migration.sql` in development, then production | RPC installed; anonymous call denied; live admin import confirmation pending |
 | Re-run anonymous/viewer/admin RLS matrix | Anon and viewer writes return `42501`; admin writes succeed |
 | Add MFA for admins and enforce `aal2` for writes | Password-only admin cannot write |
 | ✅ Replace `dbReplaceAll` with an atomic import RPC | RPC implemented and locally tested; migration pending |

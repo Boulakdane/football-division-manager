@@ -16,13 +16,13 @@
 | Multiple seasons and archive | ✅ Done | Archived seasons are read-only in the UI |
 | CSV bulk entry and admin exports | ✅ Done | Five-file workflow including `events.csv` |
 | JSON backup and restore | ✅ Done | Full replacement; development round-trip passed, production import pending |
-| Atomic full-data import | 🟡 Code ready, migration pending | `replace_all_data(jsonb)` rolls back the entire import on any error; frontend falls back until installed |
+| Atomic full-data import | ✅ Deployed and migrated | `replace_all_data(jsonb)` rolls back the entire import on any error; installed in development and production |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
 | Security hardening pass | 🟡 In progress | SRI, secret scanning, dependency updates, XSS helper |
 | Production migration | ✅ Applied | `match_events` and `events_counted` exist with RLS and RPCs |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.4.5` is deployed. It adds an admin-only, single-transaction `replace_all_data(jsonb)` import RPC; the migration still needs to be run in both Supabase projects. Public filtering, language/RTL, login/logout, team/player CRUD, seasons, results, live score updates, CSV/JSON exports and the admin event flow have all been exercised live. A full JSON replacement import, including events, passed in development. The next step is to load the real league data into development, then import it into production only after a fresh backup.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.4.5` is deployed. It adds an admin-only, single-transaction `replace_all_data(jsonb)` import RPC, now installed in both Supabase projects. Public filtering, language/RTL, login/logout, team/player CRUD, seasons, results, live score updates, CSV/JSON exports and the admin event flow have all been exercised live. A full JSON replacement import, including events, passed in development. The next step is to load the real league data into development, then import it into production only after a fresh backup.
 
 ## 2. Architecture
 
@@ -128,6 +128,8 @@ Local CSV / JSON tools
 | Production anonymous write | `POST /rest/v1/teams` returned `401` / `42501` |
 | Development migration | `match_events` and `events_counted` exist; REST returns `200` |
 | Production migration | `match_events` and `events_counted` exist; REST returns `200` |
+| Atomic import migration | `replace_all_data(jsonb)` installed in development and production |
+| Atomic import anonymous call | Both projects return `401` / `42501` (permission denied); function is no longer missing |
 | Historical-match flag | Existing fixtures have `events_counted = false` |
 | Anonymous event RPC | `replace_match_events` returned `401` in development and production |
 | Development admin event RPC | Add goal/yellow, replace yellow with red, delete match: all totals and rows verified |
@@ -150,7 +152,7 @@ Local CSV / JSON tools
 ## 5. Current blockers and risks
 
 1. **Real data is not loaded.** The app still contains sample fixtures and players.
-2. **The atomic import RPC is not deployed yet.** Run `supabase/atomic-import-migration.sql` in development and production. Until then the frontend uses the older client-orchestrated fallback.
+2. **The atomic import admin path has not been exercised live since migration.** The RPC is installed in both projects, local rollback tests passed, and anonymous calls are denied. The next admin import should be treated as the live confirmation.
 3. **Production full-replacement import is untested.** The atomic RPC makes it safer, but run the real backup in development first, then production with a fresh backup. Keep the previous production JSON export for rollback.
 4. **Production and development differ.** For example, `m6` is 1–1 in development but 1–3 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
 5. **Destructive edits still have data-integrity gaps.** Deleting a team cascades its matches and events without reversing other players' aggregate totals; deleting a player removes their historical events; a player transfer leaves old events attached to the former team. Keep a backup and prefer the planned RPC/soft-delete work.
@@ -174,11 +176,11 @@ Local CSV / JSON tools
 
 ### Atomic import migration (v3.4.5)
 
-- [ ] Run `supabase/atomic-import-migration.sql` in the **development** project SQL Editor.
-- [ ] Run `supabase/atomic-import-migration.sql` in the **production** project SQL Editor.
+- [x] Run `supabase/atomic-import-migration.sql` in the **development** project SQL Editor.
+- [x] Run `supabase/atomic-import-migration.sql` in the **production** project SQL Editor.
 - [ ] Reload both apps and confirm an admin import still succeeds.
 - [ ] Submit an intentionally invalid import and confirm every table is unchanged.
-- [ ] Confirm an anonymous `replace_all_data` call returns `401` / `42501`.
+- [x] Confirm an anonymous `replace_all_data` call returns `401` / `42501`.
 - [ ] Export a fresh production backup before the first real-data import.
 
 ## 7. Recommended next work
@@ -191,7 +193,7 @@ Local CSV / JSON tools
 
 ### P1 — data integrity
 
-- [x] Replace client-side `dbReplaceAll` with one transactional `replace_all_data(jsonb)` RPC (code ready; migration pending).
+- [x] Replace client-side `dbReplaceAll` with one transactional `replace_all_data(jsonb)` RPC (installed in both projects).
 - Add an audit log, soft delete and restore.
 - Add database `CHECK` constraints for scores, names, colours and dates.
 - Add a SQL/RLS test suite and a Playwright smoke test.

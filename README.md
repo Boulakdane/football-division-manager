@@ -105,7 +105,8 @@ Scripts are loaded in dependency order in `index.html`:
 > 3. [`supabase/atomic-import-migration.sql`](supabase/atomic-import-migration.sql) —
 >    installs the admin-only `replace_all_data(jsonb)` RPC so a full JSON import
 >    either commits completely or leaves every table unchanged. The frontend uses
->    it automatically and falls back to the older client-side path until it is installed.
+>    it automatically and keeps the older client-side path as a fallback for projects
+>    where the migration has not been applied.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. Do not re-run the sample seed block

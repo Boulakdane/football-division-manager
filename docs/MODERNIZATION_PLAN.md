@@ -31,7 +31,7 @@
 | Data | Supabase Postgres + PostgREST; RLS public read/admin write |
 | Auth | Supabase Auth email + password; `profiles.role` |
 | Realtime | Not used |
-| Imports | Client-side validation plus atomic `replace_all_data(jsonb)` RPC; legacy multi-request fallback until migrated |
+| Imports | Client-side validation plus atomic `replace_all_data(jsonb)` RPC; legacy fallback retained for older projects |
 | CSV | Node tools + browser exports |
 | Tests | JS syntax, CSV round trip, manual browser/Lighthouse checks |
 | CI/CD | GitHub Actions validate workflow; GitHub Pages deploy |
@@ -39,7 +39,7 @@
 
 **Strengths:** small surface area, no build step for JS, easy to audit, cheap, portable data.
 
-**Weaknesses:** string-built UI, no type system, no component boundary, no automated browser/DB tests, atomic import migration not deployed yet, no audit trail, no realtime.
+**Weaknesses:** string-built UI, no type system, no component boundary, no automated browser/DB tests, atomic import live admin confirmation pending, no audit trail, no realtime.
 
 ## 4. Target architecture
 
@@ -471,7 +471,7 @@ This is a larger change; do it only when a second competition is a real requirem
 
 ## 19. First PRs to open next
 
-1. `feat(db): add atomic replace_all_data RPC with dry-run` — RPC implemented; migration and dry-run pending
+1. `feat(db): add atomic replace_all_data RPC with dry-run` — RPC installed; live admin confirmation and dry-run pending
 2. `feat(db): add audit_log, soft delete and restore RPC`
 3. `feat(auth): require MFA aal2 for admin writes`
 4. `refactor(ui): replace inline handlers with event delegation`
