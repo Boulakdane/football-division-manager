@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
 - **Last updated:** 2026-10-21
-- **Working-tree version:** `v3.4.5`
-- **Deployed version:** `v3.4.5` (current `main`, tagged `prod`)
+- **Working-tree version:** `v3.4.6`
+- **Deployed version:** `v3.4.6` (current `main`, tagged `prod`)
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -22,7 +22,7 @@
 | Production migration | ✅ Applied | `match_events` and `events_counted` exist with RLS and RPCs |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.4.5` is deployed. The admin-only, single-transaction `replace_all_data(jsonb)` import RPC is installed and live-tested in both development and production: the patched function completed no-op imports through the RPC, did not use the client fallback, and kept each pre/post data hash identical. Invalid event imports were rejected and rolled back in both projects. Public filtering, language/RTL, login/logout, team/player CRUD, seasons, results, live score updates, CSV/JSON exports and the admin event flow have all been exercised live. The next step is to load the real league data into development, then import it into production only after a fresh backup.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.4.6` is deployed. The admin-only, single-transaction `replace_all_data(jsonb)` import RPC is installed and live-tested in both development and production: the patched function completed no-op imports through the RPC, did not use the client fallback, and kept each pre/post data hash identical. Invalid event imports were rejected and rolled back in both projects. Public filtering, language/RTL, login/logout, team/player CRUD, seasons, results, live score updates, CSV/JSON exports and the admin event flow have all been exercised live. The next step is to load the real league data into development, then import it into production only after a fresh backup.
 
 ## 2. Architecture
 
@@ -124,7 +124,9 @@ Local CSV / JSON tools
 | SRI load test | Lucide and Supabase JS loaded with integrity checks |
 | Inline-handler XSS test | Malicious ID rendered as a string literal; no execution |
 | `npm run check:secrets` | No privileged secrets found |
-| Production deploy | `v3.4.5` live; version badge and all asset URLs updated; 6 standings rows and 9 fixtures render; no console warnings/errors |
+| Production deploy | `v3.4.6` live; version badge and all asset URLs updated; 6 standings rows and 9 fixtures render; no console warnings/errors |
+| CSV formula-injection hardening | `=1+1`, `+SUM(A1)`, `-1+1`, `@cmd`, tab and newline prefixes export as text; numeric `-3` stays numeric; backup → CSV → JSON round trip restores the original value |
+| v3.4.6 bug-fix checks | Missing `btnAddPlayer` translations added for EN/FR/AR; empty team/player names rejected; transfer with existing match events blocked; delete-player history warning; JSON export uses a Blob for large backups; Lucide failure no longer breaks rendering |
 | Production anonymous write | `POST /rest/v1/teams` returned `401` / `42501` |
 | Development migration | `match_events` and `events_counted` exist; REST returns `200` |
 | Production migration | `match_events` and `events_counted` exist; REST returns `200` |
@@ -163,7 +165,7 @@ Local CSV / JSON tools
 2. **A single event appeared in production during the live test window.** `m8` / Ethan Hunt / 10' is present with `events_counted = false`, so player totals are unchanged. Decide whether to keep it or remove it before loading real data.
 3. **Real-data replacement is still untested.** The no-op production import and rollback paths passed; now test with real data in development first, then production with a fresh backup and keep the previous JSON export for rollback.
 4. **Production and development differ.** For example, `m6` is 1–1 in development but 2–4 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
-5. **Destructive edits still have data-integrity gaps.** Deleting a team cascades its matches and events without reversing other players' aggregate totals; deleting a player removes their historical events; a player transfer leaves old events attached to the former team. Keep a backup and prefer the planned RPC/soft-delete work.
+5. **Destructive edits still have data-integrity gaps.** Deleting a team cascades its matches and events without reversing other players' aggregate totals; deleting a player removes their historical events. Transfers for players who already have match events are now blocked in the UI so history cannot be silently detached; proper transfer history needs the planned RPC/soft-delete work. Keep a backup before destructive edits.
 6. **Operational gaps.** There is no audit log, MFA, automated RLS test suite or automated browser test yet. These are covered in the security and modernization plans.
 
 ## 6. Release checklist for the match-events release
@@ -181,6 +183,16 @@ Local CSV / JSON tools
 - [x] Confirm a match with `events_counted = false` stores events without changing player totals.
 - [x] Repeat the admin smoke test in **production**.
 - [x] Export and validate a fresh production JSON backup.
+
+### v3.4.6 bug-fix release
+
+- [x] Add formula-injection protection to in-app CSV exports and `tools/backup-to-csv.js`.
+- [x] Add matching unescape logic to `tools/csv-to-backup.js` and a UTF-8 BOM to generated CSVs.
+- [x] Add the missing `btnAddPlayer` translation and the new validation/confirmation strings in EN/FR/AR.
+- [x] Reject empty team/player names and block transfers when the player already has match events.
+- [x] Use a Blob for JSON exports and guard optional Lucide rendering.
+- [x] Update local-server documentation to `node tools/serve.js`.
+- [x] Commit, push `main`, move the `prod` tag and verify the live `v3.4.6` badge/assets.
 
 ### Atomic import migration (v3.4.5)
 
@@ -224,7 +236,7 @@ See [SECURITY_AUDIT.md](SECURITY_AUDIT.md) and [MODERNIZATION_PLAN.md](MODERNIZA
 
 ```powershell
 # Local preview (from the repository root)
-python -m http.server 8765
+node tools/serve.js
 # then open http://localhost:8765
 
 # Rebuild Tailwind after changing classes

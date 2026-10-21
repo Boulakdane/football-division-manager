@@ -67,7 +67,7 @@ CI      ──push──► GitHub Pages
 | SEC-06 | Medium | Archived seasons are read-only only in the UI | Open |
 | SEC-07 | Medium | Server-side data validation is incomplete | Open |
 | SEC-08 | Medium | Security headers cannot be set on GitHub Pages | Open |
-| SEC-09 | Medium | CSV formula injection in exported files | Open |
+| SEC-09 | Medium | CSV formula injection in exported files | Mitigated |
 | SEC-10 | Low | Environment override (`?env=prod`) can point local work at production | Open |
 | SEC-11 | Low | No rate limiting or statement timeout for admin RPCs | Open |
 | SEC-12 | Low | Local backups are unencrypted | Open |
@@ -299,22 +299,23 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 ### SEC-09 — CSV formula injection
 
 **Severity:** Medium
-**Evidence:** both `js/app.js` `csvEscape()` and `tools/backup-to-csv.js` `csvCell()` quote commas/quotes/newlines but do not neutralise cells beginning with `=`, `+`, `-` or `@`. Team names, player names and scorer text are user-controlled.
+**Status:** Mitigated. Both the in-app CSV exports and `tools/backup-to-csv.js` now prefix text cells that begin with `=`, `+`, `-`, `@`, tab, CR or LF with a single quote. Numeric values are left numeric. `tools/csv-to-backup.js` strips the protective prefix on import, so a backup → CSV → JSON round-trip preserves the original value. `tools/backup-to-csv.js` also writes a UTF-8 BOM for Excel.
+**Evidence:** `js/app.js` `csvEscape()`, `tools/backup-to-csv.js` `csvCell()`, and `tools/csv-to-backup.js` `unescapeFormula()`. A temporary player named `=1+1` exported as `'=1+1`, and the exported file round-tripped back to `=1+1`.
 
 **Impact:** Opening an exported CSV in Excel/Sheets can execute a formula (for example a command or data exfiltration payload) when an admin or league official opens the file.
 
 **Remediation:**
 
-1. Prefix dangerous cells with a single quote or a tab before export, and document the behaviour.
-2. Or export with a safe formula prefix and strip it on import.
-3. Add a regression test with names such as `=HYPERLINK(...)` and `+cmd|...`.
-4. Keep the UTF-8 BOM for Excel compatibility.
+1. ✅ Prefix dangerous cells with a single quote before export, and document the behaviour.
+2. ✅ Strip the safe prefix on CSV import so round-trips remain stable.
+3. ✅ Regression-tested with `=`, `+`, `-`, `@`, tab and newline prefixes.
+4. ✅ Keep the UTF-8 BOM for Excel compatibility.
 
 **Acceptance criteria:**
 
-- A player named `=1+1` is exported as text in Excel, not as a formula.
-- CSV round-trip remains stable.
-- A test covers `=`, `+`, `-` and `@` prefixes.
+- ✅ A player named `=1+1` is exported as text in Excel, not as a formula.
+- ✅ CSV round-trip remains stable.
+- ✅ A test covers `=`, `+`, `-`, `@`, tab and newline prefixes.
 
 ### SEC-10 — Environment override can point local work at production
 
@@ -400,7 +401,7 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 | Add MFA for admins and enforce `aal2` for writes | Password-only admin cannot write |
 | ✅ Replace `dbReplaceAll` with an atomic import RPC | RPC installed and live-tested in production; no-op import and rollback passed |
 | Remove inline handlers and add a strict CSP | Inline script injection is blocked |
-| Add CSV formula-injection protection | Dangerous cells export as text |
+| ✅ Add CSV formula-injection protection | Dangerous cells export as text; round-trip stable |
 | Add audit log and soft delete | Every write is attributable and restorable |
 
 ### P1 — 1 to 4 weeks

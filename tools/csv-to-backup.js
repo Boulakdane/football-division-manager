@@ -79,6 +79,12 @@ function parseCsv(text) {
   return rows.filter(cells => cells.some(cell => String(cell).trim() !== ''));
 }
 
+/** Undo the apostrophe prefix added by the CSV exporters. */
+function unescapeFormula(value) {
+  const text = String(value == null ? '' : value);
+  return /^'[=+\-@\t\r\n]/.test(text) ? text.slice(1) : text;
+}
+
 function readTable(fileName, requiredHeaders, allowEmpty, optional) {
   const file = path.join(inputDir, fileName);
   if (!fs.existsSync(file)) {
@@ -101,7 +107,7 @@ function readTable(fileName, requiredHeaders, allowEmpty, optional) {
   const records = rows.slice(1).map((cells, index) => {
     const record = {};
     header.forEach((name, column) => {
-      record[name] = String(cells[column] == null ? '' : cells[column]).trim();
+      record[name] = unescapeFormula(String(cells[column] == null ? '' : cells[column]).trim());
     });
     record.__line = index + 2;
     return record;

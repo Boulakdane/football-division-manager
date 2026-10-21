@@ -219,7 +219,11 @@ if (!force) {
 }
 
 function csvCell(value) {
-  const text = String(value == null ? '' : value);
+  let text = String(value == null ? '' : value);
+  // Prevent spreadsheet formula execution for text cells. Numeric values stay numeric.
+  if (typeof value === 'string' && /^[=+\-@\t\r\n]/.test(text)) {
+    text = "'" + text;
+  }
   return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
 }
 
@@ -229,7 +233,7 @@ for (const file of files) {
   for (const row of file.rows) {
     lines.push(file.headers.map(header => csvCell(row[header])).join(','));
   }
-  fs.writeFileSync(path.join(outputDir, file.name), lines.join('\r\n') + '\r\n');
+  fs.writeFileSync(path.join(outputDir, file.name), '\uFEFF' + lines.join('\r\n') + '\r\n');
 }
 
 console.log('CSV files written to:\n  ' + outputDir + '\n');

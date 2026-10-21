@@ -218,7 +218,9 @@ function renderApp() {
   renderFixtures();
   renderTeamsView();
   renderStatsBanner();
-  lucide.createIcons();
+  if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+    lucide.createIcons();
+  }
 }
 
 function switchTab(tabId) {
@@ -1085,6 +1087,11 @@ async function saveTeam(e) {
     color: document.getElementById('team-color').value
   };
 
+  if (!teamData.name) {
+    alert(t('alertNameRequired'));
+    return;
+  }
+
   try {
     await dbSaveTeam(teamData);
     closeModal('modal-team');
@@ -1155,6 +1162,18 @@ async function savePlayer(e) {
     red: toInt(document.getElementById('player-reds').value)
   };
 
+  if (!playerData.name) {
+    alert(t('alertNameRequired'));
+    return;
+  }
+
+  const existing = id ? appState.players.find(player => player.id === id) : null;
+  if (existing && existing.teamId !== playerData.teamId &&
+      (appState.matchEvents || []).some(event => event.playerId === id)) {
+    alert(t('alertPlayerTransferEvents'));
+    return;
+  }
+
   try {
     await dbSavePlayer(playerData);
     closeModal('modal-player');
@@ -1166,7 +1185,8 @@ async function savePlayer(e) {
 }
 
 async function deletePlayer(playerId) {
-  if (!confirm(t('confirmDeletePlayer'))) return;
+  const hasEvents = (appState.matchEvents || []).some(event => event.playerId === playerId);
+  if (!confirm(t(hasEvents ? 'confirmDeletePlayerEvents' : 'confirmDeletePlayer'))) return;
   try {
     await dbDeletePlayer(playerId);
     await refreshData();
@@ -1315,19 +1335,26 @@ function exportData() {
     matches: appState.matches,
     matchEvents: appState.matchEvents || []
   };
-  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(payload, null, 2));
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
-  anchor.setAttribute('href', dataStr);
-  anchor.setAttribute('download', `kickoff_division_backup_${new Date().toISOString().slice(0, 10)}.json`);
+  anchor.href = url;
+  anchor.download = `kickoff_division_backup_${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /* ---------- CSV exports (current season) ---------- */
 
 function csvEscape(value) {
-  const text = String(value == null ? '' : value);
+  let text = String(value == null ? '' : value);
+  // Stop spreadsheet formula execution when an exported cell begins with a
+  // formula marker. Numeric values are left untouched so negative scores stay numeric.
+  if (typeof value === 'string' && /^[=+\-@\t\r\n]/.test(text)) {
+    text = "'" + text;
+  }
   return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
 }
 

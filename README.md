@@ -269,14 +269,14 @@ policies make the league readable without logging in.
 ## Run locally
 
 The compiled Tailwind stylesheet is committed, so the site runs without a build step.
-Serve the folder with any static server, for example:
+Serve the folder with the dependency-free local server:
 
 ```bash
-# Node (no dependencies)
-node -e "const h=require('http'),f=require('fs'),p=require('path');h.createServer((q,s)=>{let u=q.url==='/'?'/index.html':q.url;f.readFile(p.join(process.cwd(),u),(e,d)=>{if(e){s.writeHead(404);s.end('Not found');return;}const t={'.html':'text/html','.css':'text/css','.js':'text/javascript','.json':'application/json'}[p.extname(u)]||'application/octet-stream';s.writeHead(200,{'Content-Type':t});s.end(d);});}).listen(8000)"
+node tools/serve.js
 ```
 
-Then open <http://localhost:8000>.
+Then open <http://localhost:8765>. You can also use `npm.cmd run serve`; plain
+`npm run serve` may be blocked by PowerShell execution policy.
 
 > Opening `index.html` directly via `file://` also works in most browsers, but a local
 > server matches GitHub Pages behavior more closely.
