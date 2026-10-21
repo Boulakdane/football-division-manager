@@ -19,7 +19,7 @@ No critical vulnerability was found in this review. The largest residual risks a
 
 1. **Admin account/session compromise.** An admin can legitimately replace or delete the entire dataset. There is no MFA, step-up authentication, session policy or audit trail.
 2. **XSS and supply-chain exposure.** The app has no strict Content Security Policy, uses inline event handlers, and still loads Google Fonts from a third party. A successful script injection could read the Supabase session from browser storage.
-3. **Destructive imports are not atomic.** `dbReplaceAll` deletes and re-inserts data over multiple HTTP requests. A network failure or validation gap can leave the league partially deleted.
+3. **The atomic import is not deployed yet.** `replace_all_data(jsonb)` is implemented and tested, but until `atomic-import-migration.sql` is applied in both projects, the frontend still falls back to deleting and re-inserting data over multiple HTTP requests. A network failure or validation gap can then leave the league partially deleted.
 
 The current pass already reduced some risk: Lucide and Supabase JS are pinned with SRI, a secret scanner runs in CI, Dependabot is configured, and event-handler IDs are escaped with a JSON-aware helper. The plan below closes the remaining gaps.
 
@@ -61,7 +61,7 @@ CI      ──push──► GitHub Pages
 |---|---|---|---|
 | SEC-01 | High | No MFA/step-up authentication for a role that can erase the league | Open |
 | SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Partially mitigated |
-| SEC-03 | High | Full-data import is client-orchestrated and non-atomic | Open |
+| SEC-03 | High | Atomic full-data import RPC is implemented; deployed fallback remains non-atomic | Mitigated in code, migration pending |
 | SEC-04 | Medium | Third-party CDN and font dependency | Partially mitigated |
 | SEC-05 | Medium | No audit log, soft delete or restore path | Open |
 | SEC-06 | Medium | Archived seasons are read-only only in the UI | Open |
@@ -149,47 +149,35 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 - A strict CSP blocks an injected inline script in a browser test.
 - Admin session data is not readable by injected script.
 
-### SEC-03 — Full-data import is non-atomic
+### SEC-03 — Full-data import atomic RPC (migration pending)
 
 **Severity:** High
-**Evidence:** `js/backend.js` `dbReplaceAll()` deletes `match_events`, `matches`, `players`, `teams` and `seasons` in separate requests, then inserts each table in separate requests. RLS protects who can do it, but not what happens if a request fails halfway.
+**Status:** Code complete and locally tested; run `supabase/atomic-import-migration.sql` in development and production to close the fallback path.
+**Evidence:** before this change, `js/backend.js` `dbReplaceAll()` deleted `match_events`, `matches`, `players`, `teams` and `seasons` in separate requests, then inserted each table in separate requests. RLS protects who can do it, but not what happens if a request fails halfway. The new `public.replace_all_data(jsonb)` performs the delete and insert in one database transaction and the frontend prefers it automatically.
 
-**Impact:** A network error, constraint violation or malformed import can leave the league partially deleted or with orphaned/incomplete data. The admin may not have a fresh backup. This is the most likely way to lose real data.
+**Impact:** A network error, constraint violation or malformed import can leave the league partially deleted or with orphaned/incomplete data while the fallback remains active. The admin may not have a fresh backup. This is the most likely way to lose real data.
 
 **Remediation:**
 
-1. Implement one admin-only `replace_all_data(payload jsonb)` RPC:
-
-   ```sql
-   create or replace function public.replace_all_data(payload jsonb)
-   returns void
-   language plpgsql
-   security definer
-   set search_path = public
-   as $$
-   begin
-     if not public.is_admin() then
-       raise exception 'Only admins can import data' using errcode = '42501';
-     end if;
-     -- Validate shape, IDs and references before touching data.
-     -- Use one transaction: delete + insert; any error rolls everything back.
-   end;
-   $$;
-   ```
-
-2. Add `pg_advisory_xact_lock` so two admins cannot import concurrently.
-3. Validate references and value ranges server-side; do not trust the browser.
-4. Add a dry-run mode that returns counts and a diff summary before commit.
-5. Store an import checksum/idempotency key and a “last import” record.
-6. Require a fresh JSON backup download before the replacement, and keep the previous snapshot for rollback.
-7. Show a clear confirmation with counts of rows to be deleted.
+1. ✅ Implement one admin-only `replace_all_data(payload jsonb)` RPC in
+   [`supabase/atomic-import-migration.sql`](../supabase/atomic-import-migration.sql) and
+   [`supabase/schema.sql`](../supabase/schema.sql).
+2. ✅ Add `pg_advisory_xact_lock` so two admins cannot import concurrently.
+3. ✅ Validate payload shape, exactly one active season, and event-to-fixture/team/player
+   relationships server-side. Broader value-range `CHECK` constraints remain SEC-07.
+4. ❌ Add a dry-run mode that returns counts and a diff summary before commit.
+5. ❌ Store an import checksum/idempotency key and a “last import” record.
+6. ❌ Require a fresh JSON backup download before the replacement, and keep the previous
+   snapshot for rollback.
+7. ❌ Show a clear confirmation with counts of rows to be deleted.
 
 **Acceptance criteria:**
 
-- An intentionally invalid import leaves every table byte-for-byte unchanged.
-- A successful import is atomic and completes in one transaction.
-- Concurrent imports are rejected or serialized.
-- The admin sees a dry-run summary before commit.
+- ✅ An intentionally invalid import leaves every table byte-for-byte unchanged
+  (verified locally with an invalid match event).
+- ✅ A successful import is atomic and completes in one transaction.
+- ✅ Concurrent imports are serialized by the advisory lock.
+- ❌ The admin sees a dry-run summary before commit.
 
 ### SEC-04 — Third-party CDN and font dependency
 
@@ -404,9 +392,10 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 | Task | Acceptance |
 |---|---|
 | Apply `match-events-migration.sql` in development, then production | Migration is idempotent; admin RPC smoke test passes |
+| Apply `atomic-import-migration.sql` in development, then production | RPC exists; invalid import rolls back; anonymous call is denied |
 | Re-run anonymous/viewer/admin RLS matrix | Anon and viewer writes return `42501`; admin writes succeed |
 | Add MFA for admins and enforce `aal2` for writes | Password-only admin cannot write |
-| Replace `dbReplaceAll` with an atomic import RPC | Invalid import leaves data unchanged |
+| ✅ Replace `dbReplaceAll` with an atomic import RPC | RPC implemented and locally tested; migration pending |
 | Remove inline handlers and add a strict CSP | Inline script injection is blocked |
 | Add CSV formula-injection protection | Dangerous cells export as text |
 | Add audit log and soft delete | Every write is attributable and restorable |

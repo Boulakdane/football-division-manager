@@ -376,12 +376,40 @@ async function dbDeleteSeason(seasonId) {
   if (!data || data.length === 0) throw new Error('Season cannot be deleted');
 }
 
+/** Build the snake_case payload consumed by the atomic import RPC. */
+function buildAtomicImportPayload(data) {
+  const seasons = Array.isArray(data.seasons) ? data.seasons : [];
+  const fallbackSeason = seasons.find(season => season.isActive) || seasons[0];
+  return {
+    seasons: seasons.map(seasonToRow),
+    teams: (Array.isArray(data.teams) ? data.teams : []).map(teamToRow),
+    players: (Array.isArray(data.players) ? data.players : []).map(playerToRow),
+    matches: (Array.isArray(data.matches) ? data.matches : []).map(match => matchToRow({
+      ...match,
+      seasonId: match.seasonId || (fallbackSeason && fallbackSeason.id)
+    })),
+    match_events: (Array.isArray(data.matchEvents) ? data.matchEvents : []).map(matchEventToRow)
+  };
+}
+
 /** Replace the whole dataset (used by JSON import and reset). Admin only. */
 async function dbReplaceAll(data) {
   assertBackend();
 
   const seasonsReady = Boolean(appState && appState.seasonsReady);
   const eventsReady = Boolean(appState && appState.eventsReady);
+
+  // Prefer the single-transaction RPC. If it has not been installed yet,
+  // fall back to the older client-orchestrated import so existing projects
+  // remain usable until the migration is applied.
+  if (seasonsReady && eventsReady) {
+    const { error } = await db.rpc('replace_all_data', {
+      p_data: buildAtomicImportPayload(data)
+    });
+    if (!error) return;
+    if (!isMissingFunction(error)) throw error;
+  }
+
   const seasons = Array.isArray(data.seasons) ? data.seasons : [];
   const tables = [];
   if (eventsReady) tables.push('match_events');

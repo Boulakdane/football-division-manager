@@ -75,7 +75,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
 └── supabase/
     ├── schema.sql                   # Tables, RLS policies, triggers and seed data
     ├── seasons-migration.sql        # Upgrade an existing database to seasons
-    └── match-events-migration.sql   # Upgrade an existing database to match events
+    ├── match-events-migration.sql   # Upgrade an existing database to match events
+    └── atomic-import-migration.sql  # Install the one-transaction full-data import RPC
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -101,6 +102,10 @@ Scripts are loaded in dependency order in `index.html`:
 >    fixtures to a default season, and installs the season functions.
 > 2. [`supabase/match-events-migration.sql`](supabase/match-events-migration.sql) —
 >    adds goals/cards with minutes, RLS policies and the atomic event functions.
+> 3. [`supabase/atomic-import-migration.sql`](supabase/atomic-import-migration.sql) —
+>    installs the admin-only `replace_all_data(jsonb)` RPC so a full JSON import
+>    either commits completely or leaves every table unchanged. The frontend uses
+>    it automatically and falls back to the older client-side path until it is installed.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. Do not re-run the sample seed block
