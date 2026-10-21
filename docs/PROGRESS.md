@@ -2,7 +2,7 @@
 
 - **Last updated:** 2026-10-21
 - **Working-tree version:** `v3.5.0`
-- **Deployed version:** `v3.4.6` (previous `prod`); `v3.5.0` release pending deployment
+- **Deployed version:** `v3.5.0` (current `main`, tagged `prod`); integrity migration pending
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -24,7 +24,7 @@
 | Production migration | 🟡 Integrity migration pending | `match_events` and `events_counted` are live; `integrity-migration.sql` must be run in development, then production |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.4.6` is deployed. The `v3.5.0` release candidate adds the integrity hardening: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. The SQL has passed a committed PGlite/Postgres-compatible suite and the frontend is backward compatible. The migration has not yet been applied to the hosted projects; after this release is deployed, run `supabase/integrity-migration.sql` in development, verify it in the browser, then run it in production after a fresh backup.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.5.0` is deployed. This release adds the integrity hardening: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. The SQL has passed a committed PGlite/Postgres-compatible suite and the frontend is backward compatible. The migration has not yet been applied to the hosted projects, so `PLAYERS_ARCHIVE_READY` is still false; run `supabase/integrity-migration.sql` in development, verify it in the browser, then run it in production after a fresh backup.
 
 ## 2. Architecture
 
@@ -142,7 +142,7 @@ Local CSV / JSON tools
 | SRI load test | Lucide and Supabase JS loaded with integrity checks |
 | Inline-handler XSS test | Malicious ID rendered as a string literal; no execution |
 | `npm run check:secrets` | No privileged secrets found |
-| Production deploy | `v3.4.6` live; version badge and all asset URLs updated; 6 standings rows and 9 fixtures render; no console warnings/errors |
+| Production deploy | `v3.5.0` live; version badge and all asset URLs updated; production reads 1 season / 6 teams / 9 players / 9 matches / 1 event; 6 standings rows, 9 fixtures and 6 team cards render; no console warnings/errors; `PLAYERS_ARCHIVE_READY=false` until the integrity migration runs |
 | CSV formula-injection hardening | `=1+1`, `+SUM(A1)`, `-1+1`, `@cmd`, tab and newline prefixes export as text; numeric `-3` stays numeric; backup → CSV → JSON round trip restores the original value |
 | v3.4.6 bug-fix checks | Missing `btnAddPlayer` translations added for EN/FR/AR; empty team/player names rejected; transfer with existing match events blocked; delete-player history warning; JSON export uses a Blob for large backups; Lucide failure no longer breaks rendering |
 | Production anonymous write | `POST /rest/v1/teams` returned `401` / `42501` |
