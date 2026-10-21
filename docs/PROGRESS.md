@@ -2,7 +2,7 @@
 
 - **Last updated:** 2026-10-21
 - **Working-tree version:** `v3.4.5`
-- **Deployed version:** `v3.4.4`; `v3.4.5` deployment pending
+- **Deployed version:** `v3.4.5` (current `main`, tagged `prod`)
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -22,7 +22,7 @@
 | Production migration | ✅ Applied | `match_events` and `events_counted` exist with RLS and RPCs |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and the `v3.4.4` code plus match-events migration are live in both projects. `v3.4.5` adds an admin-only, single-transaction `replace_all_data(jsonb)` import RPC; the migration still needs to be run in both Supabase projects. Public filtering, language/RTL, login/logout, team/player CRUD, seasons, results, live score updates, CSV/JSON exports and the admin event flow have all been exercised live. A full JSON replacement import, including events, passed in development. The next step is to load the real league data into development, then import it into production only after a fresh backup.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.4.5` is deployed. It adds an admin-only, single-transaction `replace_all_data(jsonb)` import RPC; the migration still needs to be run in both Supabase projects. Public filtering, language/RTL, login/logout, team/player CRUD, seasons, results, live score updates, CSV/JSON exports and the admin event flow have all been exercised live. A full JSON replacement import, including events, passed in development. The next step is to load the real league data into development, then import it into production only after a fresh backup.
 
 ## 2. Architecture
 
@@ -124,7 +124,7 @@ Local CSV / JSON tools
 | SRI load test | Lucide and Supabase JS loaded with integrity checks |
 | Inline-handler XSS test | Malicious ID rendered as a string literal; no execution |
 | `npm run check:secrets` | No privileged secrets found |
-| Production deploy | `v3.4.4` live; `v3.4.5` deployment pending; SRI active; 6 teams and 9 fixtures load; no console errors |
+| Production deploy | `v3.4.5` live; version badge and all asset URLs updated; 6 standings rows and 9 fixtures render; no console warnings/errors |
 | Production anonymous write | `POST /rest/v1/teams` returned `401` / `42501` |
 | Development migration | `match_events` and `events_counted` exist; REST returns `200` |
 | Production migration | `match_events` and `events_counted` exist; REST returns `200` |
