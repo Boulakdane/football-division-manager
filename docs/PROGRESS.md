@@ -152,6 +152,7 @@ Local CSV / JSON tools
 | Production backup | Fresh JSON export validated: 1 season, 6 teams, 9 players, 9 matches, 0 events; no smoke data |
 | Production backup after migration | `prod-backup-2026-10-21-post-atomic.json` matches the 2026-10-20 backup exactly; data unchanged |
 | Production backup after live import | `prod-backup-2026-10-21-post-import.json`: 1 season, 6 teams, 9 players, 9 matches, 1 event; event is m8 / Ethan Hunt / 10' with `events_counted = false` |
+| Current production hash | `06110f15f5347c51172cfdca69eca4ce9f51cba606bdd157a302b3aadaf8914e` after the event appeared |
 | Admin RPC success path | Verified in development and production |
 
 ## 5. Current blockers and risks
