@@ -587,11 +587,13 @@ begin
   -- overlapping data at the same time.
   perform pg_advisory_xact_lock(748291);
 
-  delete from public.match_events;
-  delete from public.matches;
-  delete from public.players;
-  delete from public.teams;
-  delete from public.seasons;
+  -- Supabase enables pg-safeupdate, which rejects DELETE without a WHERE
+  -- clause. The primary key is NOT NULL, so this still removes every row.
+  delete from public.match_events where id is not null;
+  delete from public.matches where id is not null;
+  delete from public.players where id is not null;
+  delete from public.teams where id is not null;
+  delete from public.seasons where id is not null;
 
   insert into public.seasons (id, name, start_date, end_date, is_active)
   select s.id,
