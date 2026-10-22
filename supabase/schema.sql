@@ -881,6 +881,10 @@ begin
   -- overlapping data at the same time.
   perform pg_advisory_xact_lock(748291);
 
+  -- Transaction-local: the audit row triggers stay quiet during the
+  -- replace, and one IMPORT summary is written at the end instead.
+  perform set_config('app.audit_skip', '1', true);
+
   -- Supabase enables pg-safeupdate, which rejects DELETE without a WHERE
   -- clause. The primary key is NOT NULL, so this still removes every row.
   delete from public.match_events where id is not null;
@@ -1015,6 +1019,26 @@ begin
     event_type text,
     minute int
   );
+
+  -- One readable entry instead of one row per imported record.
+  insert into public.audit_log (
+    actor_id, actor_email, action, entity, entity_id, summary
+  )
+  values (
+    auth.uid(),
+    (select u.email from auth.users u where u.id = auth.uid()),
+    'IMPORT',
+    'all',
+    null,
+    format(
+      'Imported %s seasons, %s teams, %s players, %s matches, %s events',
+      jsonb_array_length(v_seasons),
+      jsonb_array_length(v_teams),
+      jsonb_array_length(v_players),
+      jsonb_array_length(v_matches),
+      jsonb_array_length(v_match_events)
+    )
+  );
 end;
 $$;
 
@@ -1092,6 +1116,130 @@ on conflict (id) do nothing;
 --
 --    Log out and back in — write controls will appear.
 -- ============================================================
+
+-- ============================================================
+-- 9. AUDIT LOG
+--    Append-only history of league writes, readable by admins
+--    through list_audit_log(). Existing projects run
+--    supabase/audit-log-migration.sql instead of this file.
+-- ============================================================
+
+create table if not exists public.audit_log (
+  id bigint generated always as identity primary key,
+  occurred_at timestamptz not null default now(),
+  actor_id uuid,
+  actor_email text,
+  action text not null,
+  entity text not null,
+  entity_id text,
+  season_id text,
+  summary text,
+  before jsonb,
+  after jsonb
+);
+
+create index if not exists audit_log_occurred_at_idx
+  on public.audit_log (occurred_at desc, id desc);
+
+create index if not exists audit_log_entity_idx
+  on public.audit_log (entity, entity_id);
+
+alter table public.audit_log enable row level security;
+
+revoke all on public.audit_log from anon, authenticated;
+revoke all on sequence public.audit_log_id_seq from anon, authenticated;
+
+create or replace function public.audit_row_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_skip text := current_setting('app.audit_skip', true);
+  v_before jsonb;
+  v_after jsonb;
+  v_row jsonb;
+  v_actor uuid := auth.uid();
+begin
+  -- Bulk imports record one summary entry instead of every row.
+  if v_skip = '1' then
+    return null;
+  end if;
+
+  if tg_op <> 'INSERT' then
+    v_before := to_jsonb(old);
+  end if;
+  if tg_op <> 'DELETE' then
+    v_after := to_jsonb(new);
+  end if;
+  v_row := coalesce(v_after, v_before);
+
+  insert into public.audit_log (
+    actor_id, actor_email, action, entity, entity_id, season_id, before, after
+  )
+  values (
+    v_actor,
+    (select u.email from auth.users u where u.id = v_actor),
+    tg_op,
+    tg_table_name,
+    v_row->>'id',
+    v_row->>'season_id',
+    v_before,
+    v_after
+  );
+
+  return null;  -- AFTER trigger: return value is ignored.
+end;
+$$;
+
+drop trigger if exists audit_teams on public.teams;
+create trigger audit_teams
+  after insert or update or delete on public.teams
+  for each row execute function public.audit_row_change();
+
+drop trigger if exists audit_players on public.players;
+create trigger audit_players
+  after insert or update or delete on public.players
+  for each row execute function public.audit_row_change();
+
+drop trigger if exists audit_matches on public.matches;
+create trigger audit_matches
+  after insert or update or delete on public.matches
+  for each row execute function public.audit_row_change();
+
+drop trigger if exists audit_match_events on public.match_events;
+create trigger audit_match_events
+  after insert or update or delete on public.match_events
+  for each row execute function public.audit_row_change();
+
+drop trigger if exists audit_seasons on public.seasons;
+create trigger audit_seasons
+  after insert or update or delete on public.seasons
+  for each row execute function public.audit_row_change();
+
+create or replace function public.list_audit_log(p_limit int default 50)
+returns setof public.audit_log
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can read the audit log' using errcode = '42501';
+  end if;
+
+  return query
+    select *
+    from public.audit_log
+    order by occurred_at desc, id desc
+    limit least(greatest(coalesce(p_limit, 50), 1), 200);
+end;
+$$;
+
+revoke execute on function public.list_audit_log(int) from public, anon;
+grant execute on function public.list_audit_log(int) to authenticated;
 
 -- Ask PostgREST to pick up new tables/functions immediately.
 notify pgrst, 'reload schema';

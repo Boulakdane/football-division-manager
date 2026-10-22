@@ -107,6 +107,23 @@ function mapMatchEvent(row) {
   };
 }
 
+/** Map an audit_log row for the admin activity panel. */
+function mapAuditEntry(row) {
+  return {
+    id: row.id,
+    at: row.occurred_at,
+    actorId: row.actor_id || null,
+    actorEmail: row.actor_email || '',
+    action: row.action,
+    entity: row.entity,
+    entityId: row.entity_id || null,
+    seasonId: row.season_id || null,
+    summary: row.summary || '',
+    before: row.before || null,
+    after: row.after || null
+  };
+}
+
 function seasonToRow(season) {
   return {
     id: season.id,
@@ -475,6 +492,20 @@ async function dbDeleteSeason(seasonId) {
     .select('id');
   if (error) throw error;
   if (!data || data.length === 0) throw new Error('Season cannot be deleted');
+}
+
+/**
+ * Recent audit entries for the admin activity panel.
+ * Returns null when supabase/audit-log-migration.sql has not been applied.
+ */
+async function dbListAuditLog(limit = 50) {
+  assertBackend();
+  const { data, error } = await db.rpc('list_audit_log', { p_limit: limit });
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  return (data || []).map(mapAuditEntry);
 }
 
 /** Build the snake_case payload consumed by the atomic import RPC. */

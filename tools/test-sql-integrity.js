@@ -254,6 +254,121 @@ async function run() {
     });
     console.log('OK anon RPC denial');
 
+    // ------------------------------------------------------------
+    // Audit log
+    // ------------------------------------------------------------
+    const auditSql = fs.readFileSync(path.join(ROOT, 'supabase/audit-log-migration.sql'), 'utf8');
+    await exec(auditSql);
+
+    // The migration must be safe to re-run.
+    await exec(auditSql);
+
+    await exec('delete from public.audit_log');
+
+    await asRole('authenticated', async () => {
+      await q("insert into public.teams (id, name, code, color) values ('taud', 'Audit FC', 'AUD', '#123456')");
+      await q("update public.teams set name = 'Audit FC 2' where id = 'taud'");
+      await q("select public.delete_team('taud')");
+    });
+
+    const auditRows = await q(`
+      select action, entity, entity_id, season_id, actor_email, summary, before, after
+      from public.audit_log
+      order by id
+    `);
+    assert.strictEqual(auditRows.length, 3, 'expected insert/update/delete audit rows');
+    assert.deepStrictEqual(auditRows.map(r => r.action), ['INSERT', 'UPDATE', 'DELETE']);
+    assert(auditRows.every(r => r.entity === 'teams' && r.entity_id === 'taud'));
+    assert(auditRows.every(r => r.actor_email === 'admin@test.local'), 'actor email should be captured');
+    assert.strictEqual(auditRows[0].before, null);
+    assert.strictEqual(auditRows[0].after.name, 'Audit FC');
+    assert.strictEqual(auditRows[1].before.name, 'Audit FC');
+    assert.strictEqual(auditRows[1].after.name, 'Audit FC 2');
+    assert.strictEqual(auditRows[2].after, null);
+    assert.strictEqual(auditRows[2].before.name, 'Audit FC 2');
+
+    // Matches carry their season id so the UI can filter by season.
+    await asRole('authenticated', async () => {
+      await q("insert into public.teams (id, name, code, color) values ('taud2', 'Audit B', 'AUB', '#222222')");
+      await q(`select public.save_match(
+        '{"id":"m_audit","season_id":"s1","round":42,"home_id":"t1","away_id":"taud2","status":"SCHEDULED"}'::jsonb,
+        null
+      )`);
+    });
+    const matchAudit = await q("select season_id from public.audit_log where entity = 'matches' and entity_id = 'm_audit'");
+    assert.strictEqual(matchAudit.length, 1);
+    assert.strictEqual(matchAudit[0].season_id, 's1');
+
+    // Admins read through the RPC; anon is rejected and cannot read the table.
+    const adminAudit = await asRole('authenticated', () =>
+      q("select action, entity_id from public.list_audit_log(50)")
+    );
+    assert(adminAudit.length >= 4, 'admin should read the audit log');
+
+    await asRole('anon', async () => {
+      await expectError(() => q("select * from public.list_audit_log(50)"), /permission denied|not authorized|42501/i);
+      await expectError(() => q("select * from public.audit_log"), /permission denied/i);
+    });
+
+    // A full import collapses to one IMPORT entry instead of per-row noise.
+    const auditCountBefore = (await q("select count(*)::int n from public.audit_log"))[0].n;
+    await asRole('authenticated', async () => {
+      await q('select public.replace_all_data($1::jsonb)', [payload]);
+    });
+    const auditCountAfter = (await q("select count(*)::int n from public.audit_log"))[0].n;
+    assert.strictEqual(auditCountAfter, auditCountBefore + 1, 'import should add exactly one audit row');
+    const importRow = (await q("select action, entity, summary from public.audit_log order by id desc limit 1"))[0];
+    assert.strictEqual(importRow.action, 'IMPORT');
+    assert.strictEqual(importRow.entity, 'all');
+    assert(/1 seasons, 1 teams, 1 players, 0 matches, 0 events/.test(importRow.summary), importRow.summary);
+
+    console.log('OK audit log (triggers, actor, snapshots, admin-only, import summary)');
+
+    // ------------------------------------------------------------
+    // Fresh install path: schema.sql alone must provide the audit log
+    // ------------------------------------------------------------
+    const fresh = await createDatabase();
+    try {
+      const fq = async (sql, params) => (await fresh.query(sql, params)).rows;
+      const fexec = sql => fresh.exec(sql);
+
+      assert.strictEqual(
+        (await fq('select count(*)::int n from public.audit_log'))[0].n,
+        0,
+        'seed data must not be audited'
+      );
+
+      await fexec('set role authenticated');
+      await fq("update public.teams set name = 'Spartan FC II' where id = 't1'");
+      await fexec('reset role');
+
+      const freshRows = await fq('select action, entity, actor_email, before, after from public.audit_log order by id');
+      assert.strictEqual(freshRows.length, 1);
+      assert.strictEqual(freshRows[0].action, 'UPDATE');
+      assert.strictEqual(freshRows[0].entity, 'teams');
+      assert.strictEqual(freshRows[0].before.name, 'Spartan FC');
+      assert.strictEqual(freshRows[0].after.name, 'Spartan FC II');
+      assert.strictEqual(freshRows[0].actor_email, 'admin@test.local');
+
+      const freshPayload = JSON.stringify({
+        seasons: [{ id: 's1', name: '2026 Season', is_active: true }],
+        teams: [],
+        players: [],
+        matches: [],
+        match_events: []
+      });
+      await fexec('set role authenticated');
+      await fq('select public.replace_all_data($1::jsonb)', [freshPayload]);
+      await fexec('reset role');
+
+      const freshImport = (await fq("select action, summary from public.audit_log order by id desc limit 1"))[0];
+      assert.strictEqual(freshImport.action, 'IMPORT');
+      assert(/0 teams, 0 players/.test(freshImport.summary), freshImport.summary);
+      console.log('OK fresh schema.sql install includes the audit log');
+    } finally {
+      await fresh.close();
+    }
+
     console.log('All SQL integrity tests passed.');
   } finally {
     await db.close();

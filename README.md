@@ -31,6 +31,9 @@ accounts live in a free [Supabase](https://supabase.com) project.
 - **Database-enforced permissions** — Postgres Row Level Security blocks writes from
   non-admins even if they tamper with the page or call the API directly.
 - **Shared data** — every visitor sees the same league, from any device.
+- **Activity log** — admins see the last 50 changes (adds, edits, deletes, imports)
+  with who made them, when, and before/after values. The log is append-only and
+  invisible to spectators and other signed-in users.
 - **JSON backup** — export/import the full dataset from the admin settings menu.
 - **CSV tools** — export the current season's standings, fixtures and squads,
   bulk-build a league from five CSV files, or turn a JSON backup back into
@@ -88,7 +91,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── seasons-migration.sql        # Upgrade an existing database to seasons
     ├── match-events-migration.sql   # Upgrade an existing database to match events
     ├── atomic-import-migration.sql  # Install the one-transaction full-data import RPC
-    └── integrity-migration.sql      # Archive players, lock archived seasons and make deletes safe
+    ├── integrity-migration.sql      # Archive players, lock archived seasons and make deletes safe
+    └── audit-log-migration.sql      # Trigger-fed, admin-only audit log + Activity log panel
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -130,7 +134,11 @@ plus Supabase.
 > 4. [`supabase/integrity-migration.sql`](supabase/integrity-migration.sql) —
 >    adds player archiving, makes archived seasons read-only in the database, installs
 >    the atomic `save_match` and safe `delete_team` RPCs, and protects players with
->    match history from hard deletion. **Run this last**; if you re-run an earlier
+>    match history from hard deletion.
+> 5. [`supabase/audit-log-migration.sql`](supabase/audit-log-migration.sql) —
+>    creates the append-only `audit_log` (triggers on teams, players, matches,
+>    events and seasons) and the admin-only `list_audit_log()` RPC used by the
+>    **Activity log** panel. **Run this last**; if you re-run an earlier
 >    migration later, run this one again.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
@@ -332,7 +340,7 @@ file is out of date.
 ### Tests
 
 ```bash
-npm run test:sql        # in-memory Postgres: RLS, archive locks, atomic saves, safe deletes
+npm run test:sql        # in-memory Postgres: RLS, archive locks, atomic saves, safe deletes, audit log
 npm run check:secrets   # fail if a privileged key is committed
 ```
 
@@ -376,7 +384,7 @@ cannot silently replace real league data by accident.
 
 ## Data model
 
-Six tables in the `public` schema. Column names are snake_case in Postgres and mapped
+Seven tables in the `public` schema. Column names are snake_case in Postgres and mapped
 to camelCase by `js/backend.js`.
 
 ```
@@ -390,6 +398,8 @@ matches      (id text pk, season_id → seasons.id, round, home_id → teams.id,
 match_events (id text pk, match_id → matches.id, team_id → teams.id,
               player_id → players.id, event_type: goal|yellow|red, minute, created_at)
 profiles     (id uuid pk → auth.users.id, email, role: admin|viewer)
+audit_log    (id bigint pk, occurred_at, actor_id, actor_email, action, entity,
+              entity_id, season_id, summary, before jsonb, after jsonb)
 ```
 
 `status` is one of `SCHEDULED`, `LIVE`, `FINISHED`. Only `FINISHED` matches count
@@ -416,6 +426,11 @@ are marked `false` during the migration because their goals/cards were already e
 manually; their event timeline is saved without touching player totals. New fixtures
 default to `true`, so events keep the totals in sync. Imported backups preserve the
 flag. See [`data/README.md`](data/README.md#eventscsv) for the CSV column.
+
+`audit_log` is written by AFTER triggers on the five league tables and by
+`replace_all_data` (one `IMPORT` row per import). There are no client grants on the
+table and RLS is enabled with no policy; admins read the newest entries through
+`list_audit_log(limit)`. It is a history, not a backup — export JSON regularly.
 
 The JSON backup format is the same camelCase shape used by the app. Backups created
 before seasons existed are upgraded automatically into a single default season:
@@ -465,6 +480,9 @@ before seasons existed are upgraded automatically into a single default season:
   `data-input` / `data-submit` attributes. `style-src` still allows inline team-colour
   attributes.
 - `npm run check:secrets` fails CI if a privileged key is ever committed.
+- The audit log is append-only: clients hold no grants on `audit_log`, and reads go
+  through the admin-checked `list_audit_log()` RPC. A full JSON import records one
+  summary entry rather than one row per imported record.
 
 ## Notes
 

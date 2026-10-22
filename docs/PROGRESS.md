@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
 - **Last updated:** 2026-10-22
-- **Working-tree version:** `v3.6.2`
-- **Deployed version:** `v3.6.2` (current `main`); `prod` tag moves with each verified release; integrity migration applied in development and production
+- **Working-tree version:** `v3.7.0`
+- **Deployed version:** `v3.7.0` (current `main`); `prod` tag moves with each verified release; integrity migration applied in development and production; audit-log migration must be run in both SQL editors
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -21,11 +21,12 @@
 | Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
 | Security hardening pass | ✅ Done in `v3.6.2` | Every asset self-hosted, strict CSP (`script-src 'self'`), zero inline handlers, secret scanning, dependency updates |
+| Audit log | ✅ Code complete in `v3.7.0`, migration to run | Admin-only activity panel over trigger-fed `audit_log`; graceful message until the migration is applied |
 | UX polish and shareability | ✅ Done in `v3.6.0` | Shareable filter URLs, clear filters, guided empty states, match timeline, keyboard/focus handling, Lighthouse 100/100/100 |
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.6.2` is on `main`. The integrity hardening is live in both hosted projects: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. `v3.5.1` removed the last CDN dependency on the auth path by serving the Supabase client from `vendor/`; `v3.6.1` self-hosted Lucide and the webfonts; `v3.6.2` replaced all 85 inline event handlers with delegated `data-*` actions and tightened the CSP to `script-src 'self'`. `v3.6.0` added the shareability and accessibility layer (filter-aware links, guided empty states, match timeline, keyboard-safe dialogs, Lighthouse 100/100/100). The remaining work is operational: decide what to do with the single leftover test event, then load the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.7.0` is on `main`. The integrity hardening is live in both hosted projects: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. `v3.6.2` replaced all inline event handlers with delegated `data-*` actions and tightened the CSP to `script-src 'self'`. `v3.7.0` adds an audit log: every write to teams, players, matches, events and seasons is recorded with the actor, timestamp and before/after snapshots, readable by admins from the data menu. The remaining work is operational: run `supabase/audit-log-migration.sql` in both SQL editors, then load the real league data (soft delete/restore is the next code item).
 
 ## 2. Architecture
 
@@ -278,7 +279,8 @@ Local CSV / JSON tools
 ### P1 — data integrity
 
 - [x] Replace client-side `dbReplaceAll` with one transactional `replace_all_data(jsonb)` RPC (installed and live-tested in production).
-- Add an audit log, soft delete and restore.
+- [x] Add an audit log (triggers + admin panel, `v3.7.0`).
+- Add soft delete and restore for teams, matches and seasons.
 - Add database `CHECK` constraints for scores, names, colours and dates.
 - [x] Add a SQL/RLS suite with PGlite and run it in CI.
 - Add a Playwright smoke test (public read, login, admin save, archive, import).
@@ -445,4 +447,33 @@ No database changes and no data touched; this is a frontend hardening release.
 - An injected inline script is now refused (`Executing inline script violates … 'script-src 'self''`), as is `https://example.com/evil.js`, while the app's own scripts run normally.
 - Production rendering is unchanged: 6 standings rows, 9 fixture cards, Atlas Warriors on top, no console errors.
 - `v3.6.2` tag created; `prod` moved from `d149e04` to `6bf3805`.
+
+## 13. Audit log (v3.7.0)
+
+Additive release: no table is altered, no row is deleted, and the app keeps working exactly as before until the migration is applied.
+
+### Database
+- New `supabase/audit-log-migration.sql` creates `public.audit_log` (`occurred_at`, `actor_id`, `actor_email`, `action`, `entity`, `entity_id`, `season_id`, `summary`, `before`, `after`) with indexes on time and entity.
+- AFTER ROW triggers on `teams`, `players`, `matches`, `match_events` and `seasons` record `INSERT` / `UPDATE` / `DELETE` with `to_jsonb` snapshots and the acting user's email.
+- Clients get no table grants; RLS is enabled with no policy. Only the `SECURITY DEFINER` trigger writes and only `list_audit_log(p_limit)` reads (admin check, 1–200 rows).
+- `replace_all_data()` now sets `app.audit_skip` for its transaction and writes one `IMPORT` summary row, so a full import does not flood the log.
+- The same definitions live in `supabase/schema.sql` for fresh installs.
+
+### Admin UI
+- New **Activity log** item at the top of the data-settings menu opens a dialog listing the 50 newest changes.
+- Each row shows an action badge (Added / Changed / Removed / Import), a readable label (team + code, player + club, `Home 3–1 Away · Matchday 1`, `Goal 23' · Carlos Ramos`, season name), the entity type, localized timestamp and actor email.
+- Re-renders after a language switch, refreshes on demand, and is covered by the existing Escape/focus-trap behaviour.
+- If the migration has not been run, the dialog says so instead of erroring ("The activity log is not enabled on this database yet…").
+- All interpolated values go through `esc()`; the PGlite suite and a browser check with a hostile team name confirm it renders as text.
+
+### Verification
+- `npm run test:sql` covers: insert/update/delete rows with actor email and correct snapshots, `season_id` on matches, admin RPC read, anon rejection (both RPC and direct table select), exactly one `IMPORT` row per full import, and safe re-run of the migration.
+- Browser pass on the development project: dispatcher opens the dialog, missing-function path shows the migration hint, sample entries render (5 rows, correct badges/labels), French and Arabic re-render with RTL, refresh re-fetches, Escape closes.
+- Tailwind rebuilt so the new utility classes ship.
+
+### To activate
+1. Supabase → development project → SQL Editor → paste `supabase/audit-log-migration.sql` → Run.
+2. Log in as admin on `?env=dev`, open **Activity log**, make a small edit, confirm the entry appears.
+3. Repeat step 1 on the production project.
+
 

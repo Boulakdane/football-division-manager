@@ -19,7 +19,7 @@ No critical vulnerability was found in this review. The largest residual risks a
 
 1. **Admin account/session compromise.** An admin can legitimately replace or delete the entire dataset. There is no MFA, step-up authentication, session policy or audit trail.
 2. **XSS and supply-chain exposure.** The app still renders with `innerHTML` template strings, so a missed `esc()` would inject markup. `v3.6.1` self-hosted every asset and `v3.6.2` removed all inline handlers, so `script-src` is now exactly `'self'` and injected script is blocked. A same-origin compromise could still read the Supabase session from browser storage.
-3. **Destructive imports still lack a preview and audit trail.** Atomic rollback is now live-tested in production, but an admin can still replace all data without a dry-run diff or audit record. See SEC-05 for the audit/restore work.
+3. **Destructive imports still lack a preview and audit trail.** Atomic rollback is live-tested in production, and `v3.7.0` adds an admin-only audit log, but an admin can still replace all data without a dry-run diff, and there is no trash/restore for teams, matches or seasons. See SEC-05 for the remaining work.
 
 The current pass already reduced some risk: every runtime asset is now self-hosted (Lucide, the Supabase client and the Inter/Cairo webfonts live in `vendor/` and `fonts/`), a Content-Security-Policy in `index.html` pins scripts, styles, fonts and connections to this origin plus Supabase, `v3.6.2` replaced every inline handler with delegated `data-*` actions so `script-src` no longer allows `'unsafe-inline'`, a secret scanner runs in CI, Dependabot is configured, imports are atomic, and the working tree adds database-enforced archive reads, player archiving, safe team deletion and atomic match saves. The integrity SQL has been applied to the hosted development and production projects and verified live. The plan below closes the remaining gaps.
 
@@ -63,7 +63,7 @@ CI      ──push──► GitHub Pages
 | SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Mitigated: all inline handlers replaced by delegated `data-*` actions, CSP ships `script-src 'self'`; residual `style-src 'unsafe-inline'` and template-string escaping discipline |
 | SEC-03 | High | Atomic full-data import RPC installed and live-tested; no-op and rollback verified | Mitigated |
 | SEC-04 | Medium | Third-party CDN and font dependency | Mitigated: Lucide, Supabase JS and the Inter/Cairo fonts are vendored; CSP leaves no external script/style/font origin |
-| SEC-05 | Medium | No audit log, soft delete or restore path | Partially mitigated: player archive/restore; no audit or team/match trash |
+| SEC-05 | Medium | No audit log, soft delete or restore path | Partially mitigated: player archive/restore + admin-only audit log (`v3.7.0`); no team/match/season trash yet |
 | SEC-06 | Medium | Archived seasons are read-only only in the UI | Mitigated in code; integrity migration pending |
 | SEC-07 | Medium | Server-side data validation is incomplete | Partially mitigated: import references validated in RPC; CHECK constraints still open |
 | SEC-08 | Medium | Security headers cannot be set on GitHub Pages | Open |
@@ -208,24 +208,32 @@ CI      ──push──► GitHub Pages
 
 ### SEC-05 — No audit log, soft delete or restore path
 
-**Severity:** Medium
-**Evidence:** There is no `audit_log` table, no `deleted_at` for teams/matches/seasons, and no restore action for them. Player totals and match events can change with no record of who changed them. The integrity release adds `players.is_active`, so players with history can be archived and restored, but this is not a full audit or trash system.
+**Severity:** Medium (audit log shipped in `v3.7.0`; trash/restore still open)
+**Status:** Partially mitigated. `supabase/audit-log-migration.sql` adds an append-only `public.audit_log` fed by AFTER triggers on `teams`, `players`, `matches`, `match_events` and `seasons`, plus `list_audit_log(int)` for admins and an "Activity log" panel in the admin data menu. Soft delete and restore for teams, matches and seasons is still missing. The migration is written and covered by the PGlite suite; **it still has to be run in the development and production SQL editors**.
 
-**Impact:** Accidental or malicious changes are difficult to investigate and may be unrecoverable without a manual backup.
+**Evidence (history):** there was no `audit_log` table, no `deleted_at` for teams/matches/seasons, and no restore action for them. Player totals and match events could change with no record of who changed them. The integrity release added `players.is_active`, so players with history can be archived and restored, but that was not a full audit or trash system.
+
+**How the log works:**
+- Each row stores `occurred_at`, `actor_id`, `actor_email`, `action` (`INSERT` / `UPDATE` / `DELETE` / `IMPORT`), `entity`, `entity_id`, `season_id`, `before` and `after` snapshots.
+- Clients have no table grants and RLS is enabled with no policy, so the log is append-only: only the `SECURITY DEFINER` trigger writes and only `list_audit_log()` reads (admin check, max 200 rows).
+- A full import sets `app.audit_skip` for the transaction and writes a single `IMPORT` summary, so replacing the dataset does not produce hundreds of rows.
+- Deleting a team through `delete_team()` still logs the team plus its cascaded players/matches/events, which gives an investigator the full picture.
+
+**Impact:** Accidental or malicious changes are now attributable, but a wrongly deleted team, match or season still needs a JSON backup to come back. The log itself is not a backup.
 
 **Remediation:**
 
-1. Add `public.audit_log` (`id`, `actor_id`, `action`, `entity`, `entity_id`, `before`, `after`, `created_at`, client metadata).
-2. Write audit rows from triggers on `teams`, `players`, `matches`, `match_events`, `seasons`, and from import RPCs.
-3. Add `deleted_at` soft delete for teams, matches and seasons; filter deleted rows in views. Keep `players.is_active` for squad archiving.
-4. Add an admin-only restore action and a purge job.
+1. ✅ Add `public.audit_log` with before/after snapshots, actor and timestamp.
+2. ✅ Write audit rows from triggers on `teams`, `players`, `matches`, `match_events`, `seasons`, and one summary row per import.
+3. Add `deleted_at` soft delete for teams, matches and seasons; filter deleted rows in RLS so the app never sees them, and expose them through admin RPCs.
+4. Add an admin-only restore action with total recalculation, plus a purge path.
 5. Keep archived seasons immutable at the database level.
 
 **Acceptance criteria:**
 
-- Every admin write produces an audit row.
-- A deleted match can be restored with its events and totals.
-- Audit rows are admin-readable only and cannot be edited by clients.
+- ✅ Every admin write produces an audit row (verified in the PGlite suite).
+- ⏳ A deleted match can be restored with its events and totals.
+- ✅ Audit rows are admin-readable only and cannot be edited by clients (anon select and RPC both rejected in tests).
 
 ### SEC-06 - Archived seasons were not write-protected in the database
 
@@ -440,7 +448,8 @@ CI      ──push──► GitHub Pages
 | ✅ Replace `dbReplaceAll` with an atomic import RPC | RPC installed and live-tested in production; no-op import and rollback passed |
 | ✅ Remove inline handlers and add a strict CSP | 0 inline `on*` attributes; `<script>` injection blocked by `script-src 'self'`; all delegated actions tested live on development |
 | ✅ Add CSV formula-injection protection | Dangerous cells export as text; round-trip stable |
-| Add audit log and soft delete | Every write is attributable and restorable |
+| ✅ Add audit log | Triggers record actor + snapshots; admin-only RPC and panel; anon denied |
+| Add soft delete and restore for teams, matches and seasons | A deleted record can be restored with totals intact |
 
 ### P1 — 1 to 4 weeks
 

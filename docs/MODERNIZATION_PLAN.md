@@ -106,7 +106,8 @@ Effort: S = days, M = 1–3 weeks, L = 3–6 weeks.
 - ✅ Add the atomic import RPC and switch the UI to it (development and production no-op/rollback passed).
 - ✅ Add player archive/restore, database-enforced archive reads, RPC-only destructive writes and atomic `save_match` in the working tree.
 - ✅ Apply `integrity-migration.sql` in development, test, then production.
-- Add audit logging and soft delete for matches, teams and seasons.
+- ✅ Add audit logging (`v3.7.0`).
+- Add soft delete and restore for matches, teams and seasons.
 - Add MFA for admins and enforce `aal2` on write RPCs.
 - ✅ Remove inline handlers; introduce event delegation (`v3.6.2`: 85 handlers → `data-*` actions + one dispatcher per event type).
 - ✅ Add strict CSP and self-host Supabase JS/Lucide/fonts (or keep pinned SRI with a tight allowlist).
@@ -256,14 +257,14 @@ Use `minute` plus `stoppage_minute` for display (`45+2'`) without losing sortabi
 ### 7.5 Audit and soft delete
 
 ```text
-audit_log (id, actor_id, action, entity, entity_id, before jsonb, after jsonb, created_at)
+audit_log (id, occurred_at, actor_id, actor_email, action, entity, entity_id, season_id, summary, before jsonb, after jsonb)
 ```
 
-- Triggers on all league tables.
-- `deleted_at` on teams, players, matches and seasons.
-- Views filter `deleted_at is null`.
-- Admin-only restore RPC.
-- Purge job after a retention window.
+- ✅ Triggers on `teams`, `players`, `matches`, `match_events` and `seasons`, plus one `IMPORT` summary row per full import (`v3.7.0`).
+- ✅ Admin-only read through `list_audit_log(p_limit)`; no client grants on the table.
+- `deleted_at` on teams, matches and seasons.
+- Views/RLS filter deleted rows; admins read them through a separate RPC.
+- Admin-only restore RPC that recalculates totals, plus a purge job after a retention window.
 
 ## 8. Frontend architecture evolution
 

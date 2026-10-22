@@ -67,7 +67,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-login'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-login', 'modal-audit'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -267,6 +267,8 @@ const CLICK_ACTIONS = {
   'login-modal': () => openLoginModal(),
   logout: () => logout(),
   'password-modal': () => openPasswordModal(),
+  'audit-log': () => openAuditModal(),
+  'audit-refresh': () => renderAuditLog(),
   'toggle-signup': (el, event) => toggleSignup(event),
   'resend-confirmation': (el, event) => resendConfirmation(event),
 
@@ -1816,6 +1818,156 @@ async function deleteViewedSeason() {
  * --------------------------------------------------------------- */
 function openGuideModal() {
   openModal('modal-guide');
+}
+
+/* ---------- activity log (admin) ---------- */
+
+const AUDIT_ACTION_KEYS = {
+  INSERT: 'auditActionInsert',
+  UPDATE: 'auditActionUpdate',
+  DELETE: 'auditActionDelete',
+  IMPORT: 'auditActionImport'
+};
+
+const AUDIT_ACTION_STYLES = {
+  INSERT: 'bg-pitch-500/15 text-pitch-400 border-pitch-500/30',
+  UPDATE: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+  DELETE: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+  IMPORT: 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+};
+
+const AUDIT_ENTITY_KEYS = {
+  seasons: 'auditEntitySeasons',
+  teams: 'auditEntityTeams',
+  players: 'auditEntityPlayers',
+  matches: 'auditEntityMatches',
+  match_events: 'auditEntityEvents',
+  all: 'auditEntityAll'
+};
+
+function auditEntityName(entity) {
+  return t(AUDIT_ENTITY_KEYS[entity] || 'auditEntityAll');
+}
+
+function auditTime(iso) {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return '';
+  const locale = currentLang === 'fr' ? 'fr-FR' : (currentLang === 'ar' ? 'ar' : 'en-GB');
+  return date.toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/** Best-effort, human-readable label for the changed record. */
+function auditEntityLabel(entry) {
+  const snapshot = entry.after || entry.before || {};
+
+  switch (entry.entity) {
+    case 'seasons':
+      return snapshot.name || entry.entityId || auditEntityName('seasons');
+
+    case 'teams':
+      if (!snapshot.name) return entry.entityId || auditEntityName('teams');
+      return snapshot.code ? `${snapshot.name} (${snapshot.code})` : snapshot.name;
+
+    case 'players': {
+      if (!snapshot.name) return entry.entityId || auditEntityName('players');
+      const team = getTeam(snapshot.team_id);
+      return team ? `${snapshot.name} · ${team.name}` : snapshot.name;
+    }
+
+    case 'matches': {
+      const home = getTeam(snapshot.home_id);
+      const away = getTeam(snapshot.away_id);
+      const homeName = home ? home.name : (snapshot.home_id || '?');
+      const awayName = away ? away.name : (snapshot.away_id || '?');
+      const score = `${snapshot.home_score == null ? 0 : snapshot.home_score}–${snapshot.away_score == null ? 0 : snapshot.away_score}`;
+      const round = snapshot.round == null ? '?' : snapshot.round;
+      return `${homeName} ${score} ${awayName} · ${t('matchdayPrefix')} ${round}`;
+    }
+
+    case 'match_events': {
+      const typeKey = snapshot.event_type === 'goal'
+        ? 'auditEventGoal'
+        : (snapshot.event_type === 'yellow' ? 'auditEventYellow' : 'auditEventRed');
+      const player = appState.players.find(p => p.id === snapshot.player_id);
+      const playerName = player ? player.name : (snapshot.player_id || '?');
+      return `${t(typeKey)} ${snapshot.minute == null ? '?' : snapshot.minute}' · ${playerName}`;
+    }
+
+    default:
+      return entry.summary || entry.entityId || entry.entity;
+  }
+}
+
+function renderAuditEntry(entry) {
+  const actionLabel = AUDIT_ACTION_KEYS[entry.action]
+    ? t(AUDIT_ACTION_KEYS[entry.action])
+    : entry.action;
+  const badgeStyle = AUDIT_ACTION_STYLES[entry.action] || 'bg-slate-700/40 text-slate-300 border-slate-600';
+  const primary = entry.action === 'IMPORT'
+    ? (entry.summary || t('auditActionImport'))
+    : auditEntityLabel(entry);
+  const meta = [
+    auditEntityName(entry.entity),
+    auditTime(entry.at),
+    entry.actorEmail || t('auditDatabaseActor')
+  ].filter(Boolean).join(' · ');
+
+  return `
+    <div class="flex items-start gap-3 p-3 bg-slate-800/40 border border-slate-800 rounded-lg">
+      <span class="shrink-0 px-2 py-0.5 rounded border text-[10px] font-semibold ${badgeStyle}">${esc(actionLabel)}</span>
+      <div class="min-w-0 flex-1">
+        <p class="text-slate-200 font-medium break-words">${esc(primary)}</p>
+        <p class="text-[11px] text-slate-500 mt-0.5 break-words">${esc(meta)}</p>
+      </div>
+    </div>`;
+}
+
+function openAuditModal() {
+  const menu = document.getElementById('data-menu');
+  if (menu) {
+    menu.classList.add('hidden');
+    const opener = document.querySelector('[aria-controls="data-menu"]');
+    if (opener) opener.setAttribute('aria-expanded', 'false');
+  }
+  openModal('modal-audit');
+  renderAuditLog();
+}
+
+function renderAuditLog() {
+  const list = document.getElementById('audit-list');
+  const modal = document.getElementById('modal-audit');
+  if (!list || !modal) return;
+
+  if (!BACKEND_READY) {
+    list.innerHTML = `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('auditUnavailable'))}</div>`;
+    return;
+  }
+
+  list.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('auditLoading'))}</p>`;
+
+  dbListAuditLog(50)
+    .then(entries => {
+      if (modal.classList.contains('hidden')) return;
+      if (entries === null) {
+        list.innerHTML = `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('auditUnavailable'))}</div>`;
+        return;
+      }
+      if (!entries.length) {
+        list.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('auditEmpty'))}</p>`;
+        return;
+      }
+      list.innerHTML = entries.map(renderAuditEntry).join('');
+    })
+    .catch(error => {
+      console.error('KickOff Division: could not load the activity log.', error);
+      list.innerHTML = `<p class="py-6 text-center text-rose-400">${esc(t('auditError'))}</p>`;
+    });
+}
+
+/** Re-render the open activity dialog after a language switch. */
+function refreshAuditLogIfOpen() {
+  const modal = document.getElementById('modal-audit');
+  if (modal && !modal.classList.contains('hidden')) renderAuditLog();
 }
 
 function toggleDataMenu(button) {
