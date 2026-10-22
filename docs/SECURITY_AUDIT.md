@@ -209,7 +209,7 @@ CI      ──push──► GitHub Pages
 ### SEC-05 — No audit log, soft delete or restore path
 
 **Severity:** Medium (remediated in code; migrations to run in production)
-**Status:** Mitigated in code (`v3.8.0`). `supabase/audit-log-migration.sql` adds an append-only `public.audit_log` fed by AFTER triggers on `teams`, `players`, `matches`, `match_events` and `seasons`, plus `list_audit_log(int)` for admins and an "Activity log" panel. `supabase/soft-delete-migration.sql` adds `deleted_at`, hides trashed rows in RLS and installs `delete_season`, `restore_team`, `restore_match`, `restore_season` and `list_deleted()` for a "Recently deleted" panel. Both migrations are covered by the PGlite suite; the audit migration is verified in development, and **both still have to be run in production**.
+**Status:** Mitigated in code (`v3.8.0`) and deployed. `supabase/audit-log-migration.sql` adds an append-only `public.audit_log` fed by AFTER triggers on `teams`, `players`, `matches`, `match_events` and `seasons`, plus `list_audit_log(int)` for admins and an "Activity log" panel. `supabase/soft-delete-migration.sql` adds `deleted_at`, hides trashed rows in RLS and installs `delete_season`, `restore_team`, `restore_match`, `restore_season` and `list_deleted()` for a "Recently deleted" panel. Both migrations are applied in development and production; a live delete/restore round trip passed in development, and anonymous production calls to both admin RPCs are rejected with `42501`.
 
 **Evidence (history):** there was no `audit_log` table, no `deleted_at` for teams/matches/seasons, and no restore action for them. Player totals and match events could change with no record of who changed them. The integrity release added `players.is_active`, so players with history can be archived and restored, but that was not a full audit or trash system.
 
@@ -232,9 +232,9 @@ CI      ──push──► GitHub Pages
 **Acceptance criteria:**
 
 - ✅ Every admin write produces an audit row (verified in the PGlite suite).
-- ✅ A deleted match can be restored with its events and totals (verified in the PGlite suite; browser pass pending the development migration).
+- ✅ A deleted match can be restored with its events and totals (verified in the PGlite suite and by a live dev round trip).
 - ✅ Audit rows are admin-readable only and cannot be edited by clients (anon select and RPC both rejected in tests).
-- ⏳ Run `soft-delete-migration.sql` in development and production, then confirm a delete/restore round trip on the live site.
+- ✅ Run `soft-delete-migration.sql` in development and production; the live development delete/restore round trip passed.
 
 ### SEC-06 - Archived seasons were not write-protected in the database
 

@@ -2,7 +2,7 @@
 
 - **Last updated:** 2026-10-22
 - **Working-tree version:** `v3.8.0`
-- **Deployed version:** `v3.8.0` (current `main`); `prod` tag moves with each verified release; integrity migration applied in development and production; audit-log migration applied and verified in development; soft-delete migration must be run in both SQL editors
+- **Deployed version:** `v3.8.0` (current `main`); `prod` tag moves with each verified release; integrity, audit-log and soft-delete migrations applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -21,13 +21,13 @@
 | Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
 | Security hardening pass | ✅ Done in `v3.6.2` | Every asset self-hosted, strict CSP (`script-src 'self'`), zero inline handlers, secret scanning, dependency updates |
-| Audit log | ✅ Applied and verified in development; production migration to run | Admin-only activity panel over trigger-fed `audit_log`; graceful message until the migration is applied |
-| Recently deleted (soft delete) | ✅ Code complete in `v3.8.0`, migration to run | Teams, matches and seasons go to a trash; `restore_*` reinstates rows and totals; graceful message until the migration is applied |
+| Audit log | ✅ Applied in development and production; verified in development | Admin-only activity panel over trigger-fed `audit_log`; graceful message until the migration is applied |
+| Recently deleted (soft delete) | ✅ Applied in development and production; dev round trip verified | Teams, matches and seasons go to a trash; `restore_*` reinstates rows and totals; graceful message until the migration is applied |
 | UX polish and shareability | ✅ Done in `v3.6.0` | Shareable filter URLs, clear filters, guided empty states, match timeline, keyboard/focus handling, Lighthouse 100/100/100 |
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.8.0` is on `main`. The integrity hardening is live in both hosted projects: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. `v3.6.2` replaced all inline event handlers with delegated `data-*` actions and tightened the CSP to `script-src 'self'`. `v3.7.0` adds an audit log (verified end-to-end in development), and `v3.8.0` makes deletion reversible: teams, matches and seasons move to a trash and can be restored with their squad, events and totals intact. The remaining work is operational: run `supabase/soft-delete-migration.sql` (and the audit migration on production) in the SQL editors, then load the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.8.0` is on `main`. All three database migrations (integrity, audit log, soft delete) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). The remaining operational work is loading the real league data; the next code item is admin MFA (SEC-01).
 
 ## 2. Architecture
 
@@ -502,9 +502,9 @@ Deletion is now reversible. Rows are never destroyed by the app, so a mis-click 
 - Tailwind rebuilt if new utility classes were introduced.
 
 ### To activate
-1. Supabase → development project → SQL Editor → paste `supabase/soft-delete-migration.sql` → Run.
-2. Log in as admin on `?env=dev`: delete a fixture, open **Recently deleted**, restore it, confirm the standings and timeline return to their previous values.
-3. Repeat step 1 on the production project, then a small delete/restore check.
+1. ✅ Supabase → development project → SQL Editor → paste `supabase/soft-delete-migration.sql` → Run.
+2. ✅ Log in as admin on `?env=dev`: deleted a fixture, opened **Recently deleted**, restored it from the panel; the match returned with identical player totals, and the Activity log showed `DELETE matches m1` then `RESTORE matches m1` by `demo@kickoff.com`.
+3. ✅ Repeated step 1 on the production project; anonymous calls to `list_deleted()` and `list_audit_log()` return `42501 permission denied` (functions exist and are admin-only), and production still reads 6 teams / 9 fixtures / 9 players.
 
 
 
