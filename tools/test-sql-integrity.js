@@ -29,6 +29,9 @@ async function createDatabase() {
     create or replace function auth.uid() returns uuid
       language sql stable
       as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
+    create or replace function auth.jwt() returns jsonb
+      language sql stable
+      as $$ select coalesce(nullif(current_setting('test.jwt', true), '')::jsonb, '{}'::jsonb) $$;
     create role anon;
     create role authenticated;
   `);
@@ -70,6 +73,9 @@ async function run() {
     const softDeleteSql = fs.readFileSync(path.join(ROOT, 'supabase/soft-delete-migration.sql'), 'utf8');
     await exec(softDeleteSql);
     await exec(softDeleteSql);
+    const mfaSql = fs.readFileSync(path.join(ROOT, 'supabase/mfa-migration.sql'), 'utf8');
+    await exec(mfaSql);
+    await exec(mfaSql);
 
     // Archived season + isolated team-deletion fixtures.
     await exec(`
@@ -445,6 +451,62 @@ async function run() {
     console.log('OK audit log (triggers, actor, snapshots, admin-only, import summary)');
 
     // ------------------------------------------------------------
+    // Admin MFA / step-up gate
+    // ------------------------------------------------------------
+    assert.strictEqual((await q("select public.admin_mfa_required() as required"))[0].required, false);
+
+    // Turning the requirement on needs a verified factor (aal2).
+    await exec(`set test.jwt = '{"aal":"aal1"}'`);
+    await asRole('authenticated', async () => {
+      await expectError(
+        () => q("select public.set_require_admin_mfa(true)"),
+        /Verify your authenticator/
+      );
+    });
+
+    await exec(`set test.jwt = '{"aal":"aal2"}'`);
+    await asRole('authenticated', async () => {
+      await q("select public.set_require_admin_mfa(true)");
+    });
+    assert.strictEqual((await q("select public.admin_mfa_required() as required"))[0].required, true);
+
+    // Password-only (aal1) admin keeps read access but loses every write path.
+    await exec(`set test.jwt = '{"aal":"aal1"}'`);
+    const aal1Read = await asRole('authenticated', () => q("select count(*)::int n from public.teams"));
+    assert(aal1Read[0].n > 0, 'public reads should still work at aal1');
+    const aal1Update = await asRole('authenticated', () =>
+      q("update public.teams set name = name where id = 't2' returning id")
+    );
+    assert.strictEqual(aal1Update.length, 0, 'aal1 admin update should be filtered by RLS');
+    await asRole('authenticated', async () => {
+      await expectError(
+        () => q(`select public.save_match('{"id":"m_mfa","season_id":"s1","round":77,"home_id":"t1","away_id":"t2"}'::jsonb, null)`),
+        /Only admins/
+      );
+      await expectError(() => q("select public.list_audit_log(5)"), /Only admins/);
+      await expectError(() => q("select public.list_deleted()"), /Only admins/);
+    });
+
+    // aal2 restores the ability, and the requirement can be turned off.
+    await exec(`set test.jwt = '{"aal":"aal2"}'`);
+    await asRole('authenticated', async () => {
+      await q("insert into public.teams (id, name, code, color) values ('tmfa', 'MFA FC', 'MFA', '#111111')");
+      await q(`select public.save_match('{"id":"m_mfa","season_id":"s1","round":77,"home_id":"t1","away_id":"tmfa"}'::jsonb, null)`);
+      await q("select public.delete_match('m_mfa')");
+      await q("select public.set_require_admin_mfa(false)");
+    });
+    assert.strictEqual((await q("select public.admin_mfa_required() as required"))[0].required, false);
+
+    // Non-admins cannot toggle the requirement even at aal2.
+    await exec(`update public.profiles set role = 'viewer' where id = '${ADMIN_ID}'`);
+    await asRole('authenticated', async () => {
+      await expectError(() => q("select public.set_require_admin_mfa(true)"), /Only admins/);
+    });
+    await exec(`update public.profiles set role = 'admin' where id = '${ADMIN_ID}'`);
+    await exec(`set test.jwt = '{}'`);
+    console.log('OK admin MFA gate (aal1 blocked, aal2 allowed, step-up required)');
+
+    // ------------------------------------------------------------
     // Fresh install path: schema.sql alone must provide the audit log
     // ------------------------------------------------------------
     const fresh = await createDatabase();
@@ -456,6 +518,11 @@ async function run() {
         (await fq('select count(*)::int n from public.audit_log'))[0].n,
         0,
         'seed data must not be audited'
+      );
+      assert.strictEqual(
+        (await fq('select public.admin_mfa_required() as required'))[0].required,
+        false,
+        'fresh installs keep the MFA requirement off'
       );
 
       await fexec('set role authenticated');

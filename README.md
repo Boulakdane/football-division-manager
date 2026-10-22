@@ -30,10 +30,15 @@ accounts live in a free [Supabase](https://supabase.com) project.
   without an account; only users with the `admin` role can add, edit or delete.
 - **Database-enforced permissions** — Postgres Row Level Security blocks writes from
   non-admins even if they tamper with the page or call the API directly.
+- **Two-factor authentication** — admins can enrol any TOTP authenticator app. When the
+  requirement is enabled, the database rejects writes from password-only (`aal1`)
+  sessions, so a stolen password is not enough to change the league.
 - **Shared data** — every visitor sees the same league, from any device.
-- **Activity log** — admins see the last 50 changes (adds, edits, deletes, imports)
-  with who made them, when, and before/after values. The log is append-only and
-  invisible to spectators and other signed-in users.
+- **Activity log** — admins see the last 50 changes (adds, edits, deletes, restores,
+  imports and security changes) with who made them, when, and before/after values. The
+  log is append-only and invisible to spectators and other signed-in users.
+- **Recently deleted** — teams, matches and seasons go to a trash instead of being
+  destroyed; admins can restore them with their squad, events and totals intact.
 - **JSON backup** — export/import the full dataset from the admin settings menu.
 - **CSV tools** — export the current season's standings, fixtures and squads,
   bulk-build a league from five CSV files, or turn a JSON backup back into
@@ -93,7 +98,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── atomic-import-migration.sql  # Install the one-transaction full-data import RPC
     ├── integrity-migration.sql      # Archive players, lock archived seasons and make deletes safe
     ├── audit-log-migration.sql      # Trigger-fed, admin-only audit log + Activity log panel
-    └── soft-delete-migration.sql    # Trash + restore for teams, matches and seasons
+    ├── soft-delete-migration.sql    # Trash + restore for teams, matches and seasons
+    └── mfa-migration.sql            # Database-enforced admin two-factor requirement
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -144,8 +150,14 @@ plus Supabase.
 >    turns deletion into a reversible trash for teams, matches and seasons. It adds
 >    `deleted_at`, hides trashed rows through RLS, and installs `delete_season`,
 >    `restore_team`, `restore_match`, `restore_season` and `list_deleted()` for the
->    **Recently deleted** panel. **Run this last**; if you re-run an earlier
->    migration afterwards, run this one again.
+>    **Recently deleted** panel. **Run this after the audit log**; if you re-run
+>    an earlier migration afterwards, run this one again.
+> 7. [`supabase/mfa-migration.sql`](supabase/mfa-migration.sql) — adds the
+>    `security_settings` table, `admin_mfa_required()` and `set_require_admin_mfa()`.
+>    Once an admin enrols an authenticator and enables the requirement, `is_admin()`
+>    only returns true for `aal2` sessions, so every existing RLS policy and RPC
+>    rejects password-only writes. The requirement defaults to **off**, so this
+>    migration changes nothing until you opt in.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. Do not re-run the sample seed block
@@ -204,6 +216,21 @@ update public.profiles
 Optional: disable email confirmation under **Authentication → Providers → Email**
 if you don't want new accounts to confirm their address. Once your admin account
 exists, you can also turn off public sign-ups there to prevent extra accounts.
+
+### 4. Protect the admin account with two-factor
+
+1. Run [`supabase/mfa-migration.sql`](supabase/mfa-migration.sql) in the SQL Editor.
+2. Log in as admin, open the data menu and choose **Two-factor authentication**.
+3. **Set up authenticator app**, scan the QR code (or type the key) in Google
+   Authenticator, Authy, 1Password or any TOTP app, then enter the 6-digit code.
+4. Tick **Require two-factor for admin writes**. From then on the database only accepts
+   writes from a session whose JWT carries `aal2`; a password-only session can still
+   read the league but every write RPC and RLS policy rejects it.
+
+The app asks for the code after login whenever the requirement is on. Keep a backup of
+the authenticator: if it is lost, use another admin account or remove the factor under
+**Authentication → Users** in the Supabase dashboard. SQL Editor access always remains
+available for recovery. Turning the requirement off also needs a verified session.
 
 ### Confirmation email issues
 
@@ -347,7 +374,7 @@ file is out of date.
 ### Tests
 
 ```bash
-npm run test:sql        # in-memory Postgres: RLS, archive locks, atomic saves, trash restore, audit log
+npm run test:sql        # in-memory Postgres: RLS, archive locks, atomic saves, trash restore, audit log, MFA gate
 npm run check:secrets   # fail if a privileged key is committed
 ```
 
@@ -408,6 +435,7 @@ match_events (id text pk, match_id → matches.id, team_id → teams.id,
 profiles     (id uuid pk → auth.users.id, email, role: admin|viewer)
 audit_log    (id bigint pk, occurred_at, actor_id, actor_email, action, entity,
               entity_id, season_id, summary, before jsonb, after jsonb)
+security_settings (id boolean pk, require_admin_mfa, updated_at)
 ```
 
 `status` is one of `SCHEDULED`, `LIVE`, `FINISHED`. Only `FINISHED` matches count
@@ -450,9 +478,21 @@ flag. See [`data/README.md`](data/README.md#eventscsv) for the CSV column.
 
 `audit_log` is written by AFTER triggers on the five league tables and by
 `replace_all_data` (one `IMPORT` row per import). Soft deletes and restores are labelled
-`DELETE` and `RESTORE` instead of a generic update. There are no client grants on the
-table and RLS is enabled with no policy; admins read the newest entries through
-`list_audit_log(limit)`. It is a history, not a backup — export JSON regularly.
+`DELETE` and `RESTORE` instead of a generic update, and changing the MFA requirement
+writes a `SECURITY` row. There are no client grants on the table and RLS is enabled with
+no policy; admins read the newest entries through `list_audit_log(limit)`. It is a
+history, not a backup — export JSON regularly.
+
+### Two-factor authentication
+
+TOTP factors are enrolled and verified through Supabase Auth in the browser. Once an
+admin ticks **Require two-factor for admin writes**, `public.is_admin()` also requires
+`auth.jwt()->>'aal' = 'aal2'`, so the gate applies to every RLS policy and every
+admin-only RPC without duplicating checks. The flag itself can only be changed from an
+`aal2` session. `security_settings` is a one-row table with RLS and no client grants;
+`admin_mfa_required()` is readable so the app can prompt for step-up. Before the
+migration is applied, the frontend hides the feature behind a one-line notice and
+admin writes keep working as before.
 
 The JSON backup format is the same camelCase shape used by the app. Backups created
 before seasons existed are upgraded automatically into a single default season:
@@ -495,6 +535,9 @@ before seasons existed are upgraded automatically into a single default season:
   **Retry** button while the backend is unavailable.
 - Passwords are handled by Supabase Auth (hashed and never stored in this repository).
   Use a strong, unique password for the admin account.
+- Admins can add a TOTP second factor. For enforcement, the database checks the JWT
+  assurance level (`aal2`) in `is_admin()`, not just the UI. The requirement is opt-in
+  and can only be switched off from a verified session.
 - No third-party JavaScript, CSS or fonts are loaded at runtime. A CSP meta tag pins
   every directive to this origin, with Supabase allowed only for API/auth connections.
   `script-src` is exactly `'self'`: there are no inline handlers, and buttons, selects,

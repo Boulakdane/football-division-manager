@@ -17,11 +17,11 @@ The application has a sensible security model for a free, zero-server deployment
 
 No critical vulnerability was found in this review. The largest residual risks are:
 
-1. **Admin account/session compromise.** An admin can legitimately replace or delete the entire dataset. There is no MFA, step-up authentication, session policy or audit trail.
+1. **Admin account/session compromise.** An admin can legitimately replace or delete the entire dataset. There is no MFA, step-up authentication, session policy or audit trail. `v3.9.0` adds database-enforced TOTP step-up (the requirement is opt-in until an admin enrols); session policy and login notifications remain open. See SEC-01.
 2. **XSS and supply-chain exposure.** The app still renders with `innerHTML` template strings, so a missed `esc()` would inject markup. `v3.6.1` self-hosted every asset and `v3.6.2` removed all inline handlers, so `script-src` is now exactly `'self'` and injected script is blocked. A same-origin compromise could still read the Supabase session from browser storage.
-3. **Destructive imports still lack a preview and audit trail.** Atomic rollback is live-tested in production, and `v3.7.0` adds an admin-only audit log, but an admin can still replace all data without a dry-run diff, and there is no trash/restore for teams, matches or seasons. See SEC-05 for the remaining work.
+3. **Destructive imports still lack a preview and audit trail.** Atomic rollback is live-tested in production, and `v3.7.0` adds an admin-only audit log, but an admin can still replace all data without a dry-run diff. Trash/restore for teams, matches and seasons landed in `v3.8.0`; see SEC-05.
 
-The current pass already reduced some risk: every runtime asset is now self-hosted (Lucide, the Supabase client and the Inter/Cairo webfonts live in `vendor/` and `fonts/`), a Content-Security-Policy in `index.html` pins scripts, styles, fonts and connections to this origin plus Supabase, `v3.6.2` replaced every inline handler with delegated `data-*` actions so `script-src` no longer allows `'unsafe-inline'`, a secret scanner runs in CI, Dependabot is configured, imports are atomic, and the working tree adds database-enforced archive reads, player archiving, safe team deletion and atomic match saves. The integrity SQL has been applied to the hosted development and production projects and verified live. The plan below closes the remaining gaps.
+The current pass already reduced some risk: every runtime asset is now self-hosted (Lucide, the Supabase client and the Inter/Cairo webfonts live in `vendor/` and `fonts/`), a Content-Security-Policy in `index.html` pins scripts, styles, fonts and connections to this origin plus Supabase, `v3.6.2` replaced every inline handler with delegated `data-*` actions so `script-src` no longer allows `'unsafe-inline'`, a secret scanner runs in CI, Dependabot is configured, imports are atomic, and the working tree adds database-enforced archive reads, player archiving, safe team deletion, atomic match saves, reversible deletes and opt-in TOTP step-up. The integrity SQL has been applied to the hosted development and production projects and verified live. The plan below closes the remaining gaps.
 
 ## 2. Trust boundaries and assets
 
@@ -59,7 +59,7 @@ CI      ──push──► GitHub Pages
 
 | ID | Severity | Finding | Status |
 |---|---|---|---|
-| SEC-01 | High | No MFA/step-up authentication for a role that can erase the league | Open |
+| SEC-01 | High | No MFA/step-up authentication for a role that can erase the league | Mitigated in code (`v3.9.0`); migration + enrolment pending |
 | SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Mitigated: all inline handlers replaced by delegated `data-*` actions, CSP ships `script-src 'self'`; residual `style-src 'unsafe-inline'` and template-string escaping discipline |
 | SEC-03 | High | Atomic full-data import RPC installed and live-tested; no-op and rollback verified | Mitigated |
 | SEC-04 | Medium | Third-party CDN and font dependency | Mitigated: Lucide, Supabase JS and the Inter/Cairo fonts are vendored; CSP leaves no external script/style/font origin |
@@ -76,46 +76,26 @@ CI      ──push──► GitHub Pages
 ### SEC-01 — Admin account takeover has no second factor
 
 **Severity:** High
-**Evidence:** `js/auth.js` uses email + password only. Password minimum is 6 characters. There is no MFA prompt, no `aal2` check in `is_admin()`, no session timeout, no “sign out all devices”, and no notification on admin login. The admin role can call `replace_match_events`, `delete_match`, `activate_season` and full-data replacement.
+**Status:** Mitigated in code (`v3.9.0`); the SQL migration still has to be run in both hosted projects and the admin still has to enrol.
+
+**Evidence (original):** `js/auth.js` used email + password only. Password minimum is 6 characters. There was no MFA prompt, no `aal2` check in `is_admin()`, no session timeout, no “sign out all devices”, and no notification on admin login. The admin role can call `replace_match_events`, `delete_match`, `activate_season` and full-data replacement.
 
 **Impact:** A phished or reused admin password gives an attacker full control of the league. They can delete seasons, rewrite results, corrupt player totals or replace the entire dataset.
 
-**Remediation:**
+**Remediation implemented:**
+1. TOTP enrolment and step-up live in `js/mfa.js` and use Supabase Auth MFA (`enroll`, `challenge`, `verify`, `listFactors`, `unenroll`). The dialog handles enrolment (QR + manual key), verification and disabling.
+2. The database enforces the assurance level, not the UI: `supabase/mfa-migration.sql` replaces `is_admin()` with a role check **and**, while `security_settings.require_admin_mfa` is on, `coalesce(auth.jwt()->>'aal','aal1') = 'aal2'`. Every RLS policy and admin RPC inherits the gate.
+3. The requirement defaults to off, so the migration cannot lock anyone out. `set_require_admin_mfa()` is admin-only, requires an `aal2` session, and records a `SECURITY` audit entry.
+4. The frontend prompts for the code after login when the session is locked, shows a header shield/badge, and degrades quietly when the migration has not been applied.
 
-1. Enable Supabase Auth MFA (TOTP) and require enrollment for admins.
-2. Enforce assurance level in the database, not just the UI:
-
-   ```sql
-   -- Example policy helper: require aal2 for admin writes.
-   create or replace function public.is_admin()
-   returns boolean
-   language sql
-   stable
-   security definer
-   set search_path = public
-   as $$
-     select exists (
-       select 1
-       from public.profiles
-       where id = auth.uid()
-         and role = 'admin'
-     )
-     and coalesce(auth.jwt() ->> 'aal', 'aal1') = 'aal2';
-   $$;
-   ```
-
-   Test this carefully: existing sessions without MFA would lose write access until they enroll.
-3. Require a fresh password or MFA challenge before destructive actions (“step-up auth”).
-4. Raise the password minimum to 12 characters and enable Supabase leaked-password protection.
-5. Add a “sign out all sessions” action and a short admin session lifetime.
-6. Add login notifications or an admin activity digest.
+**Still open (tracked elsewhere):** password minimum/pwned-password protection (SEC-03), session lifetime/“sign out all devices”, login notifications, and rate limits (SEC-11).
 
 **Acceptance criteria:**
-
-- A password-only admin session cannot execute write RPCs.
-- An `aal2` admin can write.
-- A viewer or anonymous caller receives `42501` for every write RPC.
-- The UI explains how to enroll MFA.
+- ✅ A password-only (`aal1`) admin session cannot execute write RPCs (PGlite: direct updates filtered; `save_match`, `list_audit_log`, `list_deleted` raise `42501`).
+- ✅ An `aal2` admin can write (PGlite).
+- ✅ A viewer or anonymous caller receives `42501` for every write RPC, including the MFA toggle.
+- ✅ The UI explains how to enrol MFA and prompts for step-up.
+- ⏳ Run `mfa-migration.sql` in development and production, enrol an authenticator, enable the requirement, and confirm a real `aal1` login cannot write until verified.
 
 ### SEC-02 — XSS risk from `innerHTML` rendering (mitigated in `v3.6.2`)
 
@@ -445,12 +425,12 @@ CI      ──push──► GitHub Pages
 | ✅ Re-apply patched `atomic-import-migration.sql` in development and production | Both passed no-op/hash/anon/rollback checks |
 | ✅ Apply `integrity-migration.sql` in development, then production | Archived-season writes rejected; archive/restore, atomic save and safe team delete pass live |
 | Re-run anonymous/viewer/admin RLS matrix | Anon and viewer writes return `42501`; admin writes succeed |
-| Add MFA for admins and enforce `aal2` for writes | Password-only admin cannot write |
+| ✅ Add MFA for admins and enforce `aal2` for writes | SQL gate and UI implemented; PGlite proves password-only admin cannot write; hosted migration/enrolment pending |
 | ✅ Replace `dbReplaceAll` with an atomic import RPC | RPC installed and live-tested in production; no-op import and rollback passed |
 | ✅ Remove inline handlers and add a strict CSP | 0 inline `on*` attributes; `<script>` injection blocked by `script-src 'self'`; all delegated actions tested live on development |
 | ✅ Add CSV formula-injection protection | Dangerous cells export as text; round-trip stable |
 | ✅ Add audit log | Triggers record actor + snapshots; admin-only RPC and panel; anon denied |
-| Add soft delete and restore for teams, matches and seasons | A deleted record can be restored with totals intact |
+| ✅ Add soft delete and restore for teams, matches and seasons | Applied in both projects; a deleted record can be restored with totals intact |
 
 ### P1 — 1 to 4 weeks
 

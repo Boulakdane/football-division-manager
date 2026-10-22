@@ -20,19 +20,19 @@
 
   <!-- Fonts: Inter (EN/FR) + Cairo (AR), self-hosted variable woff2 -->
   <link rel="preload" href="fonts/inter-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/fonts.css?v=3.8.0">
+  <link rel="stylesheet" href="css/fonts.css?v=3.9.0">
 
   <!-- Tailwind CSS (compiled locally, no CDN dependency) -->
-  <link rel="stylesheet" href="css/tailwind.css?v=3.8.0">
+  <link rel="stylesheet" href="css/tailwind.css?v=3.9.0">
 
   <!-- Lucide icons (vendored UMD build, previously pinned with SRI on unpkg) -->
-  <script src="vendor/lucide-1.60.0.js?v=3.8.0" defer></script>
+  <script src="vendor/lucide-1.60.0.js?v=3.9.0" defer></script>
 
   <!-- Supabase JS client (vendored; auth must not depend on a CDN) -->
-  <script src="vendor/supabase-js-2.118.0.js?v=3.8.0" defer></script>
+  <script src="vendor/supabase-js-2.118.0.js?v=3.9.0" defer></script>
 
   <!-- App styles -->
-  <link rel="stylesheet" href="css/styles.css?v=3.8.0">
+  <link rel="stylesheet" href="css/styles.css?v=3.9.0">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200 antialiased">
 
@@ -71,7 +71,7 @@
           <div>
             <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
               <span data-i18n="appTitle">KickOff Division</span>
-              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.8.0</span>
+              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.9.0</span>
             </h1>
             <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Football League Management</p>
           </div>
@@ -109,6 +109,9 @@
             <span class="hidden sm:inline" data-i18n="adminLogin">Admin Login</span>
           </button>
           <span id="role-badge" class="hidden"></span>
+          <button id="btn-mfa-verify" data-action="mfa-open" class="hidden p-2 text-amber-300 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 rounded-lg transition" title="Verify two-factor" aria-label="Verify two-factor">
+            <i data-lucide="shield-alert" class="w-4 h-4"></i>
+          </button>
           <button id="btn-logout" data-action="logout" class="hidden p-2 text-slate-400 hover:text-rose-400 bg-slate-800 hover:bg-slate-700 rounded-lg transition" title="Log out">
             <i data-lucide="log-out" class="w-4 h-4"></i>
           </button>
@@ -135,6 +138,9 @@
               </button>
               <button data-action="trash-open" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> <span data-i18n="trashTitle">Recently deleted</span>
+              </button>
+              <button data-action="mfa-open" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> <span data-i18n="mfaMenu">Two-factor authentication</span>
               </button>
               <button data-action="password-modal" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
                 <i data-lucide="lock" class="w-3.5 h-3.5"></i> <span data-i18n="authChangePassword">Change password</span>
@@ -714,6 +720,83 @@
     </div>
   </div>
 
+  <!-- MODAL: TWO-FACTOR AUTHENTICATION (ADMIN) -->
+  <div id="modal-mfa" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="shield-check" class="w-5 h-5 text-emerald-400"></i>
+          <span data-i18n="mfaTitle">Two-factor authentication</span>
+        </h3>
+        <button data-action="close-modal" data-modal="modal-mfa" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <p id="mfa-status" class="text-xs text-slate-400 leading-relaxed"></p>
+      <p id="mfa-error" class="hidden text-xs text-rose-400"></p>
+      <p id="mfa-admin-only" class="hidden text-xs text-slate-400 leading-relaxed" data-i18n="mfaAdminOnly">Sign in as an admin to manage two-factor authentication.</p>
+
+      <!-- STEP-UP -->
+      <form id="form-mfa-verify" data-submit="mfa-verify" class="hidden space-y-3">
+        <p class="text-[11px] text-slate-500 leading-relaxed" data-i18n="mfaVerifyHint">Enter the 6-digit code from your authenticator app.</p>
+        <div>
+          <label class="text-xs font-medium text-slate-400 block mb-1" for="mfa-verify-code" data-i18n="mfaCodeLabel">6-digit code</label>
+          <input type="text" id="mfa-verify-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required
+                 class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-lg font-mono tracking-[0.4em] text-center text-white focus:outline-none focus:border-pitch-500">
+        </div>
+        <button type="submit" class="w-full px-4 py-2.5 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-60 text-white rounded-lg text-sm font-semibold shadow-md flex items-center justify-center gap-2 transition">
+          <i data-lucide="shield-check" class="w-4 h-4"></i>
+          <span data-i18n="mfaVerifyBtn">Verify</span>
+        </button>
+      </form>
+
+      <!-- ENROLMENT -->
+      <div id="mfa-enroll-panel" class="hidden space-y-3">
+        <p class="text-[11px] text-slate-500 leading-relaxed" data-i18n="mfaEnrollHint">Use Google Authenticator, Authy, 1Password or any TOTP app. Codes refresh every 30 seconds.</p>
+        <button id="mfa-enroll-start" data-action="mfa-enroll" class="w-full px-4 py-2.5 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-60 text-white rounded-lg text-sm font-semibold shadow-md flex items-center justify-center gap-2 transition">
+          <i data-lucide="smartphone" class="w-4 h-4"></i>
+          <span data-i18n="mfaEnrollStart">Set up authenticator app</span>
+        </button>
+        <div id="mfa-enroll-setup" class="hidden space-y-3">
+          <div class="flex justify-center">
+            <img id="mfa-qr" alt="Authenticator QR code" class="hidden w-40 h-40 rounded-lg bg-white p-2">
+          </div>
+          <div>
+            <p class="text-[11px] text-slate-500" data-i18n="mfaSecretHint">Or enter this key manually:</p>
+            <code id="mfa-secret" class="mt-1 block break-all rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-[11px] font-mono text-slate-200"></code>
+          </div>
+          <form id="form-mfa-enroll" data-submit="mfa-enroll-verify" class="space-y-2">
+            <label class="text-xs font-medium text-slate-400 block" for="mfa-enroll-code" data-i18n="mfaCodeLabel">6-digit code</label>
+            <input type="text" id="mfa-enroll-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required
+                   class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-lg font-mono tracking-[0.4em] text-center text-white focus:outline-none focus:border-pitch-500">
+            <button type="submit" class="w-full px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white rounded-lg text-sm font-semibold shadow-md flex items-center justify-center gap-2 transition">
+              <i data-lucide="check" class="w-4 h-4"></i>
+              <span data-i18n="mfaConfirmBtn">Confirm and enable</span>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- ACTIVE -->
+      <div id="mfa-manage-panel" class="hidden space-y-3">
+        <p class="text-[11px] text-emerald-300 leading-relaxed" data-i18n="mfaActive">Two-factor is active on this account. Admin writes are protected.</p>
+        <label class="flex items-start gap-2.5 rounded-lg border border-slate-800 bg-slate-800/40 p-3 cursor-pointer">
+          <input type="checkbox" id="mfa-require-toggle" data-change="mfa-require" class="mt-0.5 accent-emerald-500">
+          <span class="text-xs text-slate-200">
+            <span class="block font-medium" data-i18n="mfaRequireLabel">Require two-factor for admin writes</span>
+            <span class="mt-0.5 block text-[11px] text-slate-500 leading-relaxed" data-i18n="mfaRequireHint">A password-only session can no longer change league data. Keep your authenticator backed up.</span>
+          </span>
+        </label>
+        <p class="text-[11px] text-slate-500 leading-relaxed" data-i18n="mfaRecoveryHint">Keep a backup of your authenticator. Recovery is possible through the Supabase dashboard.</p>
+        <button data-action="mfa-disable" class="w-full px-3 py-2 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 text-xs font-semibold" data-i18n="mfaDisable">Disable two-factor</button>
+      </div>
+
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <button data-action="mfa-recovery" class="text-[11px] text-slate-500 hover:text-slate-300" data-i18n="mfaRecovery">Lost your device?</button>
+        <button data-action="close-modal" data-modal="modal-mfa" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold" data-i18n="btnGotIt">Got it</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: ADMIN LOGIN / SIGNUP -->
   <div id="modal-login" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -828,11 +911,12 @@
   </div>
 
   <!-- Application scripts (deferred, loaded in dependency order) -->
-  <script src="js/i18n.js?v=3.8.0" defer></script>
-  <script src="js/store.js?v=3.8.0" defer></script>
-  <script src="js/config.js?v=3.8.0" defer></script>
-  <script src="js/backend.js?v=3.8.0" defer></script>
-  <script src="js/auth.js?v=3.8.0" defer></script>
-  <script src="js/app.js?v=3.8.0" defer></script>
+  <script src="js/i18n.js?v=3.9.0" defer></script>
+  <script src="js/store.js?v=3.9.0" defer></script>
+  <script src="js/config.js?v=3.9.0" defer></script>
+  <script src="js/backend.js?v=3.9.0" defer></script>
+  <script src="js/auth.js?v=3.9.0" defer></script>
+  <script src="js/mfa.js?v=3.9.0" defer></script>
+  <script src="js/app.js?v=3.9.0" defer></script>
 </body>
 </html>

@@ -104,24 +104,33 @@ async function applySession(session) {
   }
 
   updateAuthUI();
+
+  // Load the two-factor requirement, assurance level and enrolled factors.
+  if (typeof refreshMfaState === 'function') await refreshMfaState();
 }
 
 function updateAuthUI() {
   const admin = isAdmin();
+  const mfaLocked = typeof isMfaLocked === 'function' && isMfaLocked();
 
   document.body.classList.toggle('is-admin', admin);
   document.body.classList.toggle('is-authed', isSignedIn());
+  document.body.classList.toggle('mfa-locked', mfaLocked);
 
   const loginBtn = document.getElementById('btn-admin-login');
   const logoutBtn = document.getElementById('btn-logout');
   const badge = document.getElementById('role-badge');
+  const mfaBtn = document.getElementById('btn-mfa-verify');
 
   if (loginBtn) loginBtn.classList.toggle('hidden', isSignedIn());
   if (logoutBtn) logoutBtn.classList.toggle('hidden', !isSignedIn());
+  if (mfaBtn) mfaBtn.classList.toggle('hidden', !mfaLocked);
 
   if (badge) {
     badge.classList.toggle('hidden', !isSignedIn());
     badge.textContent = admin ? t('adminBadge') : t('viewerBadge');
+    if (admin && mfaLocked) badge.textContent += ' · 2FA';
+    badge.title = mfaLocked ? t('mfaStatusRequired') : '';
     badge.className = admin
       ? 'hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide bg-pitch-500/15 text-pitch-400 border border-pitch-500/30'
       : 'hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide bg-slate-700/60 text-slate-300 border border-slate-600';
@@ -258,6 +267,10 @@ async function handleLogin(e) {
 
     closeModal('modal-login');
     clearAuthMessages();
+
+    // A password-only admin session cannot write while two-factor is
+    // required, so ask for the code straight away.
+    if (typeof isMfaLocked === 'function' && isMfaLocked()) openMfaModal();
   } catch (err) {
     setAuthError('login-error', 'authLoginInvalid');
   } finally {
@@ -365,6 +378,7 @@ async function logout() {
   }
   currentUser = null;
   currentRole = null;
+  if (typeof resetMfaState === 'function') resetMfaState();
   updateAuthUI();
   closeAllModals();
   const menu = document.getElementById('data-menu');

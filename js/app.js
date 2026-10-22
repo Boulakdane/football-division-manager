@@ -67,7 +67,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-login', 'modal-audit', 'modal-trash'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -271,6 +271,10 @@ const CLICK_ACTIONS = {
   'audit-refresh': () => renderAuditLog(),
   'trash-open': () => openTrashModal(),
   'trash-refresh': () => renderTrash(),
+  'mfa-open': () => openMfaModal(),
+  'mfa-enroll': () => startMfaEnrollment(),
+  'mfa-disable': () => disableMfa(),
+  'mfa-recovery': () => showMfaRecovery(),
   'restore-team': el => restoreTrashItem('team', el.dataset.id),
   'restore-match': el => restoreTrashItem('match', el.dataset.id),
   'restore-season': el => restoreTrashItem('season', el.dataset.id),
@@ -316,7 +320,8 @@ const CHANGE_ACTIONS = {
   'render-fixtures': () => renderFixtures(),
   'match-team-change': () => onMatchTeamChange(),
   'update-event': el => updateMatchEvent(el.dataset.id, el.dataset.field, el.value),
-  'import-file': (el, event) => importData(event)
+  'import-file': (el, event) => importData(event),
+  'mfa-require': el => toggleRequireMfa(el)
 };
 
 const INPUT_ACTIONS = {
@@ -332,7 +337,9 @@ const SUBMIT_ACTIONS = {
   'save-player': (el, event) => savePlayer(event),
   login: (el, event) => handleLogin(event),
   signup: (el, event) => handleSignup(event),
-  password: (el, event) => saveNewPassword(event)
+  password: (el, event) => saveNewPassword(event),
+  'mfa-verify': (el, event) => handleMfaVerifySubmit(event),
+  'mfa-enroll-verify': (el, event) => handleMfaEnrollSubmit(event)
 };
 
 /** Walk up from the event target to the nearest element declaring `attr`. */
@@ -349,11 +356,37 @@ function runDelegated(attr, handlers, event) {
   return true;
 }
 
+/** Actions that mutate league data (they need an aal2 session when MFA is required). */
+const MFA_GATED_ACTIONS = new Set([
+  'new-match', 'edit-match', 'delete-match', 'bump-score',
+  'new-team', 'edit-team', 'delete-team',
+  'new-player', 'edit-player', 'delete-player', 'restore-player',
+  'add-event', 'remove-event',
+  'new-season', 'activate-season', 'delete-season',
+  'restore-team', 'restore-match', 'restore-season',
+  'audit-log', 'trash-open',
+  'reset-data'
+]);
+
 document.addEventListener('click', function (event) {
+  const actionEl = closestAction(event.target, 'data-action');
+  if (actionEl && MFA_GATED_ACTIONS.has(actionEl.dataset.action) &&
+      typeof isMfaLocked === 'function' && isMfaLocked()) {
+    event.preventDefault();
+    openMfaModal();
+    return;
+  }
   if (runDelegated('data-action', CLICK_ACTIONS, event)) event.preventDefault();
 });
 
 document.addEventListener('change', function (event) {
+  const changeEl = closestAction(event.target, 'data-change');
+  if (changeEl && changeEl.dataset.change === 'import-file' &&
+      typeof isMfaLocked === 'function' && isMfaLocked()) {
+    changeEl.value = '';
+    openMfaModal();
+    return;
+  }
   runDelegated('data-change', CHANGE_ACTIONS, event);
 });
 
@@ -362,6 +395,13 @@ document.addEventListener('input', function (event) {
 });
 
 document.addEventListener('submit', function (event) {
+  const submitEl = closestAction(event.target, 'data-submit');
+  if (submitEl && submitEl.dataset.submit.startsWith('save-') &&
+      typeof isMfaLocked === 'function' && isMfaLocked()) {
+    event.preventDefault();
+    openMfaModal();
+    return;
+  }
   if (runDelegated('data-submit', SUBMIT_ACTIONS, event)) event.preventDefault();
 });
 
@@ -1832,7 +1872,8 @@ const AUDIT_ACTION_KEYS = {
   UPDATE: 'auditActionUpdate',
   DELETE: 'auditActionDelete',
   RESTORE: 'auditActionRestore',
-  IMPORT: 'auditActionImport'
+  IMPORT: 'auditActionImport',
+  SECURITY: 'auditActionSecurity'
 };
 
 const AUDIT_ACTION_STYLES = {
@@ -1840,7 +1881,8 @@ const AUDIT_ACTION_STYLES = {
   UPDATE: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
   DELETE: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
   RESTORE: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-  IMPORT: 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+  IMPORT: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  SECURITY: 'bg-violet-500/15 text-violet-300 border-violet-500/30'
 };
 
 const AUDIT_ENTITY_KEYS = {
@@ -1849,6 +1891,7 @@ const AUDIT_ENTITY_KEYS = {
   players: 'auditEntityPlayers',
   matches: 'auditEntityMatches',
   match_events: 'auditEntityEvents',
+  security: 'auditEntitySecurity',
   all: 'auditEntityAll'
 };
 

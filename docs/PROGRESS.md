@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
 - **Last updated:** 2026-10-22
-- **Working-tree version:** `v3.8.0`
-- **Deployed version:** `v3.8.0` (current `main`); `prod` tag moves with each verified release; integrity, audit-log and soft-delete migrations applied in development and production
+- **Working-tree version:** `v3.9.0`
+- **Deployed version:** `v3.8.0` (current `main`); `prod` tag moves with each verified release; integrity, audit-log and soft-delete migrations applied in development and production; MFA migration pending
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -23,11 +23,12 @@
 | Security hardening pass | ✅ Done in `v3.6.2` | Every asset self-hosted, strict CSP (`script-src 'self'`), zero inline handlers, secret scanning, dependency updates |
 | Audit log | ✅ Applied in development and production; verified in development | Admin-only activity panel over trigger-fed `audit_log`; graceful message until the migration is applied |
 | Recently deleted (soft delete) | ✅ Applied in development and production; dev round trip verified | Teams, matches and seasons go to a trash; `restore_*` reinstates rows and totals; graceful message until the migration is applied |
+| Admin two-factor (MFA) | 🟡 Code complete in `v3.9.0`; migration to run | TOTP enrolment/step-up in the UI; `is_admin()` requires `aal2` once the admin opts in; PGlite gate tests pass |
 | UX polish and shareability | ✅ Done in `v3.6.0` | Shareable filter URLs, clear filters, guided empty states, match timeline, keyboard/focus handling, Lighthouse 100/100/100 |
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.8.0` is on `main`. All three database migrations (integrity, audit log, soft delete) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). The remaining operational work is loading the real league data; the next code item is admin MFA (SEC-01).
+**Bottom line:** the core league manager is usable, publicly readable and `v3.8.0` is on `main`. All three existing database migrations (integrity, audit log, soft delete) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). `v3.9.0` adds database-enforced admin two-factor authentication; the requirement stays off until an admin enrols and enables it. The remaining operational work is loading the real league data and running the MFA migration in both projects.
 
 ## 2. Architecture
 
@@ -200,8 +201,8 @@ Local CSV / JSON tools
 3. **Real-data replacement is still untested.** The no-op production import and rollback paths passed; now test with real data in development first, then production with a fresh backup and keep the previous JSON export for rollback.
 4. **Production and development differ.** For example, `m6` is 1–1 in development but 2–4 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
 5. **The integrity migration is live; re-apply it after any older migration.** `supabase/integrity-migration.sql` has been run in development and production and `PLAYERS_ARCHIVE_READY` is true in both. If an older migration is re-run later, run the integrity migration again afterwards and re-check `PLAYERS_ARCHIVE_READY`.
-6. **Some destructive actions are still permanent by design.** `delete_team` removes all of a team's matches and events across every season (after reversing opponent totals), and `delete_match` removes a fixture's events. There is no audit log, soft-delete/trash for teams or matches, or transfer/registration history. Transfers for players with events remain blocked in the UI. Keep a backup before destructive edits.
-7. **Operational gaps.** There is no MFA, password reset flow, automated hosted RLS test suite or automated browser test yet. These are covered in the security and modernization plans.
+6. **Full imports are still irreversible in-app.** Team, match and season deletes now go to **Recently deleted** and can be restored with their events and totals, and every change is in the activity log. A full JSON import still replaces the dataset; export a backup immediately before one. Transfers for players with events remain blocked in the UI.
+7. **Operational gaps.** Admin MFA is code-complete but its SQL migration and enrolment are pending; there is also no password reset flow, automated hosted RLS test suite, Playwright test, session lifetime policy or login notification yet. These are covered in the security and modernization plans.
 
 ## 6. Release checklist for the match-events release
 
@@ -281,14 +282,14 @@ Local CSV / JSON tools
 
 - [x] Replace client-side `dbReplaceAll` with one transactional `replace_all_data(jsonb)` RPC (installed and live-tested in production).
 - [x] Add an audit log (triggers + admin panel, `v3.7.0`).
-- Add soft delete and restore for teams, matches and seasons.
+- [x] Add soft delete and restore for teams, matches and seasons (`v3.8.0`, applied in both projects).
 - Add database `CHECK` constraints for scores, names, colours and dates.
 - [x] Add a SQL/RLS suite with PGlite and run it in CI.
 - Add a Playwright smoke test (public read, login, admin save, archive, import).
 
 ### P2 — product and operations
 
-- Admin MFA and step-up authentication for destructive actions.
+- [x] Admin MFA and step-up authentication for destructive actions (`v3.9.0`; migration + enrolment pending).
 - [x] Strict Content Security Policy and removal of inline handlers (`v3.6.2`: `script-src 'self'`, delegated `data-*` actions).
 - Per-season player statistics and transfer/registration history.
 - Real-time live match updates.
@@ -506,5 +507,33 @@ Deletion is now reversible. Rows are never destroyed by the app, so a mis-click 
 2. ✅ Log in as admin on `?env=dev`: deleted a fixture, opened **Recently deleted**, restored it from the panel; the match returned with identical player totals, and the Activity log showed `DELETE matches m1` then `RESTORE matches m1` by `demo@kickoff.com`.
 3. ✅ Repeated step 1 on the production project; anonymous calls to `list_deleted()` and `list_audit_log()` return `42501 permission denied` (functions exist and are admin-only), and production still reads 6 teams / 9 fixtures / 9 players.
 
+## 15. Admin two-factor / step-up (v3.9.0)
 
+A stolen password is no longer enough to change league data. Admins can enrol a TOTP authenticator in the app, and the database itself refuses admin writes from a password-only session once the requirement is enabled.
 
+### Database
+- New `supabase/mfa-migration.sql` adds a one-row `security_settings` table (`require_admin_mfa`, default **false**), RLS enabled with no client grants.
+- `admin_mfa_required()` is a `SECURITY DEFINER` helper readable by anon/authenticated so the UI can prompt for step-up; it reveals only the boolean policy flag.
+- `is_admin()` now requires both `profiles.role = 'admin'` and, while the flag is on, `auth.jwt()->>'aal' = 'aal2'`. Every existing RLS policy and admin RPC inherits the check; no write path was missed by design.
+- `set_require_admin_mfa(boolean)` is granted to `authenticated` only, checks the admin role directly (not the gated helper) and requires an `aal2` session. Both enabling and disabling are sensitive actions. It writes a `SECURITY` entry to `audit_log` when that table exists.
+- `schema.sql` contains the same objects for fresh installs; re-running the migration is safe.
+
+### Frontend
+- `js/mfa.js` owns the state (`mfaRequired`, assurance level, factors) and the dialog. It calls `db.auth.mfa.enroll/challenge/verify/listFactors/unenroll`.
+- The dialog adapts to the account: enrolment with QR + manual key when no verified factor, a 6-digit step-up form when the session is `aal1`, and a management view (require toggle + disable) when `aal2`.
+- After a successful verify the returned `aal2` tokens are adopted as the active session, then the requirement and factors are reloaded.
+- Login automatically opens the step-up dialog when the admin is locked; a shield button in the header and an amber `Admin · 2FA` badge make the state visible. The data menu gains **Two-factor authentication**.
+- Missing migration: the RPC check fails quietly, the requirement stays off and the dialog shows `mfaUnavailable` instead of breaking writes.
+- QR images are only rendered when Supabase returns a `data:image/...` URI (CSP already allows `img-src data:`); the secret is written with `textContent`.
+
+### Verification
+- `npm run test:sql` mocks `auth.jwt()` and proves: the flag defaults off; enabling it from `aal1` raises `42501`; at `aal1` an admin can still read public data but direct updates are filtered and `save_match`, `list_audit_log` and `list_deleted` return "Only admins"; at `aal2` the same calls succeed; a non-admin cannot toggle the flag; the migration can be run twice; the fresh `schema.sql` install has the flag off.
+- Browser pass on development (`v3.9.0`): page loads with 0 console errors, the dialog and menu render, and simulated locked/verified states show the correct panels, badge and header button. A real enrolment round trip against the dev Auth server also passed: the dialog created a temporary TOTP factor, rendered the QR data URI, verified a generated code, showed the management panel, surfaced the missing-migration message when the requirement toggle was tried, and removed the factor afterwards (the demo account is left without MFA). The live requirement toggle and `aal1` lock need the SQL migration.
+- Tailwind rebuilt for the new utility classes.
+
+### To activate
+1. Supabase → development project → SQL Editor → `supabase/mfa-migration.sql` → Run.
+2. Log in on `?env=dev` as admin → data menu → **Two-factor authentication** → **Set up authenticator app** → scan with a TOTP app → enter the code.
+3. Tick **Require two-factor for admin writes**. Log out and back in: writes should fail with an admin/migration-style error until the code is entered; after verifying, a write (e.g. editing a team name) should succeed.
+4. Check **Activity log** shows the `SECURITY` entry for enabling the requirement.
+5. Repeat on production. Keep an authenticator backup; recovery is through another admin or the Supabase dashboard, with SQL Editor access always available.

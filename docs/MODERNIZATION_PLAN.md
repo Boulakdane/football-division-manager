@@ -108,7 +108,7 @@ Effort: S = days, M = 1–3 weeks, L = 3–6 weeks.
 - ✅ Apply `integrity-migration.sql` in development, test, then production.
 - ✅ Add audit logging (`v3.7.0`).
 - ✅ Add soft delete and restore for matches, teams and seasons (`v3.8.0`).
-- Add MFA for admins and enforce `aal2` on write RPCs.
+- ✅ Add MFA for admins and enforce `aal2` on write RPCs (`v3.9.0`; opt-in, SQL migration pending in both hosted projects).
 - ✅ Remove inline handlers; introduce event delegation (`v3.6.2`: 85 handlers → `data-*` actions + one dispatcher per event type).
 - ✅ Add strict CSP and self-host Supabase JS/Lucide/fonts (or keep pinned SRI with a tight allowlist).
   - ✅ Self-hosted: Supabase JS (`vendor/`), Lucide (`vendor/`) and Inter/Cairo woff2 (`fonts/`). CSP meta now ships `script-src 'self'` with no `'unsafe-inline'`; `style-src` keeps it only for inline team colours.
@@ -337,7 +337,7 @@ Use ES modules and a single `<script type="module" src="js/app.js">` if browser 
 
 ## 11. Security and operations
 
-- Enforce MFA `aal2` for admin writes.
+- ✅ Enforce MFA `aal2` for admin writes (`v3.9.0`; opt-in until the migration is run and an admin enrols).
 - Add step-up auth for imports, season deletion and reset.
 - Add CSP, `nosniff`, frame protection and `Permissions-Policy` at the edge (Cloudflare Pages `_headers` or a proxy).
 - Self-host third-party scripts and fonts.
