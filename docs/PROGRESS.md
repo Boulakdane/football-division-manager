@@ -409,3 +409,5 @@ No database changes and no data touched; this is an asset and hardening release.
 - Lighthouse (local, en): Accessibility 100, Best Practices 100, SEO 100.
 - `npm run check:secrets` and `npm run test:sql` still pass.
 - Print sheet reviewed by applying it as an all-media stylesheet in the browser: white background, readable table header, no clipped cards.
+- CSP smoke test on the live page: an injected `https://example.com/evil.js` was refused by `script-src`, while an inline script (still required by the existing handlers) ran.
+- Live check after deploy: only `boulakdane.github.io` and `vbegrfxsxsbldgwvwpeb.supabase.co` appear in the resource timeline; production data unchanged (6 teams / 9 players / 9 matches / 1 event); no console errors; Lighthouse 100/100/100.
