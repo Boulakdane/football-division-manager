@@ -310,3 +310,20 @@ npm.cmd run check:secrets
 ```
 
 See the root [README](../README.md) for setup, CSV columns and deployment details.
+
+## 9. Session note (2026-10-22): waiting on real data
+
+Real league data is still not available, so the app was polished instead of imported.
+
+Shipped in `e23ffbe` (on `main`, not yet released as a new tag):
+
+- **PPG column** in the standings table (points per game, visible from `md` up) with the empty-state colspan updated.
+- **LIVE badge pulse** using a pinging dot so in-progress matches stand out at a glance.
+
+Synthetic test data for future import rehearsals:
+
+- `backups/synthetic-league-full.json` (gitignored, local only) — 1 season, 6 teams, 18 players, 6 finished matches, 20 events. Generated from the five-CSV workflow via `node tools/csv-to-backup.js`, so it exercises the same path as real data.
+- The intermediate CSV folder (`data/synth/`) was removed; it can be regenerated from the backup if needed.
+- Nothing was imported into development or production. Both databases are unchanged from the `v3.5.1` baseline (`435a86dbcb7d69161f16fcfefef172ff703b0a6b9169a6ada027d879e6c80f54` for production).
+
+Next up: either continue the UX polish backlog (shareable filter URLs, "clear filters", empty states with CTAs, match timeline grouping, accessibility/focus states) or import the synthetic backup into development as a rehearsal and delete it afterwards.
