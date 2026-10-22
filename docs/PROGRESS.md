@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
 - **Last updated:** 2026-10-22
-- **Working-tree version:** `v3.6.1`
-- **Deployed version:** `v3.6.1` (current `main`); `prod` tag moves with each verified release; integrity migration applied in development and production
+- **Working-tree version:** `v3.6.2`
+- **Deployed version:** `v3.6.2` (current `main`); `prod` tag moves with each verified release; integrity migration applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -20,12 +20,12 @@
 | JSON backup and restore | ✅ Done | Full replacement; development round-trip and production no-op import passed |
 | Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
-| Security hardening pass | 🟡 In progress | All runtime assets self-hosted, CSP meta in place, secret scanning, dependency updates, XSS helper; inline handlers still to remove |
+| Security hardening pass | ✅ Done in `v3.6.2` | Every asset self-hosted, strict CSP (`script-src 'self'`), zero inline handlers, secret scanning, dependency updates |
 | UX polish and shareability | ✅ Done in `v3.6.0` | Shareable filter URLs, clear filters, guided empty states, match timeline, keyboard/focus handling, Lighthouse 100/100/100 |
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.6.1` is on `main`. The integrity hardening is live in both hosted projects: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. `v3.5.1` removed the last CDN dependency on the auth path by serving the Supabase client from `vendor/`, and `v3.6.1` finishes the job: Lucide and the webfonts are self-hosted too, and a CSP limits the page to its own origin plus Supabase. `v3.6.0` added the shareability and accessibility layer (filter-aware links, guided empty states, match timeline, keyboard-safe dialogs, Lighthouse 100/100/100). The remaining work is operational: decide what to do with the single leftover test event, then load the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.6.2` is on `main`. The integrity hardening is live in both hosted projects: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. `v3.5.1` removed the last CDN dependency on the auth path by serving the Supabase client from `vendor/`; `v3.6.1` self-hosted Lucide and the webfonts; `v3.6.2` replaced all 85 inline event handlers with delegated `data-*` actions and tightened the CSP to `script-src 'self'`. `v3.6.0` added the shareability and accessibility layer (filter-aware links, guided empty states, match timeline, keyboard-safe dialogs, Lighthouse 100/100/100). The remaining work is operational: decide what to do with the single leftover test event, then load the real league data.
 
 ## 2. Architecture
 
@@ -102,7 +102,7 @@ Local CSV / JSON tools
 - Match-event RPCs revoke `PUBLIC`/`anon` execute and re-grant only to `authenticated`.
 - Pinned Lucide and Supabase JS versions with Subresource Integrity (SRI).
 - `Referrer-Policy` meta tag.
-- Inline event-handler IDs escaped with a JSON-aware helper (`jsString`) to close a DOM-XSS injection path.
+- Event-handler IDs were temporarily escaped with a JSON-aware helper; `v3.6.2` removed inline handlers altogether, so identifiers now travel through `data-*` attributes instead of JavaScript source.
 - CI secret scanner and weekly Dependabot updates.
 
 ### Match events (current working tree)
@@ -286,7 +286,7 @@ Local CSV / JSON tools
 ### P2 — product and operations
 
 - Admin MFA and step-up authentication for destructive actions.
-- Strict Content Security Policy and removal of inline handlers.
+- [x] Strict Content Security Policy and removal of inline handlers (`v3.6.2`: `script-src 'self'`, delegated `data-*` actions).
 - Per-season player statistics and transfer/registration history.
 - Real-time live match updates.
 - PWA offline read-only mode and shareable match cards.
@@ -411,3 +411,31 @@ No database changes and no data touched; this is an asset and hardening release.
 - Print sheet reviewed by applying it as an all-media stylesheet in the browser: white background, readable table header, no clipped cards.
 - CSP smoke test on the live page: an injected `https://example.com/evil.js` was refused by `script-src`, while an inline script (still required by the existing handlers) ran.
 - Live check after deploy: only `boulakdane.github.io` and `vbegrfxsxsbldgwvwpeb.supabase.co` appear in the resource timeline; production data unchanged (6 teams / 9 players / 9 matches / 1 event); no console errors; Lighthouse 100/100/100.
+
+## 12. Strict-CSP release (v3.6.2)
+
+No database changes and no data touched; this is a frontend hardening release.
+
+### Inline handlers removed
+- All **85** inline `on*` attributes are gone (66 in `index.html`, 19 in generated markup in `js/app.js`). Markup now declares intent:
+  - `data-action` for clicks, with parameters in `data-id`, `data-modal`, `data-tab`, `data-team`, `data-side`, `data-type`, `data-delta`, `data-field`;
+  - `data-change` for selects and the import file input;
+  - `data-input` for the squad search, score inputs and event minutes;
+  - `data-submit` for the seven forms.
+- One dispatcher per event type lives in `js/app.js` (section 1c) with four tables: `CLICK_ACTIONS`, `CHANGE_ACTIONS`, `INPUT_ACTIONS`, `SUBMIT_ACTIONS`. `closestAction()` walks up from the event target, `runDelegated()` looks the handler up by attribute value.
+- Dynamic markup no longer interpolates identifiers into JavaScript source. IDs go into `data-id="${esc(id)}"`; the dispatcher reads them from `dataset`. The `jsString()` helper became unnecessary and was deleted.
+- The data-settings dropdown keeps working under delegation: the outside-click closer ignores the toggle itself, so open/close toggling does not fight the document listener.
+
+### Content Security Policy
+- `script-src` is now exactly `'self'` — no `'unsafe-inline'`.
+- `style-src` keeps `'unsafe-inline'` only because team colours are written as inline `style` attributes; that is the next optional tidy-up.
+- Live browser test: an injected external `<script>` is refused while the app's own scripts run normally; console is clean.
+
+### Verification
+- `node --check js/app.js` clean; `0` inline `on*` attributes remain in `index.html`, `js/app.js`, `js/auth.js`.
+- Every click action was exercised through the dispatcher on the development project by stubbing its target function and asserting the recorded call: **34/34** actions wired, including the three conditional ones (`restore-player` with an archived player, `remove-event` with a transient match event, `clear-search` with a no-hit search).
+- Change, input and submit wiring verified the same way: language, season, round/status filters, match team change, goal hint, squad search, JSON import, and all seven forms (all fired and called `preventDefault`, so no accidental navigation).
+- Functional pass without stubs: tab switching, filter narrowing 9 → 3 fixtures, data menu open/outside-close/toggle-close, login modal + Escape, EN → AR → EN with `dir` flipping `rtl`/`ltr`, squad search, copy-link toast.
+- Match modal pass with `isAdmin` overridden in memory: add goal → row appears, player dropdown filtered to the selected team, card type change, minute input, remove → row disappears, modal closes. Nothing was saved.
+- `npm run check:secrets` and `npm run test:sql` still pass.
+

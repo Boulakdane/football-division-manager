@@ -460,8 +460,10 @@ before seasons existed are upgraded automatically into a single default season:
   Use a strong, unique password for the admin account.
 - No third-party JavaScript, CSS or fonts are loaded at runtime. A CSP meta tag pins
   every directive to this origin, with Supabase allowed only for API/auth connections.
-  Inline `onclick` handlers are still permitted by `'unsafe-inline'`; removing them is
-  the next hardening step.
+  `script-src` is exactly `'self'`: there are no inline handlers, and buttons, selects,
+  inputs and forms are wired through delegated `data-action` / `data-change` /
+  `data-input` / `data-submit` attributes. `style-src` still allows inline team-colour
+  attributes.
 - `npm run check:secrets` fails CI if a privileged key is ever committed.
 
 ## Notes

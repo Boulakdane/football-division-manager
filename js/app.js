@@ -16,15 +16,6 @@ function esc(value) {
   }[c]));
 }
 
-/**
- * Safely embed a value as a JavaScript string inside an HTML event attribute.
- * JSON.stringify handles quotes/backslashes/newlines; esc keeps the attribute
- * from terminating early.
- */
-function jsString(value) {
-  return esc(JSON.stringify(String(value == null ? '' : value)));
-}
-
 /** Pick black or white text for a team colour with WCAG-friendly contrast. */
 function contrastTextColor(color) {
   const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(color || '').trim());
@@ -259,6 +250,113 @@ async function copyViewLink() {
 
   showToast(copied ? t('linkCopied') : link);
 }
+
+/* ---------------------------------------------------------------
+ * 1c. EVENT DELEGATION
+ *     Markup declares data-action / data-change / data-input /
+ *     data-submit instead of inline on* attributes, so the CSP can
+ *     keep script-src to 'self' without 'unsafe-inline'.
+ * --------------------------------------------------------------- */
+
+const CLICK_ACTIONS = {
+  tab: el => switchTab(el.dataset.tab),
+  'close-modal': el => closeModal(el.dataset.modal),
+
+  retry: () => retryLoad(),
+
+  'login-modal': () => openLoginModal(),
+  logout: () => logout(),
+  'password-modal': () => openPasswordModal(),
+  'toggle-signup': (el, event) => toggleSignup(event),
+  'resend-confirmation': (el, event) => resendConfirmation(event),
+
+  'new-match': () => openMatchModal(),
+  'edit-match': el => editMatch(el.dataset.id),
+  'delete-match': el => deleteMatch(el.dataset.id),
+  'bump-score': el => bumpScore(el.dataset.id, el.dataset.side, Number(el.dataset.delta)),
+
+  'new-team': () => openTeamModal(),
+  'edit-team': el => editTeam(el.dataset.id),
+  'delete-team': el => deleteTeam(el.dataset.id),
+  'new-player': el => openPlayerModal(el.dataset.team),
+  'edit-player': el => editPlayer(el.dataset.id),
+  'delete-player': el => deletePlayer(el.dataset.id),
+  'restore-player': el => restorePlayer(el.dataset.id),
+
+  'add-event': el => addMatchEvent(el.dataset.side, el.dataset.type),
+  'remove-event': el => removeMatchEvent(el.dataset.id),
+
+  guide: () => openGuideModal(),
+  'data-menu': el => toggleDataMenu(el),
+  'export-json': () => exportData(),
+  'export-standings': () => exportStandingsCsv(),
+  'export-fixtures': () => exportFixturesCsv(),
+  'export-squads': () => exportSquadsCsv(),
+  'reset-data': () => resetData(),
+
+  'new-season': () => openSeasonModal(),
+  'activate-season': () => activateViewedSeason(),
+  'delete-season': () => deleteViewedSeason(),
+
+  'clear-filters': () => clearFixtureFilters(),
+  'clear-search': () => clearPlayerSearch(),
+  'copy-link': () => copyViewLink()
+};
+
+const CHANGE_ACTIONS = {
+  language: el => changeLanguage(el.value),
+  season: el => selectSeason(el.value),
+  'render-fixtures': () => renderFixtures(),
+  'match-team-change': () => onMatchTeamChange(),
+  'update-event': el => updateMatchEvent(el.dataset.id, el.dataset.field, el.value),
+  'import-file': (el, event) => importData(event)
+};
+
+const INPUT_ACTIONS = {
+  search: () => renderTeamsView(),
+  'update-goal-hint': () => updateMatchGoalHint(),
+  'update-event': el => updateMatchEvent(el.dataset.id, el.dataset.field, el.value)
+};
+
+const SUBMIT_ACTIONS = {
+  'save-match': (el, event) => saveMatch(event),
+  'save-team': (el, event) => saveTeam(event),
+  'save-season': (el, event) => saveSeason(event),
+  'save-player': (el, event) => savePlayer(event),
+  login: (el, event) => handleLogin(event),
+  signup: (el, event) => handleSignup(event),
+  password: (el, event) => saveNewPassword(event)
+};
+
+/** Walk up from the event target to the nearest element declaring `attr`. */
+function closestAction(target, attr) {
+  return target instanceof Element ? target.closest('[' + attr + ']') : null;
+}
+
+function runDelegated(attr, handlers, event) {
+  const el = closestAction(event.target, attr);
+  if (!el) return false;
+  const handler = handlers[el.getAttribute(attr)];
+  if (!handler) return false;
+  handler(el, event);
+  return true;
+}
+
+document.addEventListener('click', function (event) {
+  if (runDelegated('data-action', CLICK_ACTIONS, event)) event.preventDefault();
+});
+
+document.addEventListener('change', function (event) {
+  runDelegated('data-change', CHANGE_ACTIONS, event);
+});
+
+document.addEventListener('input', function (event) {
+  runDelegated('data-input', INPUT_ACTIONS, event);
+});
+
+document.addEventListener('submit', function (event) {
+  if (runDelegated('data-submit', SUBMIT_ACTIONS, event)) event.preventDefault();
+});
 
 /* ---------- season helpers ---------- */
 
@@ -564,7 +662,7 @@ function renderStandings() {
           <i data-lucide="shield-plus" class="w-9 h-9 mx-auto mb-2 text-slate-600"></i>
           <p class="font-medium text-sm text-slate-300">${esc(t('noTeamsFound'))}</p>
           <p class="text-xs text-slate-500 mt-1">${esc(t('emptyNoTeamsHint'))}</p>
-          <button onclick="openTeamModal()" class="admin-only mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
+          <button data-action="new-team" class="admin-only mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddTeam'))}
           </button>
         </td>
@@ -786,7 +884,7 @@ function renderFixtures() {
         <i data-lucide="filter-x" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
         <p class="font-medium text-sm text-slate-300">${esc(t('emptyFiltered'))}</p>
         <p class="text-xs text-slate-500 mt-1">${esc(t('emptyFilteredHint'))}</p>
-        <button onclick="clearFixtureFilters()" class="mt-4 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
+        <button data-action="clear-filters" class="mt-4 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
           <i data-lucide="x" class="w-3.5 h-3.5"></i> ${esc(t('btnClearFilters'))}
         </button>
       </div>` : `
@@ -794,7 +892,7 @@ function renderFixtures() {
         <i data-lucide="calendar-plus" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
         <p class="font-medium text-sm text-slate-300">${esc(t('emptyNoFixtures'))}</p>
         <p class="text-xs text-slate-500 mt-1">${esc(t('emptyNoFixturesHint'))}</p>
-        <button onclick="openMatchModal()" class="admin-only season-write mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
+        <button data-action="new-match" class="admin-only season-write mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('btnLogFirstMatch'))}
         </button>
       </div>`;
@@ -841,8 +939,8 @@ function renderFixtures() {
     // Live matches get quick +1 steppers for instant live score logging
     const liveSteppers = m.status === 'LIVE' ? `
       <div class="admin-only season-write flex items-center justify-center gap-3 mt-1.5">
-        <button onclick="bumpScore(${jsString(m.id)},'home',1)" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
-        <button onclick="bumpScore(${jsString(m.id)},'away',1)" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
+        <button data-action="bump-score" data-id="${esc(m.id)}" data-side="home" data-delta="1" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
+        <button data-action="bump-score" data-id="${esc(m.id)}" data-side="away" data-delta="1" class="w-6 h-6 rounded bg-pitch-600/80 hover:bg-pitch-500 text-white text-xs font-bold transition" title="+1">+</button>
       </div>` : '';
 
     const scorers = renderMatchEventSummary(m);
@@ -876,10 +974,10 @@ function renderFixtures() {
         ${scorers}
 
         <div class="admin-only season-write mt-3 pt-2 border-t border-slate-700/50 flex justify-end gap-2">
-          <button onclick="editMatch(${jsString(m.id)})" class="px-2.5 py-1 text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded text-xs flex items-center gap-1 transition">
+          <button data-action="edit-match" data-id="${esc(m.id)}" class="px-2.5 py-1 text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded text-xs flex items-center gap-1 transition">
             <i data-lucide="edit-3" class="w-3 h-3"></i> ${esc(t('editAction'))}
           </button>
-          <button onclick="deleteMatch(${jsString(m.id)})" class="px-2 py-1 text-rose-400 hover:bg-rose-500/20 rounded text-xs transition" aria-label="${esc(t('ariaDeleteMatch'))}" title="${esc(t('ariaDeleteMatch'))}">
+          <button data-action="delete-match" data-id="${esc(m.id)}" class="px-2 py-1 text-rose-400 hover:bg-rose-500/20 rounded text-xs transition" aria-label="${esc(t('ariaDeleteMatch'))}" title="${esc(t('ariaDeleteMatch'))}">
             <i data-lucide="trash-2" class="w-3 h-3"></i>
           </button>
         </div>
@@ -941,7 +1039,7 @@ function renderTeamsView() {
         <i data-lucide="shield-plus" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
         <p class="font-medium text-sm text-slate-300">${esc(t('noTeamsFound'))}</p>
         <p class="text-xs text-slate-500 mt-1">${esc(t('emptyNoTeamsHint'))}</p>
-        <button onclick="openTeamModal()" class="admin-only mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
+        <button data-action="new-team" class="admin-only mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddTeam'))}
         </button>
       </div>`;
@@ -977,13 +1075,13 @@ function renderTeamsView() {
             </div>
           </div>
           <div class="admin-only flex items-center gap-2 shrink-0">
-            <button onclick="openPlayerModal(${jsString(team.id)})" class="px-2.5 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-xs font-medium flex items-center gap-1 transition">
+            <button data-action="new-player" data-team="${esc(team.id)}" class="px-2.5 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-xs font-medium flex items-center gap-1 transition">
               <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddPlayer'))}
             </button>
-            <button onclick="editTeam(${jsString(team.id)})" class="p-1.5 text-slate-500 hover:text-white rounded transition" aria-label="${esc(t('editAction'))}" title="${esc(t('editAction'))}">
+            <button data-action="edit-team" data-id="${esc(team.id)}" class="p-1.5 text-slate-500 hover:text-white rounded transition" aria-label="${esc(t('editAction'))}" title="${esc(t('editAction'))}">
               <i data-lucide="edit-3" class="w-4 h-4"></i>
             </button>
-            <button onclick="deleteTeam(${jsString(team.id)})" class="p-1.5 text-slate-500 hover:text-rose-400 rounded transition" aria-label="${esc(t('ariaDeleteTeam'))}" title="${esc(t('ariaDeleteTeam'))}">
+            <button data-action="delete-team" data-id="${esc(team.id)}" class="p-1.5 text-slate-500 hover:text-rose-400 rounded transition" aria-label="${esc(t('ariaDeleteTeam'))}" title="${esc(t('ariaDeleteTeam'))}">
               <i data-lucide="trash-2" class="w-4 h-4"></i>
             </button>
           </div>
@@ -1022,8 +1120,8 @@ function renderTeamsView() {
                     </td>
                     <td class="py-2 ltr:text-right rtl:text-left whitespace-nowrap">
                       <span class="admin-only">
-                        <button onclick="editPlayer(${jsString(p.id)})" class="text-slate-500 hover:text-white p-1" aria-label="${esc(t('editAction'))}" title="${esc(t('editAction'))}"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
-                        <button onclick="deletePlayer(${jsString(p.id)})" class="text-slate-500 hover:text-rose-400 p-1" aria-label="${esc(t('ariaDeletePlayer'))}" title="${esc(t('ariaDeletePlayer'))}"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                        <button data-action="edit-player" data-id="${esc(p.id)}" class="text-slate-500 hover:text-white p-1" aria-label="${esc(t('editAction'))}" title="${esc(t('editAction'))}"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+                        <button data-action="delete-player" data-id="${esc(p.id)}" class="text-slate-500 hover:text-rose-400 p-1" aria-label="${esc(t('ariaDeletePlayer'))}" title="${esc(t('ariaDeletePlayer'))}"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
                       </span>
                     </td>
                   </tr>`).join('')}
@@ -1036,7 +1134,7 @@ function renderTeamsView() {
                 ${archived.map(p => `
                   <div class="flex items-center justify-between gap-2 text-[11px] text-slate-400">
                     <span class="truncate">${esc(p.name)} <span class="text-slate-600">#${esc(p.num)}</span></span>
-                    <button onclick="restorePlayer(${jsString(p.id)})" class="text-pitch-400 hover:text-pitch-300 px-1.5 py-0.5 rounded border border-pitch-500/30 shrink-0">${esc(t('btnRestorePlayer'))}</button>
+                    <button data-action="restore-player" data-id="${esc(p.id)}" class="text-pitch-400 hover:text-pitch-300 px-1.5 py-0.5 rounded border border-pitch-500/30 shrink-0">${esc(t('btnRestorePlayer'))}</button>
                   </div>`).join('')}
               </div>
             </div>` : ''}
@@ -1050,7 +1148,7 @@ function renderTeamsView() {
       <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center">
         <i data-lucide="search-x" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
         <p class="font-medium text-sm text-slate-300">${esc(t('emptyNoSearchResults'))}</p>
-        <button onclick="clearPlayerSearch()" class="mt-4 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
+        <button data-action="clear-search" class="mt-4 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
           <i data-lucide="x" class="w-3.5 h-3.5"></i> ${esc(t('btnClearSearch'))}
         </button>
       </div>`;
@@ -1216,18 +1314,18 @@ function renderMatchEventPanel(side) {
     options += players.map(player => `<option value="${esc(player.id)}" ${player.id === event.playerId ? 'selected' : ''}>${esc(`#${player.num} ${player.name}`)}</option>`).join('');
 
     return `<div class="flex flex-col gap-1.5 rounded-lg border border-slate-700/60 bg-slate-900/50 p-2">
-      <select onchange="updateMatchEvent(${jsString(event.id)}, 'playerId', this.value)" aria-label="${esc(t('thPlayer'))}" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-white focus:border-pitch-500">
+      <select data-change="update-event" data-id="${esc(event.id)}" data-field="playerId" aria-label="${esc(t('thPlayer'))}" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-white focus:border-pitch-500">
         ${options}
       </select>
       <div class="flex items-center gap-1.5">
-        <select onchange="updateMatchEvent(${jsString(event.id)}, 'type', this.value)" aria-label="${esc(t('lblMatchEvents'))}" class="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-white focus:border-pitch-500">
+        <select data-change="update-event" data-id="${esc(event.id)}" data-field="type" aria-label="${esc(t('lblMatchEvents'))}" class="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-white focus:border-pitch-500">
           <option value="goal" ${event.type === 'goal' ? 'selected' : ''}>${esc(t('eventGoal'))}</option>
           <option value="yellow" ${event.type === 'yellow' ? 'selected' : ''}>${esc(t('eventYellow'))}</option>
           <option value="red" ${event.type === 'red' ? 'selected' : ''}>${esc(t('eventRed'))}</option>
         </select>
-        <input type="number" min="1" max="130" value="${esc(event.minute)}" oninput="updateMatchEvent(${jsString(event.id)}, 'minute', this.value)" aria-label="${esc(t('lblMinute'))}" class="w-14 bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-[11px] text-white text-center focus:border-pitch-500">
+        <input type="number" min="1" max="130" value="${esc(event.minute)}" data-input="update-event" data-id="${esc(event.id)}" data-field="minute" aria-label="${esc(t('lblMinute'))}" class="w-14 bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-[11px] text-white text-center focus:border-pitch-500">
         <span class="text-[10px] text-slate-500">'</span>
-        <button type="button" onclick="removeMatchEvent(${jsString(event.id)})" aria-label="${esc(t('btnRemove'))}" class="ml-auto rtl:ml-0 rtl:mr-auto w-6 h-6 rounded text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 text-base leading-none">&times;</button>
+        <button type="button" data-action="remove-event" data-id="${esc(event.id)}" aria-label="${esc(t('btnRemove'))}" class="ml-auto rtl:ml-0 rtl:mr-auto w-6 h-6 rounded text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 text-base leading-none">&times;</button>
       </div>
     </div>`;
   }).join('');
@@ -1720,23 +1818,25 @@ function openGuideModal() {
   openModal('modal-guide');
 }
 
-function toggleDataMenu(e) {
-  if (e) e.stopPropagation();
+function toggleDataMenu(button) {
   const menu = document.getElementById('data-menu');
-  const button = e && e.currentTarget ? e.currentTarget : null;
+  if (!menu) return;
   const willOpen = menu.classList.contains('hidden');
   menu.classList.toggle('hidden', !willOpen);
-  if (button) button.setAttribute('aria-expanded', String(willOpen));
+  const opener = button || document.querySelector('[aria-controls="data-menu"]');
+  if (opener) opener.setAttribute('aria-expanded', String(willOpen));
 }
 
 // Close the settings dropdown when clicking anywhere else
 document.addEventListener('click', function (e) {
   const menu = document.getElementById('data-menu');
-  if (!menu.classList.contains('hidden') && !menu.contains(e.target)) {
-    menu.classList.add('hidden');
-    const opener = document.querySelector('[aria-controls="data-menu"]');
-    if (opener) opener.setAttribute('aria-expanded', 'false');
-  }
+  if (!menu || menu.classList.contains('hidden')) return;
+  // Clicks on the toggle are handled by the delegation dispatcher above.
+  if (menu.contains(e.target)) return;
+  if (e.target instanceof Element && e.target.closest('[data-action="data-menu"]')) return;
+  menu.classList.add('hidden');
+  const opener = document.querySelector('[aria-controls="data-menu"]');
+  if (opener) opener.setAttribute('aria-expanded', 'false');
 });
 
 function exportData() {

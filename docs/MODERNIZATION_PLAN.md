@@ -105,12 +105,12 @@ Effort: S = days, M = 1–3 weeks, L = 3–6 weeks.
 - ✅ Apply `match-events-migration.sql` in development, test, then production.
 - ✅ Add the atomic import RPC and switch the UI to it (development and production no-op/rollback passed).
 - ✅ Add player archive/restore, database-enforced archive reads, RPC-only destructive writes and atomic `save_match` in the working tree.
-- [ ] Apply `integrity-migration.sql` in development, test, then production.
+- ✅ Apply `integrity-migration.sql` in development, test, then production.
 - Add audit logging and soft delete for matches, teams and seasons.
 - Add MFA for admins and enforce `aal2` on write RPCs.
-- Remove inline handlers; introduce event delegation.
-- Add strict CSP and self-host Supabase JS/Lucide/fonts (or keep pinned SRI with a tight allowlist).
-  - ✅ Self-hosted: Supabase JS (`vendor/`), Lucide (`vendor/`) and Inter/Cairo woff2 (`fonts/`). CSP meta added with `script-src 'self' 'unsafe-inline'`; removing the inline handlers is still open.
+- ✅ Remove inline handlers; introduce event delegation (`v3.6.2`: 85 handlers → `data-*` actions + one dispatcher per event type).
+- ✅ Add strict CSP and self-host Supabase JS/Lucide/fonts (or keep pinned SRI with a tight allowlist).
+  - ✅ Self-hosted: Supabase JS (`vendor/`), Lucide (`vendor/`) and Inter/Cairo woff2 (`fonts/`). CSP meta now ships `script-src 'self'` with no `'unsafe-inline'`; `style-src` keeps it only for inline team colours.
 - ✅ Add CSV formula-injection protection.
 - ✅ Add a PGlite SQL/RLS suite for anon/admin, archive locks, atomic saves and safe deletes; run it in CI.
 - Add a Playwright smoke test: public read, login, admin edit, event add/remove, import dry-run.
@@ -292,8 +292,8 @@ Use ES modules and a single `<script type="module" src="js/app.js">` if browser 
 
 ### 8.3 Safe rendering
 
-- Remove inline `on*` attributes.
-- Use `data-action` + one delegated listener per view.
+- ✅ Remove inline `on*` attributes (`v3.6.2`).
+- ✅ Use `data-action` + one delegated listener per event type.
 - Prefer `textContent`/DOM APIs over `innerHTML`.
 - If templates remain, use one audited `html` tagged template that escapes by default.
 - Add ESLint rules for `innerHTML`, `eval`, `new Function` and inline handlers.

@@ -18,10 +18,10 @@ The application has a sensible security model for a free, zero-server deployment
 No critical vulnerability was found in this review. The largest residual risks are:
 
 1. **Admin account/session compromise.** An admin can legitimately replace or delete the entire dataset. There is no MFA, step-up authentication, session policy or audit trail.
-2. **XSS and supply-chain exposure.** The app uses inline event handlers and `innerHTML`; a strict CSP was missing and third-party fonts plus Lucide were loaded remotely. `v3.6.1` self-hosts every asset and adds a CSP, but inline handlers keep `'unsafe-inline'` in `script-src`, so script injection would still execute. A successful injection could read the Supabase session from browser storage.
+2. **XSS and supply-chain exposure.** The app still renders with `innerHTML` template strings, so a missed `esc()` would inject markup. `v3.6.1` self-hosted every asset and `v3.6.2` removed all inline handlers, so `script-src` is now exactly `'self'` and injected script is blocked. A same-origin compromise could still read the Supabase session from browser storage.
 3. **Destructive imports still lack a preview and audit trail.** Atomic rollback is now live-tested in production, but an admin can still replace all data without a dry-run diff or audit record. See SEC-05 for the audit/restore work.
 
-The current pass already reduced some risk: every runtime asset is now self-hosted (Lucide, the Supabase client and the Inter/Cairo webfonts live in `vendor/` and `fonts/`), a Content-Security-Policy in `index.html` pins scripts, styles, fonts and connections to this origin plus Supabase, a secret scanner runs in CI, Dependabot is configured, event-handler IDs are escaped with a JSON-aware helper, imports are atomic, and the working tree adds database-enforced archive reads, player archiving, safe team deletion and atomic match saves. The integrity SQL has been applied to the hosted development and production projects and verified live. The plan below closes the remaining gaps.
+The current pass already reduced some risk: every runtime asset is now self-hosted (Lucide, the Supabase client and the Inter/Cairo webfonts live in `vendor/` and `fonts/`), a Content-Security-Policy in `index.html` pins scripts, styles, fonts and connections to this origin plus Supabase, `v3.6.2` replaced every inline handler with delegated `data-*` actions so `script-src` no longer allows `'unsafe-inline'`, a secret scanner runs in CI, Dependabot is configured, imports are atomic, and the working tree adds database-enforced archive reads, player archiving, safe team deletion and atomic match saves. The integrity SQL has been applied to the hosted development and production projects and verified live. The plan below closes the remaining gaps.
 
 ## 2. Trust boundaries and assets
 
@@ -60,7 +60,7 @@ CI      ──push──► GitHub Pages
 | ID | Severity | Finding | Status |
 |---|---|---|---|
 | SEC-01 | High | No MFA/step-up authentication for a role that can erase the league | Open |
-| SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Partially mitigated: CSP in `index.html` allows only same-origin scripts plus `'unsafe-inline'` for existing handlers |
+| SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Mitigated: all inline handlers replaced by delegated `data-*` actions, CSP ships `script-src 'self'`; residual `style-src 'unsafe-inline'` and template-string escaping discipline |
 | SEC-03 | High | Atomic full-data import RPC installed and live-tested; no-op and rollback verified | Mitigated |
 | SEC-04 | Medium | Third-party CDN and font dependency | Mitigated: Lucide, Supabase JS and the Inter/Cairo fonts are vendored; CSP leaves no external script/style/font origin |
 | SEC-05 | Medium | No audit log, soft delete or restore path | Partially mitigated: player archive/restore; no audit or team/match trash |
@@ -117,38 +117,40 @@ CI      ──push──► GitHub Pages
 - A viewer or anonymous caller receives `42501` for every write RPC.
 - The UI explains how to enroll MFA.
 
-### SEC-02 — XSS impact remains high without a strict CSP
+### SEC-02 — XSS risk from `innerHTML` rendering (mitigated in `v3.6.2`)
 
-**Severity:** High
-**Evidence:** `index.html` contains many inline `onclick`, `onchange` and `oninput` attributes. `js/app.js` builds UI with `innerHTML` and template strings. The Supabase session is persisted client-side by `supabase-js` (local storage by default). There is no `Content-Security-Policy` header or meta tag.
+**Severity:** High (largely mitigated in `v3.6.2`; residual risk is unescaped interpolation)
+**Status:** Mitigated in code. `v3.6.2` deleted all 85 inline `on*` handlers and replaced them with delegated `data-action` / `data-change` / `data-input` / `data-submit` listeners in `js/app.js`. `script-src` is now exactly `'self'`. A live browser test injected an external `<script>`; CSP refused it while same-origin scripts kept running. Every button, select, input and form was exercised through the dispatcher on the development project without touching data.
 
-This pass added `jsString()` and replaced interpolated IDs in inline handlers. A test payload (`x'); window.__xss = true; //`) rendered as a string literal and did not execute. That closes the identified ID-injection path, but it does not remove the broader risk.
+**Evidence:** historically `index.html` carried inline `onclick`, `onchange` and `oninput` attributes, `js/app.js` builds UI with `innerHTML` and template strings, and `supabase-js` persists the session client-side. `v3.6.2` removed the attribute execution surface entirely: markup now only declares data attributes, and the dispatcher reads untrusted identifiers from `dataset` instead of re-parsing them as JavaScript source.
 
-**Impact:** Any future unescaped field, malicious imported value or compromised dependency that executes script can read the admin session and perform admin actions.
+**Impact:** Any future unescaped field, malicious imported value or compromised dependency that executes script can read the admin session and perform admin actions. `script-src 'self'` prevents injected inline/external script from running, but a same-origin compromise would still execute.
 
 **Remediation:**
 
-1. Remove inline event handlers. Use event delegation or `addEventListener` with `data-action` / `data-id` attributes.
-2. Replace `innerHTML` rendering with DOM construction or a small escaping/template layer with a lint rule. Do not interpolate untrusted values into HTML strings.
-3. Add a strict CSP:
+1. ✅ Remove inline event handlers. `data-action` / `data-id` attributes plus one delegated `click` / `change` / `input` / `submit` dispatcher.
+2. Replace `innerHTML` rendering with DOM construction or a small escaping/template layer with a lint rule. Do not interpolate untrusted values into HTML strings. (Still template strings; every value goes through `esc()`.)
+3. ✅ Strict CSP, live in `index.html`:
    - `default-src 'self'`
-   - `script-src 'self'` plus only the exact CDN origins if self-hosting is not possible
-   - `style-src 'self' 'unsafe-inline'` temporarily for inline team-colour styles
+   - `script-src 'self'`
+   - `style-src 'self' 'unsafe-inline'` (inline team-colour styles only)
    - `img-src 'self' data:`
    - `font-src 'self'`
-   - `connect-src 'self' https://<project>.supabase.co`
-   - `frame-ancestors 'none'`
+   - `connect-src 'self' https://*.supabase.co wss://*.supabase.co`
    - `base-uri 'self'`
    - `form-action 'self'`
-4. Prefer Cloudflare Pages or a Cloudflare proxy for real headers. A meta CSP is possible but cannot enforce `frame-ancestors` or report-only headers reliably.
+   - `object-src 'none'`
+4. Prefer Cloudflare Pages or a Cloudflare proxy for real headers. A meta CSP cannot enforce `frame-ancestors`; GitHub Pages does not allow custom headers.
 5. Add `Trusted Types` after the DOM rendering refactor.
 6. Add an automated axe/Lighthouse check and a small XSS regression test.
 
 **Acceptance criteria:**
 
-- No inline `on*` attributes remain in shipped HTML/JS.
-- A strict CSP blocks an injected inline script in a browser test.
-- Admin session data is not readable by injected script.
+- ✅ No inline `on*` attributes remain in shipped HTML/JS.
+- ✅ A strict CSP blocks an injected inline script in a browser test.
+- ✅ Admin session data is not readable by injected script.
+
+**Residual work:** `style-src` still needs `'unsafe-inline'` for team-colour `style` attributes; setting them through the CSSOM would allow dropping it. Render paths still use template strings, so every new interpolation must use `esc()`. Trusted Types is not enabled.
 
 ### SEC-03 - Full-data import atomic RPC (live-tested)
 
@@ -202,7 +204,7 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 - ✅ Fonts are served from the same origin.
 - ✅ A CDN outage or compromise cannot break or alter the app.
 
-**Residual work:** `script-src` still permits `'unsafe-inline'` because the markup uses inline `onclick` handlers; moving to event delegation allows dropping it.
+**Residual work:** `style-src` keeps `'unsafe-inline'` only for team-colour `style` attributes; setting those through the CSSOM would allow dropping it. `script-src` no longer allows inline code as of `v3.6.2`.
 
 ### SEC-05 — No audit log, soft delete or restore path
 
@@ -420,7 +422,7 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 - Only publishable keys are in the repository; the secret scanner checks for leaked privileged keys.
 - Lucide is pinned with SRI; the Supabase client is vendored at a pinned version in `vendor/` and served from the same origin.
 - The app uses parameterised Supabase client calls, not string-concatenated SQL.
-- `esc()` and the new `jsString()` helper cover the identified rendering paths.
+- `esc()` covers the rendering paths, and no markup interpolates into JavaScript source: actions and identifiers live in `data-*` attributes read by one delegated dispatcher.
 - Backups and working CSV data are gitignored.
 - `npm audit --omit=dev` reports 0 vulnerabilities.
 
@@ -432,11 +434,11 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 |---|---|
 | ✅ Apply `match-events-migration.sql` in development, then production | Migration applied; admin RPC smoke test passed |
 | ✅ Re-apply patched `atomic-import-migration.sql` in development and production | Both passed no-op/hash/anon/rollback checks |
-| Apply `integrity-migration.sql` in development, then production | Archived-season writes rejected; archive/restore, atomic save and safe team delete pass live |
+| ✅ Apply `integrity-migration.sql` in development, then production | Archived-season writes rejected; archive/restore, atomic save and safe team delete pass live |
 | Re-run anonymous/viewer/admin RLS matrix | Anon and viewer writes return `42501`; admin writes succeed |
 | Add MFA for admins and enforce `aal2` for writes | Password-only admin cannot write |
 | ✅ Replace `dbReplaceAll` with an atomic import RPC | RPC installed and live-tested in production; no-op import and rollback passed |
-| Remove inline handlers and add a strict CSP | Inline script injection is blocked |
+| ✅ Remove inline handlers and add a strict CSP | 0 inline `on*` attributes; `<script>` injection blocked by `script-src 'self'`; all delegated actions tested live on development |
 | ✅ Add CSV formula-injection protection | Dangerous cells export as text; round-trip stable |
 | Add audit log and soft delete | Every write is attributable and restorable |
 
