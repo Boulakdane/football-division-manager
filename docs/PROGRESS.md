@@ -146,7 +146,8 @@ Local CSV / JSON tools
 | Development integrity migration (live) | `PLAYERS_ARCHIVE_READY = true`; direct `teams`/`matches` deletes and `match_events` writes rejected with `42501`; archive/restore keeps the event history; `save_match` rolled back an invalid event; `delete_team` reversed opponent totals (1 goal / 1 yellow → 0 / 0); archived-season writes rejected; anonymous writes and RPCs returned `401`; sample data restored to 1/6/9/9/0 |
 | Production integrity migration (live) | `players.is_active` and `matches.events_counted` present; public reads 1/6/9/9/1; 6 standings rows, 9 fixtures, 6 team cards, no migration notice; anonymous insert and every admin RPC returned `401` / `42501`; live hash identical to the pre-migration backup |
 | Production backup before the integrity migration | `prod-backup-2026-10-21-pre-integrity.json`, SHA-256 `435a86db…c80f54`, 1 season / 6 teams / 9 players / 9 matches / 1 event; `m6` = 2–4 and the Ethan Hunt event preserved |
-| Production data hash after the migration | `435a86dbcb7d69161f16fcfefef172ff703b0a6b9169a6ada027d879e6c80f54` — byte-for-byte identical to the backup, so the migration changed no rows |
+| Production admin flows (live, post-migration) | Production admin session: archive/restore kept the goal and the total, `save_match` rolled back an invalid event with no rows left behind (`p1` unchanged), `delete_team` reversed the opponent from 1 goal / 1 yellow to 0 / 0; all temporary rows deleted and the live hash returned to `435a86db…c80f54` |
+| Production data hash after the admin checks | `435a86dbcb7d69161f16fcfefef172ff703b0a6b9169a6ada027d879e6c80f54` — identical to the pre-migration backup, so the checks left no residue |
 | Vendored Supabase client | `vendor/supabase-js-2.118.0.js` (MIT, license included) is served from the same origin; the login modal no longer reports "not configured" when only the CDN was blocked |
 | CSV formula-injection hardening | `=1+1`, `+SUM(A1)`, `-1+1`, `@cmd`, tab and newline prefixes export as text; numeric `-3` stays numeric; backup → CSV → JSON round trip restores the original value |
 | v3.4.6 bug-fix checks | Missing `btnAddPlayer` translations added for EN/FR/AR; empty team/player names rejected; transfer with existing match events blocked; delete-player history warning; JSON export uses a Blob for large backups; Lucide failure no longer breaks rendering |
@@ -229,7 +230,7 @@ Local CSV / JSON tools
 - [x] Re-run the anonymous write and anonymous RPC checks in production.
 - [x] Commit, push `main`, move the `prod` tag and verify the live `v3.5.0` badge/assets.
 - [x] Re-run the public smoke test: production reads 1 season / 6 teams / 9 players / 9 matches / 1 event; 6 standings rows and 9 fixtures render.
-- [ ] After the migration, test the admin archive/restore, atomic match-save and safe team-delete flows on the live production site (the development equivalents are verified; the production admin sign-in still needs to be done).
+- [x] After the migration, test the admin archive/restore, atomic match-save and safe team-delete flows on the live production site (production admin session, temporary rows, all removed afterwards).
 
 ### Vendored client release (v3.5.1)
 
