@@ -439,3 +439,10 @@ No database changes and no data touched; this is a frontend hardening release.
 - Match modal pass with `isAdmin` overridden in memory: add goal → row appears, player dropdown filtered to the selected team, card type change, minute input, remove → row disappears, modal closes. Nothing was saved.
 - `npm run check:secrets` and `npm run test:sql` still pass.
 
+### Live deployment check
+- GitHub Pages serves `v3.6.2` (badge and `?v=3.6.2` asset tags); the CSP meta reports `script-src 'self'`.
+- The rendered page has **0** inline handlers and 105 `data-action` targets.
+- An injected inline script is now refused (`Executing inline script violates … 'script-src 'self''`), as is `https://example.com/evil.js`, while the app's own scripts run normally.
+- Production rendering is unchanged: 6 standings rows, 9 fixture cards, Atlas Warriors on top, no console errors.
+- `v3.6.2` tag created; `prod` moved from `d149e04` to `6bf3805`.
+
