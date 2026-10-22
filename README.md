@@ -79,7 +79,9 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── backup-to-csv.js       # Turn a JSON backup into editable CSV files
 │   └── check-secrets.js       # Fail CI if a privileged secret is committed
 ├── vendor/
+│   ├── lucide-1.60.0.js       # Icon set (ISC) served from this origin
 │   └── supabase-js-2.118.0.js # Supabase client (MIT) served from this origin
+├── fonts/                     # Self-hosted Inter + Cairo woff2 (OFL) and licenses
 ├── SECURITY.md                # Private vulnerability reporting policy
 └── supabase/
     ├── schema.sql                   # Tables, RLS policies, triggers and seed data
@@ -96,8 +98,10 @@ Scripts are loaded in dependency order in `index.html`:
 The Supabase client is served from `vendor/supabase-js-2.118.0.js` (same
 origin, pinned version, MIT license included) rather than a CDN, so a
 blocked third-party host can no longer drop the app into read-only demo
-mode and break admin sign-in. Lucide icons still load from unpkg with a
-subresource-integrity hash; the app renders without them.
+mode and break admin sign-in. Lucide icons (`vendor/lucide-1.60.0.js`) and
+the Inter/Cairo webfonts (`fonts/`) are self-hosted for the same reason, and
+`index.html` ships a Content-Security-Policy that allows only this origin
+plus Supabase.
 
 ## Setup: connect Supabase (5 minutes, free)
 
@@ -454,6 +458,11 @@ before seasons existed are upgraded automatically into a single default season:
   **Retry** button while the backend is unavailable.
 - Passwords are handled by Supabase Auth (hashed and never stored in this repository).
   Use a strong, unique password for the admin account.
+- No third-party JavaScript, CSS or fonts are loaded at runtime. A CSP meta tag pins
+  every directive to this origin, with Supabase allowed only for API/auth connections.
+  Inline `onclick` handlers are still permitted by `'unsafe-inline'`; removing them is
+  the next hardening step.
+- `npm run check:secrets` fails CI if a privileged key is ever committed.
 
 ## Notes
 

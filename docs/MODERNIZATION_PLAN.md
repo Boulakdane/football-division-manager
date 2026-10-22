@@ -110,6 +110,7 @@ Effort: S = days, M = 1–3 weeks, L = 3–6 weeks.
 - Add MFA for admins and enforce `aal2` on write RPCs.
 - Remove inline handlers; introduce event delegation.
 - Add strict CSP and self-host Supabase JS/Lucide/fonts (or keep pinned SRI with a tight allowlist).
+  - ✅ Self-hosted: Supabase JS (`vendor/`), Lucide (`vendor/`) and Inter/Cairo woff2 (`fonts/`). CSP meta added with `script-src 'self' 'unsafe-inline'`; removing the inline handlers is still open.
 - ✅ Add CSV formula-injection protection.
 - ✅ Add a PGlite SQL/RLS suite for anon/admin, archive locks, atomic saves and safe deletes; run it in CI.
 - Add a Playwright smoke test: public read, login, admin edit, event add/remove, import dry-run.

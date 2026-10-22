@@ -18,10 +18,10 @@ The application has a sensible security model for a free, zero-server deployment
 No critical vulnerability was found in this review. The largest residual risks are:
 
 1. **Admin account/session compromise.** An admin can legitimately replace or delete the entire dataset. There is no MFA, step-up authentication, session policy or audit trail.
-2. **XSS and supply-chain exposure.** The app has no strict Content Security Policy, uses inline event handlers, and still loads Google Fonts from a third party. A successful script injection could read the Supabase session from browser storage.
+2. **XSS and supply-chain exposure.** The app uses inline event handlers and `innerHTML`; a strict CSP was missing and third-party fonts plus Lucide were loaded remotely. `v3.6.1` self-hosts every asset and adds a CSP, but inline handlers keep `'unsafe-inline'` in `script-src`, so script injection would still execute. A successful injection could read the Supabase session from browser storage.
 3. **Destructive imports still lack a preview and audit trail.** Atomic rollback is now live-tested in production, but an admin can still replace all data without a dry-run diff or audit record. See SEC-05 for the audit/restore work.
 
-The current pass already reduced some risk: Lucide is pinned with SRI, the Supabase client is served from the repository (`vendor/`) so authentication no longer depends on a third-party CDN, a secret scanner runs in CI, Dependabot is configured, event-handler IDs are escaped with a JSON-aware helper, imports are atomic, and the working tree adds database-enforced archive reads, player archiving, safe team deletion and atomic match saves. The integrity SQL has been applied to the hosted development and production projects and verified live. The plan below closes the remaining gaps.
+The current pass already reduced some risk: every runtime asset is now self-hosted (Lucide, the Supabase client and the Inter/Cairo webfonts live in `vendor/` and `fonts/`), a Content-Security-Policy in `index.html` pins scripts, styles, fonts and connections to this origin plus Supabase, a secret scanner runs in CI, Dependabot is configured, event-handler IDs are escaped with a JSON-aware helper, imports are atomic, and the working tree adds database-enforced archive reads, player archiving, safe team deletion and atomic match saves. The integrity SQL has been applied to the hosted development and production projects and verified live. The plan below closes the remaining gaps.
 
 ## 2. Trust boundaries and assets
 
@@ -60,9 +60,9 @@ CI      ──push──► GitHub Pages
 | ID | Severity | Finding | Status |
 |---|---|---|---|
 | SEC-01 | High | No MFA/step-up authentication for a role that can erase the league | Open |
-| SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Partially mitigated |
+| SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Partially mitigated: CSP in `index.html` allows only same-origin scripts plus `'unsafe-inline'` for existing handlers |
 | SEC-03 | High | Atomic full-data import RPC installed and live-tested; no-op and rollback verified | Mitigated |
-| SEC-04 | Medium | Third-party CDN and font dependency | Partially mitigated |
+| SEC-04 | Medium | Third-party CDN and font dependency | Mitigated: Lucide, Supabase JS and the Inter/Cairo fonts are vendored; CSP leaves no external script/style/font origin |
 | SEC-05 | Medium | No audit log, soft delete or restore path | Partially mitigated: player archive/restore; no audit or team/match trash |
 | SEC-06 | Medium | Archived seasons are read-only only in the UI | Mitigated in code; integrity migration pending |
 | SEC-07 | Medium | Server-side data validation is incomplete | Partially mitigated: import references validated in RPC; CHECK constraints still open |
@@ -184,23 +184,25 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 
 ### SEC-04 — Third-party CDN and font dependency
 
-**Severity:** Medium (reduced from High by this pass)
-**Evidence:** Lucide and Supabase JS were previously loaded from unpinned `latest`/`@2` URLs. This pass pins them and adds SRI. Supabase JS is now vendored in `vendor/` at a pinned version (2.118.0, MIT license included) and served from the same origin, so a CDN outage can no longer break authentication. Lucide still comes from unpkg with SRI, and Google Fonts is still a remote CSS/font dependency with no SRI.
+**Severity:** Medium (resolved in `v3.6.1`)
+**Evidence:** Lucide and Supabase JS were originally loaded from unpinned `latest`/`@2` URLs; the fonts came from Google Fonts. All of them are now self-hosted: Supabase JS (`vendor/supabase-js-2.118.0.js`, MIT), Lucide (`vendor/lucide-1.60.0.js`, ISC, byte-for-byte identical to the SRI-pinned CDN build) and variable Inter/Cairo WOFF2 files (`fonts/`, OFL, latin/latin-ext/arabic only). `index.html` adds a CSP whose `script-src`, `style-src` and `font-src` allow only this origin.
 
-**Impact:** A compromised CDN could serve malicious JavaScript; Google Fonts sees visitor IPs and is an extra CSP exception.
+**Impact:** A compromised CDN could have served malicious JavaScript, and Google Fonts saw visitor IPs. Both paths are gone.
 
 **Remediation:**
 
-1. Self-host Supabase JS and Lucide in `vendor/` and serve from the same origin. (Supabase JS done; Lucide still on unpkg with SRI.)
-2. Self-host subsetted Inter and Cairo WOFF2 files.
-3. If a CDN remains, pin exact versions and keep SRI; add a CSP allowlist and a quarterly review.
-4. Do not use `@latest` in production.
+1. ✅ Self-host Supabase JS and Lucide in `vendor/` and serve from the same origin.
+2. ✅ Self-host subsetted Inter and Cairo WOFF2 files.
+3. ✅ Add a CSP allowlist: `connect-src` permits only this origin and `https://*.supabase.co`.
+4. ✅ Do not use `@latest` in production.
 
 **Acceptance criteria:**
 
-- The production page has no third-party script origins.
-- Fonts are served from the same origin.
-- A CDN outage or compromise cannot break or alter the app.
+- ✅ The production page has no third-party script origins.
+- ✅ Fonts are served from the same origin.
+- ✅ A CDN outage or compromise cannot break or alter the app.
+
+**Residual work:** `script-src` still permits `'unsafe-inline'` because the markup uses inline `onclick` handlers; moving to event delegation allows dropping it.
 
 ### SEC-05 — No audit log, soft delete or restore path
 

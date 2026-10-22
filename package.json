@@ -1,6 +1,6 @@
 {
   "name": "kickoff-division",
-  "version": "3.6.0",
+  "version": "3.6.1",
   "private": true,
   "description": "KickOff Division — zero-server football league manager",
   "scripts": {

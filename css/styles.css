@@ -227,3 +227,128 @@ button:not(:disabled):active {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------------------------------------------------------------
+   Print: a clean sheet for the tab on screen (league table,
+   fixtures or squads). Useful for pinning results up at the club.
+   --------------------------------------------------------------- */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #0f172a !important;
+  }
+
+  body.bg-slate-900 {
+    background-image: none !important;
+    background-attachment: scroll !important;
+  }
+
+  /* App chrome and interactive controls never belong on paper */
+  header,
+  footer,
+  #demo-banner,
+  #env-banner,
+  #season-bar,
+  #toast,
+  #data-menu,
+  #btn-clear-filters,
+  #filter-round,
+  #filter-status,
+  #player-search,
+  .admin-only,
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  /* Print only the tab that is currently visible */
+  .tab-view {
+    display: none !important;
+  }
+  .tab-view:not(.hidden) {
+    display: block !important;
+  }
+
+  main {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Flatten the dark theme into something ink-friendly */
+  .bg-slate-700\/50,
+  .bg-slate-700\/60,
+  .bg-slate-800,
+  .bg-slate-800\/30,
+  .bg-slate-800\/40,
+  .bg-slate-800\/60,
+  .bg-slate-800\/80,
+  .bg-slate-900,
+  .bg-slate-900\/50,
+  .bg-slate-900\/80,
+  .bg-slate-950,
+  .bg-slate-950\/70,
+  .bg-slate-950\/80 {
+    background: #fff !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: none !important;
+  }
+
+  thead,
+  thead tr,
+  thead th {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+  }
+
+  .text-white,
+  .text-slate-100,
+  .text-slate-200,
+  .text-slate-300 {
+    color: #0f172a !important;
+  }
+
+  .text-slate-400,
+  .text-slate-500,
+  .text-slate-600 {
+    color: #475569 !important;
+  }
+
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  th,
+  td {
+    border-color: #e2e8f0 !important;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr,
+  #fixtures-container > div,
+  #teams-container > div {
+    break-inside: avoid;
+  }
+
+  #fixtures-container {
+    display: block !important;
+  }
+
+  #fixtures-container > div {
+    margin-bottom: 6mm;
+  }
+
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+}
+

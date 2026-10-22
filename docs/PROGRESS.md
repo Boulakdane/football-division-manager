@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
 - **Last updated:** 2026-10-22
-- **Working-tree version:** `v3.6.0`
-- **Deployed version:** `v3.6.0` (current `main`); `v3.5.1` remains tagged `prod` until the next production release; integrity migration applied in development and production
+- **Working-tree version:** `v3.6.1`
+- **Deployed version:** `v3.6.1` (current `main`); `prod` tag moves with each verified release; integrity migration applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -20,12 +20,12 @@
 | JSON backup and restore | ✅ Done | Full replacement; development round-trip and production no-op import passed |
 | Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
-| Security hardening pass | 🟡 In progress | SRI for Lucide, self-hosted Supabase client, secret scanning, dependency updates, XSS helper |
+| Security hardening pass | 🟡 In progress | All runtime assets self-hosted, CSP meta in place, secret scanning, dependency updates, XSS helper; inline handlers still to remove |
 | UX polish and shareability | ✅ Done in `v3.6.0` | Shareable filter URLs, clear filters, guided empty states, match timeline, keyboard/focus handling, Lighthouse 100/100/100 |
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.6.0` is on `main`. The integrity hardening is live in both hosted projects: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. `v3.5.1` removed the last CDN dependency on the auth path by serving the Supabase client from `vendor/`, so a blocked CDN can no longer push the app into demo mode. `v3.6.0` adds the shareability and accessibility layer (filter-aware links, guided empty states, match timeline, keyboard-safe dialogs, Lighthouse 100/100/100). The remaining work is operational: decide what to do with the single leftover test event, then load the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.6.1` is on `main`. The integrity hardening is live in both hosted projects: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. `v3.5.1` removed the last CDN dependency on the auth path by serving the Supabase client from `vendor/`, and `v3.6.1` finishes the job: Lucide and the webfonts are self-hosted too, and a CSP limits the page to its own origin plus Supabase. `v3.6.0` added the shareability and accessibility layer (filter-aware links, guided empty states, match timeline, keyboard-safe dialogs, Lighthouse 100/100/100). The remaining work is operational: decide what to do with the single leftover test event, then load the real league data.
 
 ## 2. Architecture
 
@@ -378,3 +378,34 @@ Shipped on `main` after the small standings/LIVE tweaks. All of it is read-only 
 - Production data is unchanged: 1 season, 6 teams, 9 players, 9 matches, 1 event; all matches keep `events_counted = false`.
 - The single production event renders through the new timeline (`4' ⚽ Ethan Hunt`, TTN), top scorers render five rows, and the console is clean.
 - `v3.6.0` tag created; the `prod` tag moved from `36d85c9` to `3be0967`.
+
+## 11. Zero-CDN release (v3.6.1)
+
+No database changes and no data touched; this is an asset and hardening release.
+
+### Self-hosted assets
+- **Lucide 1.60.0** now lives in `vendor/lucide-1.60.0.js`. The downloaded file was checked against the SRI hash that was already pinned in `index.html`
+  (`sha384-7t6ugxIvI5KM451iZguW/w4WR9KsajFzrdbn/efIoggU1wLCUBTbdndWJwbkPFQP`) before the CDN tag was removed.
+- **Inter 300..800** and **Cairo 400..800** are self-hosted variable woff2 files in `fonts/` (5 files, ~210 KB total), served by `css/fonts.css`.
+  Only `latin`, `latin-ext` and `arabic` subsets are kept; `latin` Inter is preloaded. OFL license texts are included next to the files.
+- The unpkg and Google Fonts `<link rel="preconnect">` hints are gone. Runtime requests now go only to this origin and Supabase.
+
+### Content Security Policy
+- `index.html` carries a CSP meta tag: `default-src 'self'`, `script-src 'self' 'unsafe-inline'`, `style-src 'self' 'unsafe-inline'`,
+  `img-src 'self' data:`, `font-src 'self'`, `connect-src 'self' https://*.supabase.co wss://*.supabase.co`, `object-src 'none'`,
+  `base-uri 'self'`, `form-action 'self'`.
+- `'unsafe-inline'` remains for script because the markup uses inline `onclick` handlers; removing those is the next hardening step.
+- A compromised CDN can no longer inject script: no external script or style origin is allowed.
+
+### Print styles
+- Added an `@media print` sheet: hides navigation, banners, season bar, filters and admin controls, flattens the dark theme to black-on-white,
+  keeps table headers repeating across pages and avoids breaking fixture/team cards mid-page.
+- Intended use: print or save the current tab (table, fixtures or squads) as a PDF for club noticeboards.
+
+### Verification
+- Font faces report `loaded` for Inter (latin) and, in Arabic, Cairo (arabic + latin); `document.fonts.check()` passes for both families.
+- Page resource origins during a development session: `http://localhost:8765` and the Supabase project only; no third-party requests.
+- `BACKEND_READY = true`, data loads, login modal opens, Lucide icons all hydrate, console is empty.
+- Lighthouse (local, en): Accessibility 100, Best Practices 100, SEO 100.
+- `npm run check:secrets` and `npm run test:sql` still pass.
+- Print sheet reviewed by applying it as an all-media stylesheet in the browser: white background, readable table header, no clipped cards.

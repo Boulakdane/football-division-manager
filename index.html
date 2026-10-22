@@ -7,6 +7,9 @@
   <meta name="theme-color" content="#020617">
   <meta name="color-scheme" content="dark">
   <meta name="referrer" content="strict-origin-when-cross-origin">
+  <!-- Every asset is served from this origin; the only outbound calls are Supabase Auth/REST. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta property="og:title" content="KickOff Division — League Manager">
   <meta property="og:description" content="Standings, fixtures, results and squads for local football divisions. Free, fast and shareable.">
   <meta property="og:type" content="website">
@@ -15,27 +18,21 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <title>KickOff Division — League Manager</title>
 
+  <!-- Fonts: Inter (EN/FR) + Cairo (AR), self-hosted variable woff2 -->
+  <link rel="preload" href="fonts/inter-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/fonts.css?v=3.6.1">
+
   <!-- Tailwind CSS (compiled locally, no CDN dependency) -->
-  <link rel="stylesheet" href="css/tailwind.css?v=3.6.0">
+  <link rel="stylesheet" href="css/tailwind.css?v=3.6.1">
 
-  <!-- CDN preconnect: icons only -->
-  <link rel="preconnect" href="https://unpkg.com">
-
-  <!-- Lucide Icons (pinned + SRI) -->
-  <script src="https://unpkg.com/lucide@1.60.0/dist/umd/lucide.min.js"
-          integrity="sha384-7t6ugxIvI5KM451iZguW/w4WR9KsajFzrdbn/efIoggU1wLCUBTbdndWJwbkPFQP"
-          crossorigin="anonymous" defer></script>
+  <!-- Lucide icons (vendored UMD build, previously pinned with SRI on unpkg) -->
+  <script src="vendor/lucide-1.60.0.js?v=3.6.1" defer></script>
 
   <!-- Supabase JS client (vendored; auth must not depend on a CDN) -->
-  <script src="vendor/supabase-js-2.118.0.js?v=3.6.0" defer></script>
-
-  <!-- Fonts: Inter (EN/FR) + Cairo (AR) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="vendor/supabase-js-2.118.0.js?v=3.6.1" defer></script>
 
   <!-- App styles -->
-  <link rel="stylesheet" href="css/styles.css?v=3.6.0">
+  <link rel="stylesheet" href="css/styles.css?v=3.6.1">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200 antialiased">
 
@@ -74,7 +71,7 @@
           <div>
             <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
               <span data-i18n="appTitle">KickOff Division</span>
-              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.6.0</span>
+              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.6.1</span>
             </h1>
             <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Football League Management</p>
           </div>
@@ -779,11 +776,11 @@
   </div>
 
   <!-- Application scripts (deferred, loaded in dependency order) -->
-  <script src="js/i18n.js?v=3.6.0" defer></script>
-  <script src="js/store.js?v=3.6.0" defer></script>
-  <script src="js/config.js?v=3.6.0" defer></script>
-  <script src="js/backend.js?v=3.6.0" defer></script>
-  <script src="js/auth.js?v=3.6.0" defer></script>
-  <script src="js/app.js?v=3.6.0" defer></script>
+  <script src="js/i18n.js?v=3.6.1" defer></script>
+  <script src="js/store.js?v=3.6.1" defer></script>
+  <script src="js/config.js?v=3.6.1" defer></script>
+  <script src="js/backend.js?v=3.6.1" defer></script>
+  <script src="js/auth.js?v=3.6.1" defer></script>
+  <script src="js/app.js?v=3.6.1" defer></script>
 </body>
 </html>
