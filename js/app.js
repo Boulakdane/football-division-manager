@@ -54,11 +54,210 @@ function toInt(value, fallback) {
   return isNaN(n) || n < 0 ? (fallback || 0) : n;
 }
 
-function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
-function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+function openModal(id) {
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  modal.__returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  modal.classList.remove('hidden');
+  // Move focus into the dialog so keyboard and screen-reader users land there.
+  const focusable = modal.querySelector('input:not([type="hidden"]), select, textarea, button:not([disabled])');
+  if (focusable) focusable.focus({ preventScroll: true });
+}
+
+function closeModal(id) {
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  const wasOpen = !modal.classList.contains('hidden');
+  modal.classList.add('hidden');
+  if (wasOpen && modal.__returnFocus && document.contains(modal.__returnFocus)) {
+    modal.__returnFocus.focus({ preventScroll: true });
+  }
+  modal.__returnFocus = null;
+}
 
 function closeAllModals() {
   ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-login'].forEach(id => closeModal(id));
+}
+
+/** Escape closes the topmost open dialog; Tab stays inside it. */
+function trapModalKeyboard(event) {
+  const open = Array.from(document.querySelectorAll('div[id^="modal-"]'))
+    .filter(modal => !modal.classList.contains('hidden'))
+    .pop();
+  if (!open) return;
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeModal(open.id);
+    return;
+  }
+
+  if (event.key !== 'Tab') return;
+
+  const focusable = Array.from(open.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )).filter(el => el.offsetParent !== null);
+  if (!focusable.length) return;
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+/* ---------- transient toast ---------- */
+
+let toastTimer = null;
+
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.remove('hidden');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.add('hidden'), 2200);
+}
+
+/** Re-render Lucide placeholders created after the initial page load. */
+function refreshIcons() {
+  if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+    lucide.createIcons();
+  }
+}
+
+/* ---------------------------------------------------------------
+ * 1b. SHAREABLE VIEW STATE (tab, season, filters, search)
+ *     Kept in the query string so a copied URL reopens the
+ *     exact view the sender was looking at.
+ * --------------------------------------------------------------- */
+
+const URL_STATE_DEFAULTS = { tab: 'standings', round: 'ALL', status: 'ALL', q: '' };
+
+function currentTabId() {
+  const visible = Array.from(document.querySelectorAll('.tab-view'))
+    .find(section => !section.classList.contains('hidden'));
+  return visible ? visible.id.replace(/^view-/, '') : URL_STATE_DEFAULTS.tab;
+}
+
+/** Read the view state stored in the address bar (without touching the DOM). */
+function readUrlState() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    tab: params.get('tab') || '',
+    season: params.get('season') || '',
+    round: params.get('round') || '',
+    status: params.get('status') || '',
+    q: params.get('q') || ''
+  };
+}
+
+// Captured before the first render, which normalises the address bar.
+const INITIAL_URL_STATE = readUrlState();
+
+/** Mirror the current view into the address bar without adding history entries. */
+function syncUrlState() {
+  if (typeof appState === 'undefined' || !appState) return;
+
+  const url = new URL(window.location.href);
+
+  const write = (key, value, fallback) => {
+    if (!value || value === fallback) url.searchParams.delete(key);
+    else url.searchParams.set(key, value);
+  };
+
+  write('tab', currentTabId(), URL_STATE_DEFAULTS.tab);
+  write('season', appState.viewSeasonId, appState.activeSeasonId);
+
+  const roundSelect = document.getElementById('filter-round');
+  const statusSelect = document.getElementById('filter-status');
+  write('round', roundSelect ? roundSelect.value : '', URL_STATE_DEFAULTS.round);
+  write('status', statusSelect ? statusSelect.value : '', URL_STATE_DEFAULTS.status);
+
+  const search = document.getElementById('player-search');
+  write('q', search ? search.value.trim() : '', URL_STATE_DEFAULTS.q);
+
+  const next = url.pathname + url.search + url.hash;
+  if (next !== window.location.pathname + window.location.search + window.location.hash) {
+    history.replaceState(null, '', next);
+  }
+}
+
+/**
+ * Apply a shared link: select the season, restore filters, and open the tab.
+ * Called once after the first successful data load.
+ */
+function applyUrlState() {
+  const state = INITIAL_URL_STATE;
+
+  if (state.season && appState.seasonsReady &&
+      (appState.seasons || []).some(season => season.id === state.season)) {
+    appState.viewSeasonId = state.season;
+  }
+
+  const roundSelect = document.getElementById('filter-round');
+  const statusSelect = document.getElementById('filter-status');
+  const search = document.getElementById('player-search');
+
+  if (statusSelect && ['ALL', 'FINISHED', 'SCHEDULED', 'LIVE'].includes(state.status)) {
+    statusSelect.value = state.status;
+  }
+  if (search && state.q) search.value = state.q;
+
+  renderApp();
+
+  // The round options are rebuilt from data, so apply the filter afterwards.
+  if (roundSelect && state.round &&
+      Array.from(roundSelect.options).some(option => option.value === state.round)) {
+    roundSelect.value = state.round;
+  }
+
+  if (state.tab && document.getElementById('view-' + state.tab)) {
+    switchTab(state.tab);
+  }
+
+  renderFixtures();
+  renderTeamsView();
+  syncUrlState();
+}
+
+/** Copy the current (filter-aware) URL to the clipboard. */
+async function copyViewLink() {
+  syncUrlState();
+  const link = window.location.href;
+  let copied = false;
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(link);
+      copied = true;
+    }
+  } catch (err) {
+    copied = false;
+  }
+
+  // Fallback for older browsers or blocked clipboard permissions.
+  if (!copied) {
+    try {
+      const field = document.createElement('textarea');
+      field.value = link;
+      field.setAttribute('readonly', '');
+      field.style.position = 'fixed';
+      field.style.top = '-1000px';
+      document.body.appendChild(field);
+      field.select();
+      copied = document.execCommand('copy');
+      document.body.removeChild(field);
+    } catch (err) {
+      copied = false;
+    }
+  }
+
+  showToast(copied ? t('linkCopied') : link);
 }
 
 /* ---------- season helpers ---------- */
@@ -214,6 +413,7 @@ function renderApp() {
   applyEnvironmentNotice();
   renderSeasonBar();
   renderStandings();
+  renderTopScorers();
   renderFixtureFilters();
   renderFixtures();
   renderTeamsView();
@@ -221,6 +421,7 @@ function renderApp() {
   if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
     lucide.createIcons();
   }
+  syncUrlState();
 }
 
 function switchTab(tabId) {
@@ -234,6 +435,8 @@ function switchTab(tabId) {
     btn.classList.toggle('bg-slate-800', isActive);
     btn.classList.toggle('text-white', isActive);
     btn.classList.toggle('text-slate-400', !isActive);
+    if (isActive) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
   });
 
   // Mobile tabs
@@ -241,7 +444,11 @@ function switchTab(tabId) {
     const isActive = btn.id === 'mob-nav-' + tabId;
     btn.classList.toggle('text-pitch-400', isActive);
     btn.classList.toggle('text-slate-400', !isActive);
+    if (isActive) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
   });
+
+  syncUrlState();
 }
 
 /* ---------------------------------------------------------------
@@ -319,12 +526,49 @@ function formBadge(f) {
   return `<span class="w-4 h-4 rounded-full ${cls} text-[9px] font-bold inline-flex items-center justify-center border">${f}</span>`;
 }
 
+/** All-time top scorers (player totals are career totals, not per-season). */
+function renderTopScorers() {
+  const list = document.getElementById('top-scorers-list');
+  if (!list) return;
+
+  const rows = appState.players
+    .filter(player => player.isActive !== false && toInt(player.goals) > 0)
+    .map(player => ({ player, team: getTeam(player.teamId), goals: toInt(player.goals) }))
+    .filter(row => row.team)
+    .sort((a, b) => b.goals - a.goals || a.player.name.localeCompare(b.player.name))
+    .slice(0, 5);
+
+  if (!rows.length) {
+    list.innerHTML = `<p class="px-4 py-6 text-center text-xs text-slate-500">${esc(t('emptyTopScorers'))}</p>`;
+    return;
+  }
+
+  list.innerHTML = rows.map((row, index) => `
+    <div class="flex items-center gap-3 px-4 py-2.5">
+      <span class="w-5 shrink-0 text-center text-[11px] font-bold text-slate-500">${index + 1}</span>
+      <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color:${esc(row.team.color || '#22c55e')}"></span>
+      <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-200">${esc(row.player.name)}</span>
+      <span class="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-500">${esc(row.team.code)}</span>
+      <span class="w-8 shrink-0 text-end text-sm font-extrabold tabular-nums text-white">${row.goals}</span>
+    </div>`).join('');
+}
+
 function renderStandings() {
   const tbody = document.getElementById('standings-table-body');
   const rows = calculateStandings();
 
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="12" class="py-8 text-center text-slate-400">${esc(t('noTeamsFound'))}</td></tr>`;
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="12" class="py-10 px-4 text-center">
+          <i data-lucide="shield-plus" class="w-9 h-9 mx-auto mb-2 text-slate-600"></i>
+          <p class="font-medium text-sm text-slate-300">${esc(t('noTeamsFound'))}</p>
+          <p class="text-xs text-slate-500 mt-1">${esc(t('emptyNoTeamsHint'))}</p>
+          <button onclick="openTeamModal()" class="admin-only mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddTeam'))}
+          </button>
+        </td>
+      </tr>`;
     return;
   }
 
@@ -388,57 +632,71 @@ function formatEventMinute(minute) {
   return value ? `${value}'` : '';
 }
 
-function matchEventChip(event) {
-  const player = appState.players.find(item => item.id === event.playerId);
-  const name = esc(player ? player.name : t('unknownPlayer'));
-  const minute = formatEventMinute(event.minute);
-  const minuteHtml = minute ? `<span class="text-slate-500">${esc(minute)}</span>` : '';
-
+/** Marker shown in the match timeline: ball for goals, coloured card otherwise. */
+function matchEventMarker(event) {
   if (event.type === 'yellow' || event.type === 'red') {
     const red = event.type === 'red';
-    return `<span class="inline-flex items-center gap-1" title="${esc(t(red ? 'eventRed' : 'eventYellow'))}">
-      <span class="inline-block w-2 h-3 rounded-[2px] ${red ? 'bg-rose-500' : 'bg-amber-400'}" aria-hidden="true"></span>
-      <span class="sr-only">${esc(t(red ? 'eventRed' : 'eventYellow'))}: </span>
-      <span>${name}</span>${minuteHtml}
-    </span>`;
+    return `<span class="inline-block w-2 h-3 rounded-[2px] ${red ? 'bg-rose-500' : 'bg-amber-400'}" aria-hidden="true"></span>`;
   }
-
-  return `<span class="inline-flex items-center gap-1" title="${esc(t('eventGoal'))}">
-    <span aria-hidden="true">⚽</span>
-    <span class="sr-only">${esc(t('eventGoal'))}: </span>
-    <span>${name}</span>${minuteHtml}
-  </span>`;
+  return `<span aria-hidden="true" class="text-[10px] leading-none">⚽</span>`;
 }
 
-/** Render structured events, or fall back to the legacy free-text scorers field. */
+/** One chronological row of the match timeline. */
+function matchEventTimelineRow(event) {
+  const player = appState.players.find(item => item.id === event.playerId);
+  const team = getTeam(event.teamId);
+  const name = esc(player ? player.name : t('unknownPlayer'));
+  const minute = formatEventMinute(event.minute);
+  const label = t(event.type === 'red' ? 'eventRed' : event.type === 'yellow' ? 'eventYellow' : 'eventGoal');
+
+  return `
+    <li class="flex items-center gap-2 text-[11px] leading-5" title="${esc(label)}">
+      <span class="w-7 shrink-0 text-end font-mono text-[10px] tabular-nums text-slate-500">${esc(minute)}</span>
+      <span class="w-3 shrink-0 flex items-center justify-center">${matchEventMarker(event)}</span>
+      <span class="min-w-0 flex-1 truncate text-slate-200">${name}</span>
+      <span class="sr-only">${esc(label)}</span>
+      <span class="shrink-0 text-[9px] font-bold uppercase tracking-wide text-slate-500">${esc(team ? team.code : '')}</span>
+    </li>`;
+}
+
+/** Render structured events as a timeline, or fall back to the legacy free-text scorers field. */
 function renderMatchEventSummary(match) {
   const events = getMatchEvents(match.id);
-  if (events.length) {
-    const teamRow = (teamId) => {
-      const team = getTeam(teamId);
-      if (!team) return '';
-      const teamEvents = events
-        .filter(event => event.teamId === teamId)
-        .slice()
-        .sort((a, b) => toInt(a.minute) - toInt(b.minute));
-      if (!teamEvents.length) return '';
-      return `<div class="flex items-start gap-2 text-[11px] text-slate-300">
-        <span class="w-8 shrink-0 font-bold uppercase text-slate-400">${esc(team.code || '')}</span>
-        <span class="flex flex-wrap gap-x-2 gap-y-1 min-w-0">${teamEvents.map(matchEventChip).join('')}</span>
-      </div>`;
-    };
 
-    return `<div class="mt-2 pt-2 border-t border-slate-700/40 space-y-1.5">
-      ${teamRow(match.homeId)}
-      ${teamRow(match.awayId)}
+  if (events.length) {
+    const ordered = events.slice().sort((a, b) => toInt(a.minute) - toInt(b.minute));
+    const goals = ordered.filter(event => event.type === 'goal').length;
+    const cards = ordered.length - goals;
+    const summary = [
+      goals ? `${goals} ${t(goals === 1 ? 'statGoalSingular' : 'statGoalsShort')}` : '',
+      cards ? `${cards} ${t(cards === 1 ? 'statCardSingular' : 'statCardsShort')}` : ''
+    ].filter(Boolean).join(' · ');
+
+    return `<div class="mt-2 pt-2 border-t border-slate-700/40">
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <span class="text-[9px] font-bold uppercase tracking-wider text-slate-500">${esc(t('lblTimeline'))}</span>
+        <span class="text-[9px] tabular-nums text-slate-500">${esc(summary)}</span>
+      </div>
+      <ol class="space-y-0.5">${ordered.map(matchEventTimelineRow).join('')}</ol>
     </div>`;
   }
 
-  if (!match.scorersText) return '';
-  return `<div class="mt-2 pt-2 border-t border-slate-700/40 text-[11px] text-slate-400 flex items-center gap-1.5">
-    <i data-lucide="activity" class="w-3.5 h-3.5 text-pitch-400 shrink-0"></i>
-    <span class="truncate">${esc(match.scorersText)}</span>
-  </div>`;
+  if (match.scorersText) {
+    return `<div class="mt-2 pt-2 border-t border-slate-700/40 text-[11px] text-slate-400 flex items-center gap-1.5">
+      <i data-lucide="activity" class="w-3.5 h-3.5 text-pitch-400 shrink-0"></i>
+      <span class="truncate">${esc(match.scorersText)}</span>
+    </div>`;
+  }
+
+  // Finished match without any recorded detail: nudge the admin instead of leaving a blank card.
+  if (match.status === 'FINISHED' && appState.eventsReady) {
+    return `<div class="admin-only mt-2 pt-2 border-t border-slate-700/40 text-[10px] text-slate-500 flex items-center gap-1.5">
+      <i data-lucide="clipboard-list" class="w-3 h-3 shrink-0"></i>
+      <span>${esc(t('noEventsRecorded'))}</span>
+    </div>`;
+  }
+
+  return '';
 }
 
 function summarizeEventsForText(events, homeId, awayId) {
@@ -507,8 +765,13 @@ function renderFixtures() {
   const container = document.getElementById('fixtures-container');
   const roundFilter = document.getElementById('filter-round').value;
   const statusFilter = document.getElementById('filter-status').value;
+  const clearButton = document.getElementById('btn-clear-filters');
+  const filtering = roundFilter !== 'ALL' || statusFilter !== 'ALL';
 
-  let matches = visibleMatches().slice();
+  if (clearButton) clearButton.classList.toggle('hidden', !filtering);
+
+  const seasonMatches = visibleMatches();
+  let matches = seasonMatches.slice();
   if (roundFilter !== 'ALL') matches = matches.filter(m => String(m.round) === roundFilter);
   if (statusFilter !== 'ALL') matches = matches.filter(m => m.status === statusFilter);
 
@@ -517,23 +780,55 @@ function renderFixtures() {
   );
 
   if (matches.length === 0) {
-    container.innerHTML = `
-      <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center text-slate-400">
-        <i data-lucide="calendar-x" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
-        <p class="font-medium text-sm">${esc(t('noMatchesFound'))}</p>
+    // Distinguish "nothing scheduled yet" from "nothing matches these filters".
+    container.innerHTML = filtering ? `
+      <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center">
+        <i data-lucide="filter-x" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+        <p class="font-medium text-sm text-slate-300">${esc(t('emptyFiltered'))}</p>
+        <p class="text-xs text-slate-500 mt-1">${esc(t('emptyFilteredHint'))}</p>
+        <button onclick="clearFixtureFilters()" class="mt-4 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i> ${esc(t('btnClearFilters'))}
+        </button>
+      </div>` : `
+      <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center">
+        <i data-lucide="calendar-plus" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+        <p class="font-medium text-sm text-slate-300">${esc(t('emptyNoFixtures'))}</p>
+        <p class="text-xs text-slate-500 mt-1">${esc(t('emptyNoFixturesHint'))}</p>
+        <button onclick="openMatchModal()" class="admin-only season-write mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('btnLogFirstMatch'))}
+        </button>
       </div>`;
+    refreshIcons();
+    syncUrlState();
     return;
   }
+
+  // Highlight the soonest fixture that has not kicked off yet.
+  const now = Date.now();
+  const nextMatch = seasonMatches
+    .filter(m => m.status === 'SCHEDULED')
+    .slice()
+    .sort((a, b) => {
+      const aTime = a.datetime ? new Date(a.datetime).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.datetime ? new Date(b.datetime).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    })
+    .find(m => !m.datetime || new Date(m.datetime).getTime() >= now - 6 * 60 * 60 * 1000);
 
   container.innerHTML = matches.map(m => {
     const home = getTeam(m.homeId) || { name: '?', code: '??', color: '#334155' };
     const away = getTeam(m.awayId) || { name: '?', code: '??', color: '#334155' };
+    const isNext = Boolean(nextMatch && nextMatch.id === m.id);
 
     const badge = m.status === 'FINISHED'
       ? `<span class="bg-slate-700/60 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-600">${esc(t('optFinished'))}</span>`
       : m.status === 'LIVE'
       ? `<span class="bg-rose-500/20 text-rose-400 text-[10px] font-bold px-2 py-0.5 rounded border border-rose-500/30 animate-pulse flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping"></span>${esc(t('optLiveNow'))}</span>`
       : `<span class="bg-blue-500/20 text-blue-400 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-500/30">${esc(t('optUpcoming'))}</span>`;
+
+    const nextBadge = isNext
+      ? `<span class="bg-pitch-500/15 text-pitch-400 text-[10px] font-bold px-2 py-0.5 rounded border border-pitch-500/30 flex items-center gap-1"><i data-lucide="clock" class="w-2.5 h-2.5"></i>${esc(t('badgeNextUp'))}</span>`
+      : '';
 
     const matchDate = m.datetime
       ? new Date(m.datetime).toLocaleString(currentLang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -553,10 +848,11 @@ function renderFixtures() {
     const scorers = renderMatchEventSummary(m);
 
     return `
-      <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl p-4 shadow-sm hover:border-slate-600 transition flex flex-col justify-between">
+      <div class="bg-slate-800/60 border ${isNext ? 'border-pitch-500/40' : 'border-slate-700/70'} rounded-xl p-4 shadow-sm hover:border-slate-600 transition flex flex-col justify-between">
         <div class="flex justify-between items-center text-xs text-slate-400 mb-3 pb-2 border-b border-slate-700/50 gap-2">
           <span class="font-medium text-slate-300 truncate">${esc(t('matchdayPrefix'))} ${m.round} • ${esc(m.venue || '')}</span>
           <div class="flex items-center gap-2 shrink-0">
+            ${nextBadge}
             <span>${esc(matchDate)}</span>
             ${badge}
           </div>
@@ -583,12 +879,24 @@ function renderFixtures() {
           <button onclick="editMatch(${jsString(m.id)})" class="px-2.5 py-1 text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded text-xs flex items-center gap-1 transition">
             <i data-lucide="edit-3" class="w-3 h-3"></i> ${esc(t('editAction'))}
           </button>
-          <button onclick="deleteMatch(${jsString(m.id)})" class="px-2 py-1 text-rose-400 hover:bg-rose-500/20 rounded text-xs transition">
+          <button onclick="deleteMatch(${jsString(m.id)})" class="px-2 py-1 text-rose-400 hover:bg-rose-500/20 rounded text-xs transition" aria-label="${esc(t('ariaDeleteMatch'))}" title="${esc(t('ariaDeleteMatch'))}">
             <i data-lucide="trash-2" class="w-3 h-3"></i>
           </button>
         </div>
       </div>`;
   }).join('');
+
+  refreshIcons();
+  syncUrlState();
+}
+
+/** Reset both fixture filters and re-render. */
+function clearFixtureFilters() {
+  const roundSelect = document.getElementById('filter-round');
+  const statusSelect = document.getElementById('filter-status');
+  if (roundSelect) roundSelect.value = 'ALL';
+  if (statusSelect) statusSelect.value = 'ALL';
+  renderFixtures();
 }
 
 /** Quick live-score update from fixture cards (used for LIVE matches). */
@@ -629,10 +937,16 @@ function renderTeamsView() {
 
   if (appState.teams.length === 0) {
     container.innerHTML = `
-      <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center text-slate-400">
-        <i data-lucide="shield-alert" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
-        <p class="font-medium text-sm">${esc(t('noTeamsFound'))}</p>
+      <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center">
+        <i data-lucide="shield-plus" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+        <p class="font-medium text-sm text-slate-300">${esc(t('noTeamsFound'))}</p>
+        <p class="text-xs text-slate-500 mt-1">${esc(t('emptyNoTeamsHint'))}</p>
+        <button onclick="openTeamModal()" class="admin-only mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddTeam'))}
+        </button>
       </div>`;
+    refreshIcons();
+    syncUrlState();
     return;
   }
 
@@ -666,10 +980,10 @@ function renderTeamsView() {
             <button onclick="openPlayerModal(${jsString(team.id)})" class="px-2.5 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-xs font-medium flex items-center gap-1 transition">
               <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddPlayer'))}
             </button>
-            <button onclick="editTeam(${jsString(team.id)})" class="p-1.5 text-slate-500 hover:text-white rounded transition">
+            <button onclick="editTeam(${jsString(team.id)})" class="p-1.5 text-slate-500 hover:text-white rounded transition" aria-label="${esc(t('editAction'))}" title="${esc(t('editAction'))}">
               <i data-lucide="edit-3" class="w-4 h-4"></i>
             </button>
-            <button onclick="deleteTeam(${jsString(team.id)})" class="p-1.5 text-slate-500 hover:text-rose-400 rounded transition">
+            <button onclick="deleteTeam(${jsString(team.id)})" class="p-1.5 text-slate-500 hover:text-rose-400 rounded transition" aria-label="${esc(t('ariaDeleteTeam'))}" title="${esc(t('ariaDeleteTeam'))}">
               <i data-lucide="trash-2" class="w-4 h-4"></i>
             </button>
           </div>
@@ -708,8 +1022,8 @@ function renderTeamsView() {
                     </td>
                     <td class="py-2 ltr:text-right rtl:text-left whitespace-nowrap">
                       <span class="admin-only">
-                        <button onclick="editPlayer(${jsString(p.id)})" class="text-slate-500 hover:text-white p-1"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
-                        <button onclick="deletePlayer(${jsString(p.id)})" class="text-slate-500 hover:text-rose-400 p-1"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                        <button onclick="editPlayer(${jsString(p.id)})" class="text-slate-500 hover:text-white p-1" aria-label="${esc(t('editAction'))}" title="${esc(t('editAction'))}"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+                        <button onclick="deletePlayer(${jsString(p.id)})" class="text-slate-500 hover:text-rose-400 p-1" aria-label="${esc(t('ariaDeletePlayer'))}" title="${esc(t('ariaDeletePlayer'))}"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
                       </span>
                     </td>
                   </tr>`).join('')}
@@ -729,6 +1043,28 @@ function renderTeamsView() {
         </div>
       </div>`;
   }).join('');
+
+  // A search that matches nobody should say so instead of leaving a blank grid.
+  if (query && container.children.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center">
+        <i data-lucide="search-x" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+        <p class="font-medium text-sm text-slate-300">${esc(t('emptyNoSearchResults'))}</p>
+        <button onclick="clearPlayerSearch()" class="mt-4 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i> ${esc(t('btnClearSearch'))}
+        </button>
+      </div>`;
+  }
+
+  refreshIcons();
+  syncUrlState();
+}
+
+/** Reset the squad search box. */
+function clearPlayerSearch() {
+  const search = document.getElementById('player-search');
+  if (search) search.value = '';
+  renderTeamsView();
 }
 
 /* ---------------------------------------------------------------
@@ -1386,7 +1722,11 @@ function openGuideModal() {
 
 function toggleDataMenu(e) {
   if (e) e.stopPropagation();
-  document.getElementById('data-menu').classList.toggle('hidden');
+  const menu = document.getElementById('data-menu');
+  const button = e && e.currentTarget ? e.currentTarget : null;
+  const willOpen = menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !willOpen);
+  if (button) button.setAttribute('aria-expanded', String(willOpen));
 }
 
 // Close the settings dropdown when clicking anywhere else
@@ -1394,6 +1734,8 @@ document.addEventListener('click', function (e) {
   const menu = document.getElementById('data-menu');
   if (!menu.classList.contains('hidden') && !menu.contains(e.target)) {
     menu.classList.add('hidden');
+    const opener = document.querySelector('[aria-controls="data-menu"]');
+    if (opener) opener.setAttribute('aria-expanded', 'false');
   }
 });
 
@@ -1654,11 +1996,14 @@ window.addEventListener('DOMContentLoaded', async function () {
   switchTab('standings');
   renderApp();
 
+  document.addEventListener('keydown', trapModalKeyboard);
+
   initBackend();
 
   if (!BACKEND_READY) {
     // Configuration missing, malformed, or the Supabase CDN failed to load.
     console.warn('KickOff Division: running in read-only demo mode (Supabase not configured).');
+    applyUrlState();
   } else {
     try {
       await refreshData();
@@ -1667,6 +2012,7 @@ window.addEventListener('DOMContentLoaded', async function () {
       showDataError(err);
     }
     renderApp();
+    applyUrlState();
   }
 
   await initAuth();

@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
 - **Last updated:** 2026-10-22
-- **Working-tree version:** `v3.5.1`
-- **Deployed version:** `v3.5.1` (current `main`, tagged `prod`); integrity migration applied in development and production
+- **Working-tree version:** `v3.6.0`
+- **Deployed version:** `v3.6.0` (current `main`); `v3.5.1` remains tagged `prod` until the next production release; integrity migration applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -21,10 +21,11 @@
 | Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
 | Security hardening pass | 🟡 In progress | SRI for Lucide, self-hosted Supabase client, secret scanning, dependency updates, XSS helper |
+| UX polish and shareability | ✅ Done in `v3.6.0` | Shareable filter URLs, clear filters, guided empty states, match timeline, keyboard/focus handling, Lighthouse 100/100/100 |
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.5.1` is deployed. The integrity hardening is now live in both hosted projects: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. `v3.5.1` removes the last CDN dependency on the auth path by serving the Supabase client from `vendor/`, so a blocked CDN can no longer push the app into demo mode. The remaining work is operational: decide what to do with the single leftover test event, then load the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.6.0` is on `main`. The integrity hardening is live in both hosted projects: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. `v3.5.1` removed the last CDN dependency on the auth path by serving the Supabase client from `vendor/`, so a blocked CDN can no longer push the app into demo mode. `v3.6.0` adds the shareability and accessibility layer (filter-aware links, guided empty states, match timeline, keyboard-safe dialogs, Lighthouse 100/100/100). The remaining work is operational: decide what to do with the single leftover test event, then load the real league data.
 
 ## 2. Architecture
 
@@ -327,3 +328,47 @@ Synthetic test data for future import rehearsals:
 - Nothing was imported into development or production. Both databases are unchanged from the `v3.5.1` baseline (`435a86dbcb7d69161f16fcfefef172ff703b0a6b9169a6ada027d879e6c80f54` for production).
 
 Next up: either continue the UX polish backlog (shareable filter URLs, "clear filters", empty states with CTAs, match timeline grouping, accessibility/focus states) or import the synthetic backup into development as a rehearsal and delete it afterwards.
+
+## 10. UX polish release (v3.6.0)
+
+Shipped on `main` after the small standings/LIVE tweaks. All of it is read-only friendly: no database changes, no migrations, no production data touched.
+
+### Shareable views
+- The current view is mirrored into the query string with `history.replaceState` (no history spam): `tab`, `season`, `round`, `status`, `q`.
+- Defaults are stripped so ordinary URLs stay clean; `env` and any other existing parameters are preserved.
+- Opening a shared URL restores the tab, season, both fixture filters and the squad search.
+- `applyUrlState()` consumes the state captured at page load, so the first render pass cannot erase it before the data arrives.
+- New **Copy link** button in the fixtures header copies the filter-aware URL and confirms with a toast (with a `execCommand` fallback for blocked clipboard permissions).
+
+### Filters and empty states
+- New **Clear filters** button appears only while a fixture filter is active.
+- Fixtures now distinguish two empty states: "No fixtures yet" (with an admin CTA to log the first match) and "No matches for these filters" (with a clear-filters CTA).
+- Empty standings and empty squads show a short hint plus an admin CTA.
+- A squad search with no hits shows a "no results" card with a clear-search button instead of a blank grid.
+- The soonest upcoming fixture gets a subtle green border and a **Next up** badge.
+
+### Match timeline
+- Goals and cards render as one chronological timeline (minute, ball/card marker, player, team code) instead of two grouped chip rows.
+- Header line summarises the match: `2 goals · 1 card`, with singular/plural handling in all three languages.
+- Screen readers get the event type via an `sr-only` label; the visual marker is `aria-hidden`.
+- Finished matches without recorded detail show a muted admin-only nudge to add events.
+
+### Top scorers leaderboard
+- New card under the league table ranks the top five goalscorers with rank, club colour, club code and total.
+- Labelled **All-time**, because player totals are career totals and are not season-scoped.
+- Archived players are excluded; empty state reads "No goals scored yet."
+
+### Accessibility and interaction
+- `Escape` closes the topmost dialog and focus returns to the element that opened it; `Tab` is trapped inside the open dialog.
+- `aria-current="page"` marks the active tab (replaced an invalid `aria-selected` on plain buttons).
+- Icon-only buttons in fixtures, squads and dialogs have `aria-label`/`title`.
+- Data-settings dropdown exposes `aria-haspopup`, `aria-expanded` and `aria-controls`.
+- Fixtures grid is `aria-live="polite"` so filter changes are announced.
+- Icons created after the first render are re-hydrated via `refreshIcons()` (previously, filtering could leave empty icon slots).
+
+### Verification
+- `node --check` clean on `js/app.js`, `js/i18n.js`.
+- Manual browser pass in the development project: URL round-trip, filter + clear, both fixture empty states, squad search empty state, timeline ordering (12', 38', 54', 77'), next-up badge, toast, dialog Escape/focus return, EN/FR/AR switch with RTL.
+- Lighthouse on the local build: **Accessibility 100, Best Practices 100, SEO 100**.
+- Tailwind rebuilt (`npm.cmd run build:css`) so new utility classes ship.
+- No data imported or mutated: the in-memory test events used during the browser pass were never saved.

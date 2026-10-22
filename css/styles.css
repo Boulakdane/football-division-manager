@@ -137,6 +137,11 @@ div[id^="modal-"]:not(.hidden) > div {
   animation: rise-in 0.28s ease-out both;
 }
 
+/* Transient toast */
+#toast:not(.hidden) {
+  animation: pop-in 0.18s ease-out both;
+}
+
 main > .grid:first-child {
   animation: rise-in 0.35s ease-out both;
 }

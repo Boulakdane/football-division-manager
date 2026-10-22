@@ -6,13 +6,19 @@ accounts live in a free [Supabase](https://supabase.com) project.
 
 ## Features
 
-- **Automatic standings** — points, W/D/L, goals for/against, goal difference, last-5 form.
-  The table is recalculated instantly whenever a result changes.
+- **Automatic standings** — points, W/D/L, goals for/against, goal difference, points
+  per game and last-5 form. The table is recalculated instantly whenever a result changes.
 - **Fixtures & results** — schedule matchdays, log live scores, and mark matches as
-  finished. Duplicate fixtures on the same matchday are rejected.
+  finished. Duplicate fixtures on the same matchday are rejected. The soonest upcoming
+  match is highlighted, and matchday/status filters can be cleared in one click.
 - **Goals & cards with minutes** — log each goal, yellow card and red card against a
-  player from the correct team, with the minute. Events appear on the fixture card and
-  update the player's goal/card totals.
+  player from the correct team, with the minute. Each fixture card shows a chronological
+  match timeline and a per-match goal/card summary.
+- **Shareable views** — the active tab, season, filters and squad search live in the URL,
+  so a copied link reopens exactly what you were looking at. A **Copy link** button does
+  this for you.
+- **Top scorers** — an all-time leaderboard under the league table ranks the top five
+  goalscorers with their club and total.
 - **Multiple seasons** — create a new season, switch between active and archived
   seasons, and keep every past table and fixture intact. Archived seasons are
   read-only in both the UI and the database until an admin makes them active again.
