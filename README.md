@@ -72,6 +72,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── csv-to-backup.js       # Validate CSVs and build an importable JSON backup
 │   ├── backup-to-csv.js       # Turn a JSON backup into editable CSV files
 │   └── check-secrets.js       # Fail CI if a privileged secret is committed
+├── vendor/
+│   └── supabase-js-2.118.0.js # Supabase client (MIT) served from this origin
 ├── SECURITY.md                # Private vulnerability reporting policy
 └── supabase/
     ├── schema.sql                   # Tables, RLS policies, triggers and seed data
@@ -84,6 +86,12 @@ accounts live in a free [Supabase](https://supabase.com) project.
 Scripts are loaded in dependency order in `index.html`:
 `i18n.js` → `store.js` → `config.js` → `backend.js` → `auth.js` → `app.js`
 (all `defer`red). Keep that order if you add modules.
+
+The Supabase client is served from `vendor/supabase-js-2.118.0.js` (same
+origin, pinned version, MIT license included) rather than a CDN, so a
+blocked third-party host can no longer drop the app into read-only demo
+mode and break admin sign-in. Lucide icons still load from unpkg with a
+subresource-integrity hash; the app renders without them.
 
 ## Setup: connect Supabase (5 minutes, free)
 

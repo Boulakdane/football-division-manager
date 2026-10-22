@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
-- **Last updated:** 2026-10-21
-- **Working-tree version:** `v3.5.0`
-- **Deployed version:** `v3.5.0` (current `main`, tagged `prod`); integrity migration pending
+- **Last updated:** 2026-10-22
+- **Working-tree version:** `v3.5.1`
+- **Deployed version:** `v3.5.1` (current `main`, tagged `prod`); integrity migration applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -14,17 +14,17 @@
 | Admin authentication and roles | ✅ Done | Supabase Auth; `admin` / `viewer`; signups disabled |
 | Database-enforced permissions | ✅ Done | RLS policies plus admin-only RPCs |
 | Multiple seasons and archive | ✅ Done | Archived seasons are read-only in the UI and in RLS |
-| Player history protection | 🟡 Working tree | `players.is_active`; history players are archived and restorable |
-| Destructive operations | 🟡 Working tree | Team/match deletes and event writes are RPC-only; match saves are atomic |
+| Player history protection | ✅ Deployed and live-tested | `players.is_active`; history players are archived and restorable |
+| Destructive operations | ✅ Deployed and live-tested | Team/match deletes and event writes are RPC-only; match saves are atomic |
 | CSV bulk entry and admin exports | ✅ Done | Five-file workflow including `events.csv` |
 | JSON backup and restore | ✅ Done | Full replacement; development round-trip and production no-op import passed |
 | Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
-| Security hardening pass | 🟡 In progress | SRI, secret scanning, dependency updates, XSS helper |
-| Production migration | 🟡 Integrity migration pending | `match_events` and `events_counted` are live; `integrity-migration.sql` must be run in development, then production |
+| Security hardening pass | 🟡 In progress | SRI for Lucide, self-hosted Supabase client, secret scanning, dependency updates, XSS helper |
+| Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.5.0` is deployed. This release adds the integrity hardening: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. The SQL has passed a committed PGlite/Postgres-compatible suite and the frontend is backward compatible. The migration has not yet been applied to the hosted projects, so `PLAYERS_ARCHIVE_READY` is still false; run `supabase/integrity-migration.sql` in development, verify it in the browser, then run it in production after a fresh backup.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.5.1` is deployed. The integrity hardening is now live in both hosted projects: archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, and `save_match` writes a fixture plus its events in one transaction. `v3.5.1` removes the last CDN dependency on the auth path by serving the Supabase client from `vendor/`, so a blocked CDN can no longer push the app into demo mode. The remaining work is operational: decide what to do with the single leftover test event, then load the real league data.
 
 ## 2. Architecture
 
@@ -138,11 +138,16 @@ Local CSV / JSON tools
 | `npm audit --omit=dev` | 0 vulnerabilities |
 | Lighthouse (local, mocked events) | Accessibility 100, Best Practices 100, SEO 100 |
 | Lighthouse (production, v3.4.4) | Accessibility 100, Best Practices 100, SEO 100 |
-| Browser smoke test | 9 fixtures render; no console errors after CDN/SRI load |
-| SRI load test | Lucide and Supabase JS loaded with integrity checks |
+| Browser smoke test | 9 fixtures render; no console errors after the vendored client load |
+| SRI load test | Lucide loaded with an integrity check; the Supabase client is served from `vendor/` |
 | Inline-handler XSS test | Malicious ID rendered as a string literal; no execution |
 | `npm run check:secrets` | No privileged secrets found |
-| Production deploy | `v3.5.0` live; version badge and all asset URLs updated; production reads 1 season / 6 teams / 9 players / 9 matches / 1 event; 6 standings rows, 9 fixtures and 6 team cards render; no console warnings/errors; `PLAYERS_ARCHIVE_READY=false` until the integrity migration runs |
+| Production deploy | `v3.5.1` live; version badge and all asset URLs updated; production reads 1 season / 6 teams / 9 players / 9 matches / 1 event; 6 standings rows, 9 fixtures and 6 team cards render; no console warnings/errors; `PLAYERS_ARCHIVE_READY=true` after the integrity migration |
+| Development integrity migration (live) | `PLAYERS_ARCHIVE_READY = true`; direct `teams`/`matches` deletes and `match_events` writes rejected with `42501`; archive/restore keeps the event history; `save_match` rolled back an invalid event; `delete_team` reversed opponent totals (1 goal / 1 yellow → 0 / 0); archived-season writes rejected; anonymous writes and RPCs returned `401`; sample data restored to 1/6/9/9/0 |
+| Production integrity migration (live) | `players.is_active` and `matches.events_counted` present; public reads 1/6/9/9/1; 6 standings rows, 9 fixtures, 6 team cards, no migration notice; anonymous insert and every admin RPC returned `401` / `42501`; live hash identical to the pre-migration backup |
+| Production backup before the integrity migration | `prod-backup-2026-10-21-pre-integrity.json`, SHA-256 `435a86db…c80f54`, 1 season / 6 teams / 9 players / 9 matches / 1 event; `m6` = 2–4 and the Ethan Hunt event preserved |
+| Production data hash after the migration | `435a86dbcb7d69161f16fcfefef172ff703b0a6b9169a6ada027d879e6c80f54` — byte-for-byte identical to the backup, so the migration changed no rows |
+| Vendored Supabase client | `vendor/supabase-js-2.118.0.js` (MIT, license included) is served from the same origin; the login modal no longer reports "not configured" when only the CDN was blocked |
 | CSV formula-injection hardening | `=1+1`, `+SUM(A1)`, `-1+1`, `@cmd`, tab and newline prefixes export as text; numeric `-3` stays numeric; backup → CSV → JSON round trip restores the original value |
 | v3.4.6 bug-fix checks | Missing `btnAddPlayer` translations added for EN/FR/AR; empty team/player names rejected; transfer with existing match events blocked; delete-player history warning; JSON export uses a Blob for large backups; Lucide failure no longer breaks rendering |
 | Production anonymous write | `POST /rest/v1/teams` returned `401` / `42501` |
@@ -182,7 +187,7 @@ Local CSV / JSON tools
 | Frontend compatibility (development, pre-migration) | New frontend loaded with `PLAYERS_ARCHIVE_READY = false`; team/player/match fallback saves and deletes passed; archive RPC reported `INTEGRITY_MIGRATION_REQUIRED` |
 | Frontend archive UI (local) | Archived player row shows **Archived players** + **Restore** for admins, hidden for viewers; archived event player remains selected with an **(Archived)** label |
 | CSV `isActive` round trip | `backup-to-csv` -> `csv-to-backup` preserved `true` and `false`; counts unchanged |
-| Versioned assets | `v3.5.0` query strings and badge prepared |
+| Versioned assets | `v3.5.1` query strings and badge prepared |
 
 ## 5. Current blockers and risks
 
@@ -190,7 +195,7 @@ Local CSV / JSON tools
 2. **A single event appeared in production during the live test window.** `m8` / Ethan Hunt / 10' is present with `events_counted = false`, so player totals are unchanged. Decide whether to keep it or remove it before loading real data.
 3. **Real-data replacement is still untested.** The no-op production import and rollback paths passed; now test with real data in development first, then production with a fresh backup and keep the previous JSON export for rollback.
 4. **Production and development differ.** For example, `m6` is 1–1 in development but 2–4 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
-5. **Integrity hardening is not deployed yet.** The new SQL and frontend are tested locally but the migration has not been run in development or production. Do not rely on archiving, database-enforced archive reads or atomic match saves until `supabase/integrity-migration.sql` is applied. If an older migration is re-run later, run the integrity migration again afterwards.
+5. **The integrity migration is live; re-apply it after any older migration.** `supabase/integrity-migration.sql` has been run in development and production and `PLAYERS_ARCHIVE_READY` is true in both. If an older migration is re-run later, run the integrity migration again afterwards and re-check `PLAYERS_ARCHIVE_READY`.
 6. **Some destructive actions are still permanent by design.** `delete_team` removes all of a team's matches and events across every season (after reversing opponent totals), and `delete_match` removes a fixture's events. There is no audit log, soft-delete/trash for teams or matches, or transfer/registration history. Transfers for players with events remain blocked in the UI. Keep a backup before destructive edits.
 7. **Operational gaps.** There is no MFA, password reset flow, automated hosted RLS test suite or automated browser test yet. These are covered in the security and modernization plans.
 
@@ -212,19 +217,29 @@ Local CSV / JSON tools
 
 ### Integrity hardening release (v3.5.0)
 
-- [ ] Run `supabase/integrity-migration.sql` in the **development** project SQL Editor.
-- [ ] Reload development and confirm `PLAYERS_ARCHIVE_READY` is true and no console errors appear.
-- [ ] In development, archive and restore a player with events; confirm the event/total history is unchanged.
-- [ ] In development, delete a player without events; confirm the hard-delete path still works.
-- [ ] In development, save a match and an invalid event together; confirm the match is not left behind.
-- [ ] In development, delete a team that has events against an opponent; confirm opponent totals are reversed.
-- [ ] In development, switch to an archived season and confirm direct REST writes are rejected.
-- [ ] Export and validate a fresh **production** JSON backup before touching production.
-- [ ] Run `supabase/integrity-migration.sql` in the **production** project.
-- [ ] Re-run the anonymous write and anonymous RPC checks in production.
+- [x] Run `supabase/integrity-migration.sql` in the **development** project SQL Editor.
+- [x] Reload development and confirm `PLAYERS_ARCHIVE_READY` is true and no console errors appear.
+- [x] In development, archive and restore a player with events; confirm the event/total history is unchanged.
+- [x] In development, delete a player without events; confirm the hard-delete path still works.
+- [x] In development, save a match and an invalid event together; confirm the match is not left behind.
+- [x] In development, delete a team that has events against an opponent; confirm opponent totals are reversed.
+- [x] In development, switch to an archived season and confirm direct REST writes are rejected.
+- [x] Export and validate a fresh **production** JSON backup before touching production.
+- [x] Run `supabase/integrity-migration.sql` in the **production** project.
+- [x] Re-run the anonymous write and anonymous RPC checks in production.
 - [x] Commit, push `main`, move the `prod` tag and verify the live `v3.5.0` badge/assets.
 - [x] Re-run the public smoke test: production reads 1 season / 6 teams / 9 players / 9 matches / 1 event; 6 standings rows and 9 fixtures render.
-- [ ] After the migration, test the admin archive/restore, atomic match-save and safe team-delete flows on the live site.
+- [ ] After the migration, test the admin archive/restore, atomic match-save and safe team-delete flows on the live production site (the development equivalents are verified; the production admin sign-in still needs to be done).
+
+### Vendored client release (v3.5.1)
+
+- [x] Confirm the "Supabase is not configured yet" message was caused by a blocked CDN, not by `js/config.js`.
+- [x] Copy `@supabase/supabase-js@2.118.0` into `vendor/` with its MIT license.
+- [x] Point `index.html` at `vendor/supabase-js-2.118.0.js` and drop the jsdelivr preconnect.
+- [x] Add the `authLibraryMissing` message (EN/FR/AR) so a missing client is not reported as missing configuration.
+- [x] Re-run `node --check`, `npm run check:secrets` and `npm run test:sql`.
+- [x] Commit, push `main` and move the `prod` tag.
+- [x] Verify the live site loads the vendored client and signs in with the production database.
 
 ### v3.4.6 bug-fix release
 
@@ -253,7 +268,7 @@ Local CSV / JSON tools
 
 ### P0 — finish this release
 
-- Apply the integrity migration in development, test the archive/atomic-save/delete flows, then apply it in production.
+- Sign in on the live production site and repeat the archive/restore, atomic match-save and safe team-delete checks with temporary data.
 - Load the real league data into development, verify standings, fixtures and squads, then import into production.
 - Keep the fresh production backup and export another one immediately before the production import.
 - Re-run the final anonymous/RLS checks after the import.

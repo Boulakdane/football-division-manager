@@ -1,6 +1,6 @@
 # KickOff Division — Modernization Plan
 
-- **Status:** proposal; v3.5.0 integrity work in progress
+- **Status:** proposal; the v3.5.x integrity and vendoring work is live in development and production
 - **Horizon:** 6 months, delivered in small reversible releases
 - **Constraints:** free hosting, no application server we operate, static frontend, Supabase free tier, separate HTML/CSS/JS files, trilingual EN/FR/AR with RTL, public read access, admin-only writes.
 

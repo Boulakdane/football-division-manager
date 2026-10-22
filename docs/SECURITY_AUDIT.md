@@ -21,7 +21,7 @@ No critical vulnerability was found in this review. The largest residual risks a
 2. **XSS and supply-chain exposure.** The app has no strict Content Security Policy, uses inline event handlers, and still loads Google Fonts from a third party. A successful script injection could read the Supabase session from browser storage.
 3. **Destructive imports still lack a preview and audit trail.** Atomic rollback is now live-tested in production, but an admin can still replace all data without a dry-run diff or audit record. See SEC-05 for the audit/restore work.
 
-The current pass already reduced some risk: Lucide and Supabase JS are pinned with SRI, a secret scanner runs in CI, Dependabot is configured, event-handler IDs are escaped with a JSON-aware helper, imports are atomic, and the working tree adds database-enforced archive reads, player archiving, safe team deletion and atomic match saves. The integrity SQL has passed local Postgres-compatible tests but still has to be applied to the hosted development and production projects. The plan below closes the remaining gaps.
+The current pass already reduced some risk: Lucide is pinned with SRI, the Supabase client is served from the repository (`vendor/`) so authentication no longer depends on a third-party CDN, a secret scanner runs in CI, Dependabot is configured, event-handler IDs are escaped with a JSON-aware helper, imports are atomic, and the working tree adds database-enforced archive reads, player archiving, safe team deletion and atomic match saves. The integrity SQL has been applied to the hosted development and production projects and verified live. The plan below closes the remaining gaps.
 
 ## 2. Trust boundaries and assets
 
@@ -185,13 +185,13 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 ### SEC-04 — Third-party CDN and font dependency
 
 **Severity:** Medium (reduced from High by this pass)
-**Evidence:** Lucide and Supabase JS were previously loaded from unpinned `latest`/`@2` URLs. This pass pins them and adds SRI. Google Fonts is still a remote CSS/font dependency with no SRI.
+**Evidence:** Lucide and Supabase JS were previously loaded from unpinned `latest`/`@2` URLs. This pass pins them and adds SRI. Supabase JS is now vendored in `vendor/` at a pinned version (2.118.0, MIT license included) and served from the same origin, so a CDN outage can no longer break authentication. Lucide still comes from unpkg with SRI, and Google Fonts is still a remote CSS/font dependency with no SRI.
 
 **Impact:** A compromised CDN could serve malicious JavaScript; Google Fonts sees visitor IPs and is an extra CSP exception.
 
 **Remediation:**
 
-1. Self-host Supabase JS and Lucide in `vendor/` and serve from the same origin.
+1. Self-host Supabase JS and Lucide in `vendor/` and serve from the same origin. (Supabase JS done; Lucide still on unpkg with SRI.)
 2. Self-host subsetted Inter and Cairo WOFF2 files.
 3. If a CDN remains, pin exact versions and keep SRI; add a CSP allowlist and a quarterly review.
 4. Do not use `@latest` in production.
@@ -416,7 +416,7 @@ This pass added `jsString()` and replaced interpolated IDs in inline handlers. A
 - `profiles` has no client update policy; role promotion requires SQL.
 - Signups are disabled server-side.
 - Only publishable keys are in the repository; the secret scanner checks for leaked privileged keys.
-- CDN scripts are pinned with SRI.
+- Lucide is pinned with SRI; the Supabase client is vendored at a pinned version in `vendor/` and served from the same origin.
 - The app uses parameterised Supabase client calls, not string-concatenated SQL.
 - `esc()` and the new `jsString()` helper cover the identified rendering paths.
 - Backups and working CSV data are gitignored.
