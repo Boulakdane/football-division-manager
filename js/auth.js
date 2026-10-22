@@ -194,7 +194,7 @@ function openLoginModal() {
   const email = document.getElementById('login-email');
   if (email) email.focus();
 
-  if (!BACKEND_READY) setAuthError('login-error', 'authConfigMissing');
+  if (!BACKEND_READY) setAuthError('login-error', authUnavailableKey());
 }
 
 function showLoginPanel(showLogin) {
@@ -224,7 +224,7 @@ async function handleLogin(e) {
   clearAuthMessages();
 
   if (!BACKEND_READY) {
-    setAuthError('login-error', 'authConfigMissing');
+    setAuthError('login-error', authUnavailableKey());
     return;
   }
 
@@ -275,7 +275,7 @@ async function handleSignup(e) {
   }
 
   if (!BACKEND_READY) {
-    setAuthError('signup-error', 'authConfigMissing');
+    setAuthError('signup-error', authUnavailableKey());
     return;
   }
 
@@ -319,7 +319,7 @@ async function resendConfirmation(event) {
   clearAuthMessages();
 
   if (!BACKEND_READY) {
-    setAuthError('login-error', 'authConfigMissing');
+    setAuthError('login-error', authUnavailableKey());
     return;
   }
 
@@ -386,7 +386,7 @@ async function saveNewPassword(e) {
   clearAuthMessages();
 
   if (!BACKEND_READY || !isSignedIn()) {
-    setAuthError('pw-error', 'authConfigMissing');
+    setAuthError('pw-error', authUnavailableKey());
     return;
   }
 

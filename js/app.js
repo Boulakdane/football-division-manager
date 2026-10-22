@@ -1272,7 +1272,7 @@ function openSeasonModal() {
   if (!appState.seasonsReady) return;
   if (typeof isAdmin !== 'function' || !isAdmin()) return;
   if (!BACKEND_READY) {
-    alert(t('authConfigMissing'));
+    alert(t(authUnavailableKey()));
     return;
   }
 

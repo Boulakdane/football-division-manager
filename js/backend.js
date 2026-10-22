@@ -9,8 +9,16 @@
 const SUPABASE_URL = (window.KICKOFF_CONFIG && window.KICKOFF_CONFIG.SUPABASE_URL || '').trim();
 const SUPABASE_ANON_KEY = (window.KICKOFF_CONFIG && window.KICKOFF_CONFIG.SUPABASE_ANON_KEY || '').trim();
 
+/** True when a Supabase project has been configured. */
+const AUTH_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+
 /** True when a Supabase project has been configured and the client loaded. */
-let BACKEND_READY = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase && window.supabase.createClient);
+let BACKEND_READY = Boolean(AUTH_CONFIGURED && window.supabase && window.supabase.createClient);
+
+/** Pick the right error when auth is unavailable: missing config vs. missing client. */
+function authUnavailableKey() {
+  return AUTH_CONFIGURED ? 'authLibraryMissing' : 'authConfigMissing';
+}
 
 /** Supabase client (null in demo mode). */
 let db = null;
