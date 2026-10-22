@@ -67,7 +67,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-login', 'modal-audit'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-login', 'modal-audit', 'modal-trash'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -269,6 +269,11 @@ const CLICK_ACTIONS = {
   'password-modal': () => openPasswordModal(),
   'audit-log': () => openAuditModal(),
   'audit-refresh': () => renderAuditLog(),
+  'trash-open': () => openTrashModal(),
+  'trash-refresh': () => renderTrash(),
+  'restore-team': el => restoreTrashItem('team', el.dataset.id),
+  'restore-match': el => restoreTrashItem('match', el.dataset.id),
+  'restore-season': el => restoreTrashItem('season', el.dataset.id),
   'toggle-signup': (el, event) => toggleSignup(event),
   'resend-confirmation': (el, event) => resendConfirmation(event),
 
@@ -1826,6 +1831,7 @@ const AUDIT_ACTION_KEYS = {
   INSERT: 'auditActionInsert',
   UPDATE: 'auditActionUpdate',
   DELETE: 'auditActionDelete',
+  RESTORE: 'auditActionRestore',
   IMPORT: 'auditActionImport'
 };
 
@@ -1833,6 +1839,7 @@ const AUDIT_ACTION_STYLES = {
   INSERT: 'bg-pitch-500/15 text-pitch-400 border-pitch-500/30',
   UPDATE: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
   DELETE: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+  RESTORE: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
   IMPORT: 'bg-amber-500/15 text-amber-300 border-amber-500/30'
 };
 
@@ -1922,13 +1929,16 @@ function renderAuditEntry(entry) {
     </div>`;
 }
 
-function openAuditModal() {
+function closeDataMenu() {
   const menu = document.getElementById('data-menu');
-  if (menu) {
-    menu.classList.add('hidden');
-    const opener = document.querySelector('[aria-controls="data-menu"]');
-    if (opener) opener.setAttribute('aria-expanded', 'false');
-  }
+  if (!menu) return;
+  menu.classList.add('hidden');
+  const opener = document.querySelector('[aria-controls="data-menu"]');
+  if (opener) opener.setAttribute('aria-expanded', 'false');
+}
+
+function openAuditModal() {
+  closeDataMenu();
   openModal('modal-audit');
   renderAuditLog();
 }
@@ -1968,6 +1978,133 @@ function renderAuditLog() {
 function refreshAuditLogIfOpen() {
   const modal = document.getElementById('modal-audit');
   if (modal && !modal.classList.contains('hidden')) renderAuditLog();
+}
+
+/* ---------- recently deleted (admin) ---------- */
+
+function openTrashModal() {
+  closeDataMenu();
+  openModal('modal-trash');
+  renderTrash();
+}
+
+function renderTrashItem(kind, id, label, meta) {
+  return `
+    <div class="flex items-center gap-3 p-3 bg-slate-800/40 border border-slate-800 rounded-lg">
+      <div class="min-w-0 flex-1">
+        <p class="text-slate-200 font-medium break-words">${esc(label)}</p>
+        <p class="text-[11px] text-slate-500 mt-0.5 break-words">${esc(meta)}</p>
+      </div>
+      <button data-action="restore-${kind}" data-id="${esc(id)}"
+              class="shrink-0 px-3 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-[11px] font-semibold transition">
+        ${esc(t('trashRestore'))}
+      </button>
+    </div>`;
+}
+
+function renderTrashSection(titleKey, items) {
+  if (!items.length) return '';
+  return `
+    <section class="space-y-2">
+      <h4 class="text-[11px] uppercase tracking-wide font-semibold text-slate-400">${esc(t(titleKey))}</h4>
+      ${items.join('')}
+    </section>`;
+}
+
+function renderTrash() {
+  const list = document.getElementById('trash-list');
+  const modal = document.getElementById('modal-trash');
+  if (!list || !modal) return;
+
+  if (!BACKEND_READY) {
+    list.innerHTML = `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('trashUnavailable'))}</div>`;
+    return;
+  }
+
+  list.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('trashLoading'))}</p>`;
+
+  dbListDeleted()
+    .then(trash => {
+      if (modal.classList.contains('hidden')) return;
+      if (trash === null) {
+        list.innerHTML = `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('trashUnavailable'))}</div>`;
+        return;
+      }
+
+      const teams = Array.isArray(trash.teams) ? trash.teams : [];
+      const matches = Array.isArray(trash.matches) ? trash.matches : [];
+      const seasons = Array.isArray(trash.seasons) ? trash.seasons : [];
+      if (!teams.length && !matches.length && !seasons.length) {
+        list.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('trashEmpty'))}</p>`;
+        return;
+      }
+
+      const sections = [];
+      sections.push(renderTrashSection('trashTeams', teams.map(team => {
+        const label = team.code ? `${team.name} (${team.code})` : team.name;
+        const meta = [
+          `${team.playerCount || 0} ${t('trashPlayers')}`,
+          `${team.matchCount || 0} ${t('trashFixtures')}`,
+          `${t('trashDeletedAt')} ${auditTime(team.deletedAt)}`
+        ].join(' · ');
+        return renderTrashItem('team', team.id, label, meta);
+      })));
+
+      sections.push(renderTrashSection('trashMatches', matches.map(match => {
+        const label = `${match.homeName || '?'} ${match.homeScore == null ? 0 : match.homeScore}–${match.awayScore == null ? 0 : match.awayScore} ${match.awayName || '?'}`;
+        const meta = [
+          `${t('matchdayPrefix')} ${match.round == null ? '?' : match.round}`,
+          `${t('trashDeletedAt')} ${auditTime(match.deletedAt)}`
+        ].join(' · ');
+        return renderTrashItem('match', match.id, label, meta);
+      })));
+
+      sections.push(renderTrashSection('trashSeasons', seasons.map(season => {
+        const meta = `${t('trashDeletedAt')} ${auditTime(season.deletedAt)}`;
+        return renderTrashItem('season', season.id, season.name || season.id, meta);
+      })));
+
+      list.innerHTML = sections.join('');
+    })
+    .catch(error => {
+      console.error('KickOff Division: could not load the deleted items.', error);
+      list.innerHTML = `<p class="py-6 text-center text-rose-400">${esc(t('trashError'))}</p>`;
+    });
+}
+
+async function restoreTrashItem(kind, id) {
+  const restore = {
+    team: dbRestoreTeam,
+    match: dbRestoreMatch,
+    season: dbRestoreSeason
+  }[kind];
+  if (!restore) return;
+
+  try {
+    await restore(id);
+    await refreshData();
+    renderApp();
+    showToast(t({
+      team: 'trashRestoredTeam',
+      match: 'trashRestoredMatch',
+      season: 'trashRestoredSeason'
+    }[kind]));
+    renderTrash();
+  } catch (err) {
+    const message = String(err && err.message ? err.message : '');
+    let key = 'trashRestoreFailed';
+    if (err && err.code === 'SOFT_DELETE_MIGRATION_REQUIRED') key = 'alertSoftDeleteMigration';
+    else if (/Restore the teams/i.test(message)) key = 'trashRestoreTeamFirst';
+    else if (/Restore the season/i.test(message)) key = 'trashRestoreSeasonFirst';
+    alert(t(key));
+    renderTrash();
+  }
+}
+
+/** Re-render the open trash dialog after a language switch. */
+function refreshTrashIfOpen() {
+  const modal = document.getElementById('modal-trash');
+  if (modal && !modal.classList.contains('hidden')) renderTrash();
 }
 
 function toggleDataMenu(button) {

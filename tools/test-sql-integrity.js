@@ -63,8 +63,13 @@ async function run() {
   };
 
   try {
-    // The migration must be safe to re-run on an already-migrated project.
+    // Upgrading an existing project: integrity, audit, then soft delete.
+    // Every migration must be safe to re-run.
     await exec(fs.readFileSync(path.join(ROOT, 'supabase/integrity-migration.sql'), 'utf8'));
+    await exec(fs.readFileSync(path.join(ROOT, 'supabase/audit-log-migration.sql'), 'utf8'));
+    const softDeleteSql = fs.readFileSync(path.join(ROOT, 'supabase/soft-delete-migration.sql'), 'utf8');
+    await exec(softDeleteSql);
+    await exec(softDeleteSql);
 
     // Archived season + isolated team-deletion fixtures.
     await exec(`
@@ -163,11 +168,14 @@ async function run() {
     });
     assert.strictEqual((await q("select count(*)::int n from public.match_events where match_id = 'm_new'"))[0].n, 1);
 
-    // delete_match reverses that event's contribution.
+    // delete_match moves the fixture to the trash and reverses its events.
     await asRole('authenticated', async () => {
       await q("select public.delete_match('m_new')");
     });
-    assert.strictEqual((await q("select 1 from public.matches where id = 'm_new'")).length, 0);
+    assert.strictEqual((await q("select 1 from public.matches where id = 'm_new' and deleted_at is null")).length, 0);
+    const trashedMatch = await q("select deleted_at from public.matches where id = 'm_new'");
+    assert.strictEqual(trashedMatch.length, 1, 'trashed match should stay in the database');
+    assert(trashedMatch[0].deleted_at, 'trashed match should have deleted_at set');
     assert.strictEqual((await q("select goals from public.players where id = 'pdel'"))[0].goals, 0);
     console.log('OK atomic save + delete_match totals');
 
@@ -198,15 +206,116 @@ async function run() {
     assert.strictEqual((await q("select goals from public.players where id = 'pkeep'"))[0].goals, 1);
     assert.strictEqual((await q("select yellow from public.players where id = 'pother'"))[0].yellow, 1);
 
+    // delete_team: totals are reversed and the club moves to the trash.
     await asRole('authenticated', async () => {
       await q("select public.delete_team('tdel')");
     });
-    assert.strictEqual((await q("select 1 from public.teams where id = 'tdel'")).length, 0);
-    assert.strictEqual((await q("select 1 from public.matches where id = 'm_del'")).length, 0);
-    assert.strictEqual((await q("select 1 from public.players where id = 'pdel'")).length, 0);
+    const trashedTeam = await q("select deleted_at from public.teams where id = 'tdel'");
+    assert.strictEqual(trashedTeam.length, 1, 'trashed team should stay in the database');
+    assert(trashedTeam[0].deleted_at, 'trashed team should have deleted_at set');
+    assert.strictEqual((await q("select 1 from public.teams where id = 'tdel' and deleted_at is null")).length, 0);
     assert.strictEqual((await q("select goals from public.players where id = 'pkeep'"))[0].goals, 0);
     assert.strictEqual((await q("select yellow from public.players where id = 'pother'"))[0].yellow, 0);
-    console.log('OK safe team deletion');
+
+    // Its squad, fixtures and events disappear for clients.
+    const hidden = await asRole('anon', async () => ({
+      team: (await q("select 1 from public.teams where id = 'tdel'")).length,
+      players: (await q("select 1 from public.players where team_id = 'tdel'")).length,
+      matches: (await q("select 1 from public.matches where home_id = 'tdel' or away_id = 'tdel'")).length,
+      events: (await q("select 1 from public.match_events where match_id = 'm_del'")).length
+    }));
+    assert.deepStrictEqual(hidden, { team: 0, players: 0, matches: 0, events: 0 });
+
+    const trash = await asRole('authenticated', () => q("select public.list_deleted() as trash"));
+    assert.strictEqual(trash[0].trash.teams.length, 1);
+    assert.strictEqual(trash[0].trash.teams[0].id, 'tdel');
+    assert.strictEqual(trash[0].trash.teams[0].playerCount, 1);
+
+    // Restore brings the club, squad and fixtures back and re-applies totals.
+    await asRole('authenticated', async () => {
+      await q("select public.restore_team('tdel')");
+    });
+    assert.strictEqual((await q("select 1 from public.teams where id = 'tdel' and deleted_at is null")).length, 1);
+    assert.strictEqual((await q("select goals from public.players where id = 'pkeep'"))[0].goals, 1);
+    assert.strictEqual((await q("select yellow from public.players where id = 'pother'"))[0].yellow, 1);
+    const visibleAgain = await asRole('anon', async () => ({
+      players: (await q("select 1 from public.players where team_id = 'tdel'")).length,
+      matches: (await q("select 1 from public.matches where home_id = 'tdel' or away_id = 'tdel'")).length,
+      events: (await q("select 1 from public.match_events where match_id = 'm_del'")).length
+    }));
+    assert.deepStrictEqual(visibleAgain, { players: 1, matches: 1, events: 3 });
+
+    // Restoring twice or deleting twice must stay idempotent.
+    await asRole('authenticated', async () => {
+      await q("select public.restore_team('tdel')");
+      await q("select public.delete_team('tdel')");
+      await q("select public.delete_team('tdel')");
+    });
+    assert.strictEqual((await q("select goals from public.players where id = 'pkeep'"))[0].goals, 0);
+    await asRole('authenticated', async () => {
+      await q("select public.restore_team('tdel')");
+    });
+    assert.strictEqual((await q("select goals from public.players where id = 'pkeep'"))[0].goals, 1);
+
+    // A trashed fixture frees its slot for a replacement in the same round.
+    await asRole('authenticated', async () => {
+      await expectError(
+        () => q(`select public.save_match(
+          '{"id":"m_dup","season_id":"s1","round":9,"home_id":"tdel","away_id":"tkeep","status":"SCHEDULED"}'::jsonb,
+          null
+        )`),
+        /already exists/
+      );
+      await q("select public.delete_match('m_del')");
+      await q(`select public.save_match(
+        '{"id":"m_del2","season_id":"s1","round":9,"home_id":"tdel","away_id":"tkeep","status":"SCHEDULED","events_counted":true}'::jsonb,
+        null
+      )`);
+    });
+    assert.strictEqual((await q("select 1 from public.matches where id = 'm_del2'")).length, 1);
+
+    // Match-level trash: events and totals are restored exactly.
+    await asRole('authenticated', async () => {
+      await q(`select public.replace_match_events('m_del2',
+        '[{"id":"e_del2","teamId":"tkeep","playerId":"pkeep","type":"goal","minute":30}]'::jsonb)`);
+    });
+    assert.strictEqual((await q("select goals from public.players where id = 'pkeep'"))[0].goals, 1);
+    await asRole('authenticated', async () => {
+      await q("select public.delete_match('m_del2')");
+    });
+    assert.strictEqual((await q("select 1 from public.matches where id = 'm_del2' and deleted_at is null")).length, 0);
+    assert.strictEqual((await q("select goals from public.players where id = 'pkeep'"))[0].goals, 0);
+    await asRole('authenticated', async () => {
+      await q("select public.restore_match('m_del2')");
+    });
+    assert.strictEqual((await q("select goals from public.players where id = 'pkeep'"))[0].goals, 1);
+    console.log('OK safe team deletion + trash restore');
+
+    // Seasons: only empty, inactive seasons can be trashed.
+    await asRole('authenticated', async () => {
+      await expectError(() => q("select public.delete_season('s1')"), /active season/);
+      await expectError(() => q("select public.delete_season('s0')"), /still has fixtures/);
+      await q("insert into public.seasons (id, name, is_active) values ('s_trash', 'Old Cup', false)");
+      await q("select public.delete_season('s_trash')");
+    });
+    assert.strictEqual(
+      (await q("select 1 from public.seasons where id = 's_trash' and deleted_at is not null")).length,
+      1
+    );
+    assert.strictEqual(
+      (await asRole('anon', () => q("select 1 from public.seasons where id = 's_trash'"))).length,
+      0
+    );
+    const seasonTrash = await asRole('authenticated', () => q("select public.list_deleted() as trash"));
+    assert.strictEqual(seasonTrash[0].trash.seasons.length, 1);
+    await asRole('authenticated', async () => {
+      await q("select public.restore_season('s_trash')");
+    });
+    assert.strictEqual(
+      (await q("select 1 from public.seasons where id = 's_trash' and deleted_at is null")).length,
+      1
+    );
+    console.log('OK season trash guards + restore');
 
     // Players with history cannot be hard-deleted; archive/restore works.
     const blockedDelete = await asRole('authenticated', () =>
@@ -251,6 +360,8 @@ async function run() {
         /permission denied|not authorized|42501/i
       );
       await expectError(() => q("select public.delete_team('t1')"), /permission denied|not authorized|42501/i);
+      await expectError(() => q("select public.list_deleted()"), /permission denied|not authorized|42501/i);
+      await expectError(() => q("select public.restore_team('tdel')"), /permission denied|not authorized|42501/i);
     });
     console.log('OK anon RPC denial');
 
@@ -284,8 +395,17 @@ async function run() {
     assert.strictEqual(auditRows[0].after.name, 'Audit FC');
     assert.strictEqual(auditRows[1].before.name, 'Audit FC');
     assert.strictEqual(auditRows[1].after.name, 'Audit FC 2');
-    assert.strictEqual(auditRows[2].after, null);
     assert.strictEqual(auditRows[2].before.name, 'Audit FC 2');
+    assert(auditRows[2].after.deleted_at, 'soft delete keeps the trashed snapshot');
+
+    // Restoring is audited as RESTORE, not as a generic update.
+    await asRole('authenticated', async () => {
+      await q("select public.restore_team('taud')");
+    });
+    const restoreAudit = (await q("select action, entity, entity_id from public.audit_log order by id desc limit 1"))[0];
+    assert.strictEqual(restoreAudit.action, 'RESTORE');
+    assert.strictEqual(restoreAudit.entity, 'teams');
+    assert.strictEqual(restoreAudit.entity_id, 'taud');
 
     // Matches carry their season id so the UI can filter by season.
     await asRole('authenticated', async () => {
@@ -349,6 +469,25 @@ async function run() {
       assert.strictEqual(freshRows[0].before.name, 'Spartan FC');
       assert.strictEqual(freshRows[0].after.name, 'Spartan FC II');
       assert.strictEqual(freshRows[0].actor_email, 'admin@test.local');
+
+      // schema.sql alone also ships soft delete + restore.
+      await fexec('set role authenticated');
+      await fq("select public.delete_team('t1')");
+      await fexec('reset role');
+      assert.strictEqual(
+        (await fq("select 1 from public.teams where id = 't1' and deleted_at is not null")).length,
+        1,
+        'fresh schema should soft-delete teams'
+      );
+      const freshTrash = (await fq("select public.list_deleted() as trash"))[0].trash;
+      assert.strictEqual(freshTrash.teams.length, 1);
+      assert.strictEqual(freshTrash.teams[0].id, 't1');
+
+      await fexec('set role authenticated');
+      await fq("select public.restore_team('t1')");
+      await fexec('reset role');
+      const freshRestore = (await fq("select action from public.audit_log where entity = 'teams' and entity_id = 't1' order by id desc limit 1"))[0];
+      assert.strictEqual(freshRestore.action, 'RESTORE', 'fresh schema label restore in the audit log');
 
       const freshPayload = JSON.stringify({
         seasons: [{ id: 's1', name: '2026 Season', is_active: true }],

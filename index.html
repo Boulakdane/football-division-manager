@@ -20,19 +20,19 @@
 
   <!-- Fonts: Inter (EN/FR) + Cairo (AR), self-hosted variable woff2 -->
   <link rel="preload" href="fonts/inter-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/fonts.css?v=3.7.0">
+  <link rel="stylesheet" href="css/fonts.css?v=3.8.0">
 
   <!-- Tailwind CSS (compiled locally, no CDN dependency) -->
-  <link rel="stylesheet" href="css/tailwind.css?v=3.7.0">
+  <link rel="stylesheet" href="css/tailwind.css?v=3.8.0">
 
   <!-- Lucide icons (vendored UMD build, previously pinned with SRI on unpkg) -->
-  <script src="vendor/lucide-1.60.0.js?v=3.7.0" defer></script>
+  <script src="vendor/lucide-1.60.0.js?v=3.8.0" defer></script>
 
   <!-- Supabase JS client (vendored; auth must not depend on a CDN) -->
-  <script src="vendor/supabase-js-2.118.0.js?v=3.7.0" defer></script>
+  <script src="vendor/supabase-js-2.118.0.js?v=3.8.0" defer></script>
 
   <!-- App styles -->
-  <link rel="stylesheet" href="css/styles.css?v=3.7.0">
+  <link rel="stylesheet" href="css/styles.css?v=3.8.0">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200 antialiased">
 
@@ -71,7 +71,7 @@
           <div>
             <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
               <span data-i18n="appTitle">KickOff Division</span>
-              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.7.0</span>
+              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.8.0</span>
             </h1>
             <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Football League Management</p>
           </div>
@@ -132,6 +132,9 @@
             <div id="data-menu" class="hidden absolute ltr:right-0 rtl:left-0 mt-2 w-52 bg-slate-800 border border-slate-700 rounded-xl shadow-xl py-1 z-50">
               <button data-action="audit-log" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
                 <i data-lucide="history" class="w-3.5 h-3.5"></i> <span data-i18n="auditTitle">Activity log</span>
+              </button>
+              <button data-action="trash-open" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> <span data-i18n="trashTitle">Recently deleted</span>
               </button>
               <button data-action="password-modal" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
                 <i data-lucide="lock" class="w-3.5 h-3.5"></i> <span data-i18n="authChangePassword">Change password</span>
@@ -688,6 +691,29 @@
     </div>
   </div>
 
+  <!-- MODAL: RECENTLY DELETED (ADMIN) -->
+  <div id="modal-trash" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="trash-2" class="w-5 h-5 text-rose-400"></i> <span data-i18n="trashTitle">Recently deleted</span>
+        </h3>
+        <button data-action="close-modal" data-modal="modal-trash" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <p class="text-[11px] text-slate-500 leading-relaxed" data-i18n="trashHint">Deleted teams, matches and seasons wait here. Restoring brings their players and events back exactly as they were.</p>
+
+      <div id="trash-list" class="flex-1 overflow-y-auto space-y-4 text-xs min-h-[6rem]"></div>
+
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <button data-action="trash-refresh" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span data-i18n="auditRefresh">Refresh</span>
+        </button>
+        <button data-action="close-modal" data-modal="modal-trash" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold" data-i18n="btnGotIt">Got it</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: ADMIN LOGIN / SIGNUP -->
   <div id="modal-login" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -802,11 +828,11 @@
   </div>
 
   <!-- Application scripts (deferred, loaded in dependency order) -->
-  <script src="js/i18n.js?v=3.7.0" defer></script>
-  <script src="js/store.js?v=3.7.0" defer></script>
-  <script src="js/config.js?v=3.7.0" defer></script>
-  <script src="js/backend.js?v=3.7.0" defer></script>
-  <script src="js/auth.js?v=3.7.0" defer></script>
-  <script src="js/app.js?v=3.7.0" defer></script>
+  <script src="js/i18n.js?v=3.8.0" defer></script>
+  <script src="js/store.js?v=3.8.0" defer></script>
+  <script src="js/config.js?v=3.8.0" defer></script>
+  <script src="js/backend.js?v=3.8.0" defer></script>
+  <script src="js/auth.js?v=3.8.0" defer></script>
+  <script src="js/app.js?v=3.8.0" defer></script>
 </body>
 </html>

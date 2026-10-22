@@ -55,6 +55,7 @@ declare
   v_after jsonb;
   v_row jsonb;
   v_actor uuid := auth.uid();
+  v_action text := tg_op;
 begin
   -- Bulk imports record one summary entry instead of every row.
   if v_skip = '1' then
@@ -69,13 +70,23 @@ begin
   end if;
   v_row := coalesce(v_after, v_before);
 
+  -- Soft deletes and restores are updates of deleted_at. Label them so
+  -- the activity log reads "Deleted" / "Restored".
+  if tg_op = 'UPDATE' then
+    if (v_before->>'deleted_at') is null and (v_after->>'deleted_at') is not null then
+      v_action := 'DELETE';
+    elsif (v_before->>'deleted_at') is not null and (v_after->>'deleted_at') is null then
+      v_action := 'RESTORE';
+    end if;
+  end if;
+
   insert into public.audit_log (
     actor_id, actor_email, action, entity, entity_id, season_id, before, after
   )
   values (
     v_actor,
     (select u.email from auth.users u where u.id = v_actor),
-    tg_op,
+    v_action,
     tg_table_name,
     v_row->>'id',
     v_row->>'season_id',

@@ -477,6 +477,12 @@ async function dbActivateSeason(seasonId) {
 async function dbDeleteSeason(seasonId) {
   assertBackend();
 
+  // Prefer the RPC: it moves the season to the trash and can be undone.
+  const { error } = await db.rpc('delete_season', { p_season_id: seasonId });
+  if (!error) return;
+  if (!isMissingFunction(error)) throw error;
+
+  // Before the soft-delete migration, fall back to a physical delete.
   const { count, error: countError } = await db
     .from('matches')
     .select('id', { count: 'exact', head: true })
@@ -484,14 +490,56 @@ async function dbDeleteSeason(seasonId) {
   if (countError) throw countError;
   if (count) throw new Error('Season still has fixtures');
 
-  const { data, error } = await db
+  const { data, error: deleteError } = await db
     .from('seasons')
     .delete()
     .eq('id', seasonId)
     .eq('is_active', false)
     .select('id');
-  if (error) throw error;
+  if (deleteError) throw deleteError;
   if (!data || data.length === 0) throw new Error('Season cannot be deleted');
+}
+
+/** Mark a missing soft-delete-migration function so the UI can explain it. */
+function softDeleteMigrationError(error) {
+  if (isMissingFunction(error)) {
+    const migrationError = new Error('Run supabase/soft-delete-migration.sql');
+    migrationError.code = 'SOFT_DELETE_MIGRATION_REQUIRED';
+    return migrationError;
+  }
+  return error;
+}
+
+/**
+ * Recently deleted teams, matches and seasons.
+ * Returns null when supabase/soft-delete-migration.sql has not been applied.
+ */
+async function dbListDeleted() {
+  assertBackend();
+  const { data, error } = await db.rpc('list_deleted');
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  return data || { teams: [], matches: [], seasons: [] };
+}
+
+async function dbRestoreTeam(teamId) {
+  assertBackend();
+  const { error } = await db.rpc('restore_team', { p_team_id: teamId });
+  if (error) throw softDeleteMigrationError(error);
+}
+
+async function dbRestoreMatch(matchId) {
+  assertBackend();
+  const { error } = await db.rpc('restore_match', { p_match_id: matchId });
+  if (error) throw softDeleteMigrationError(error);
+}
+
+async function dbRestoreSeason(seasonId) {
+  assertBackend();
+  const { error } = await db.rpc('restore_season', { p_season_id: seasonId });
+  if (error) throw softDeleteMigrationError(error);
 }
 
 /**

@@ -73,7 +73,8 @@ create table if not exists public.seasons (
   start_date date,
   end_date date,
   is_active boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
 -- Keep the existing default season (or create it) without changing
@@ -131,7 +132,8 @@ create table if not exists public.teams (
   name text not null,
   code text not null default 'TBD',
   color text not null default '#16a34a',
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
 create table if not exists public.players (
@@ -163,7 +165,8 @@ create table if not exists public.matches (
   venue text,
   scorers_text text,
   events_counted boolean not null default true,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
 -- Upgrade a matches table created before seasons existed.
@@ -228,6 +231,23 @@ create index if not exists match_events_match_id_idx
 create index if not exists match_events_player_id_idx
   on public.match_events (player_id);
 
+-- Trash columns for projects created before soft delete existed.
+alter table public.seasons add column if not exists deleted_at timestamptz;
+alter table public.teams add column if not exists deleted_at timestamptz;
+alter table public.matches add column if not exists deleted_at timestamptz;
+
+create index if not exists seasons_deleted_idx
+  on public.seasons (deleted_at) where deleted_at is not null;
+
+create index if not exists teams_deleted_idx
+  on public.teams (deleted_at) where deleted_at is not null;
+
+create index if not exists matches_deleted_idx
+  on public.matches (deleted_at) where deleted_at is not null;
+
+create index if not exists matches_home_id_idx on public.matches (home_id);
+create index if not exists matches_away_id_idx on public.matches (away_id);
+
 -- ------------------------------------------------------------
 -- 4. GRANTS (RLS still decides what each role may do)
 -- ------------------------------------------------------------
@@ -264,9 +284,11 @@ create policy profiles_select_admin on public.profiles
   using (public.is_admin());
 
 -- Seasons: public read, admin write.
+-- Trashed rows are invisible to everyone, admins included; admins find
+-- them through list_deleted() and bring them back with restore_*().
 drop policy if exists seasons_select_all on public.seasons;
 create policy seasons_select_all on public.seasons
-  for select to anon, authenticated using (true);
+  for select to anon, authenticated using (deleted_at is null);
 
 drop policy if exists seasons_insert_admin on public.seasons;
 create policy seasons_insert_admin on public.seasons
@@ -274,7 +296,9 @@ create policy seasons_insert_admin on public.seasons
 
 drop policy if exists seasons_update_admin on public.seasons;
 create policy seasons_update_admin on public.seasons
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+  for update to authenticated
+  using (public.is_admin() and deleted_at is null)
+  with check (public.is_admin() and deleted_at is null);
 
 drop policy if exists seasons_delete_admin on public.seasons;
 create policy seasons_delete_admin on public.seasons
@@ -283,7 +307,7 @@ create policy seasons_delete_admin on public.seasons
 -- Teams: public read, admin write.
 drop policy if exists teams_select_all on public.teams;
 create policy teams_select_all on public.teams
-  for select to anon, authenticated using (true);
+  for select to anon, authenticated using (deleted_at is null);
 
 drop policy if exists teams_insert_admin on public.teams;
 create policy teams_insert_admin on public.teams
@@ -291,16 +315,28 @@ create policy teams_insert_admin on public.teams
 
 drop policy if exists teams_update_admin on public.teams;
 create policy teams_update_admin on public.teams
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+  for update to authenticated
+  using (public.is_admin() and deleted_at is null)
+  with check (public.is_admin() and deleted_at is null);
 
 -- Team deletion must go through delete_team() so opponent totals are
--- reversed before the cascade. No direct DELETE policy is created.
+-- reversed before the club is moved to the trash. No direct DELETE policy
+-- is created.
 drop policy if exists teams_delete_admin on public.teams;
 
--- Players: public read, admin write.
+-- Players: public read, admin write. Trashed clubs take their squad with
+-- them through this policy.
 drop policy if exists players_select_all on public.players;
 create policy players_select_all on public.players
-  for select to anon, authenticated using (true);
+  for select to anon, authenticated
+  using (
+    exists (
+      select 1
+      from public.teams t
+      where t.id = players.team_id
+        and t.deleted_at is null
+    )
+  );
 
 drop policy if exists players_insert_admin on public.players;
 create policy players_insert_admin on public.players
@@ -327,7 +363,18 @@ create policy players_delete_admin on public.players
 -- written directly; archived seasons are read-only in the database.
 drop policy if exists matches_select_all on public.matches;
 create policy matches_select_all on public.matches
-  for select to anon, authenticated using (true);
+  for select to anon, authenticated
+  using (
+    deleted_at is null
+    and exists (
+      select 1 from public.teams t
+      where t.id = matches.home_id and t.deleted_at is null
+    )
+    and exists (
+      select 1 from public.teams t
+      where t.id = matches.away_id and t.deleted_at is null
+    )
+  );
 
 drop policy if exists matches_insert_admin on public.matches;
 create policy matches_insert_admin on public.matches
@@ -337,18 +384,28 @@ create policy matches_insert_admin on public.matches
 drop policy if exists matches_update_admin on public.matches;
 create policy matches_update_admin on public.matches
   for update to authenticated
-  using (public.is_admin() and public.is_active_season(season_id))
-  with check (public.is_admin() and public.is_active_season(season_id));
+  using (public.is_admin() and deleted_at is null and public.is_active_season(season_id))
+  with check (public.is_admin() and deleted_at is null and public.is_active_season(season_id));
 
 -- Match deletion must go through delete_match() so event contributions are
--- reversed atomically. No direct DELETE policy is created.
+-- reversed atomically and the fixture moves to the trash. No direct DELETE
+-- policy is created.
 drop policy if exists matches_delete_admin on public.matches;
 
--- Match events: public read. Writes are RPC-only so the cumulative player
--- totals cannot be changed without the matching event rows.
+-- Match events: public read. A trashed fixture takes its events with it.
+-- Writes are RPC-only so the cumulative player totals cannot be changed
+-- without the matching event rows.
 drop policy if exists match_events_select_all on public.match_events;
 create policy match_events_select_all on public.match_events
-  for select to anon, authenticated using (true);
+  for select to anon, authenticated
+  using (
+    exists (
+      select 1
+      from public.matches m
+      where m.id = match_events.match_id
+        and m.deleted_at is null
+    )
+  );
 
 drop policy if exists match_events_insert_admin on public.match_events;
 drop policy if exists match_events_update_admin on public.match_events;
@@ -448,13 +505,13 @@ begin
     raise exception 'Only admins can change match events' using errcode = '42501';
   end if;
 
-  -- Serialize match/event/team writes with full imports.
   perform pg_advisory_xact_lock(748291);
 
   select events_counted, season_id
     into v_counted, v_season_id
   from public.matches
-  where id = p_match_id;
+  where id = p_match_id
+    and deleted_at is null;
 
   if not found then
     raise exception 'Match not found';
@@ -539,6 +596,7 @@ declare
   v_old record;
   v_counted boolean;
   v_season_id text;
+  v_deleted_at timestamptz;
 begin
   if not public.is_admin() then
     raise exception 'Only admins can delete matches' using errcode = '42501';
@@ -546,13 +604,16 @@ begin
 
   perform pg_advisory_xact_lock(748291);
 
-  select events_counted, season_id
-    into v_counted, v_season_id
+  select events_counted, season_id, deleted_at
+    into v_counted, v_season_id, v_deleted_at
   from public.matches
   where id = p_match_id;
 
   if not found then
     raise exception 'Match not found';
+  end if;
+  if v_deleted_at is not null then
+    return;  -- already in the trash
   end if;
   if not public.is_active_season(v_season_id) then
     raise exception 'Only the active season can be edited' using errcode = '42501';
@@ -570,7 +631,7 @@ begin
     end loop;
   end if;
 
-  delete from public.matches where id = p_match_id;
+  update public.matches set deleted_at = now() where id = p_match_id;
 end;
 $$;
 
@@ -602,6 +663,7 @@ declare
   v_status text;
   v_events_counted boolean;
   v_existing_season_id text;
+  v_existing_deleted_at timestamptz;
 begin
   if not public.is_admin() then
     raise exception 'Only admins can save matches' using errcode = '42501';
@@ -633,9 +695,14 @@ begin
   if v_home_id is null or v_away_id is null or v_home_id = v_away_id then
     raise exception 'Home and away teams must be different';
   end if;
-  if not exists (select 1 from public.teams where id = v_home_id)
-     or not exists (select 1 from public.teams where id = v_away_id) then
-    raise exception 'One or both teams do not exist';
+  if not exists (
+    select 1 from public.teams
+    where id = v_home_id and deleted_at is null
+  ) or not exists (
+    select 1 from public.teams
+    where id = v_away_id and deleted_at is null
+  ) then
+    raise exception 'One or both teams do not exist or are in the trash';
   end if;
 
   v_status := coalesce(nullif(p_match->>'status', ''), 'SCHEDULED');
@@ -651,11 +718,14 @@ begin
 
   v_events_counted := coalesce((p_match->>'events_counted')::boolean, true);
 
-  select season_id
-    into v_existing_season_id
+  select season_id, deleted_at
+    into v_existing_season_id, v_existing_deleted_at
   from public.matches
   where id = v_id;
 
+  if found and v_existing_deleted_at is not null then
+    raise exception 'This match is in the recently deleted list; restore it first';
+  end if;
   if found and v_existing_season_id <> v_season_id then
     raise exception 'A match cannot be moved to another season';
   end if;
@@ -669,6 +739,7 @@ begin
     where m.id <> v_id
       and m.season_id = v_season_id
       and m.round = v_round
+      and m.deleted_at is null
       and (
         (m.home_id = v_home_id and m.away_id = v_away_id)
         or (m.home_id = v_away_id and m.away_id = v_home_id)
@@ -738,21 +809,29 @@ as $$
 declare
   v_match record;
   v_event record;
+  v_deleted_at timestamptz;
 begin
   if not public.is_admin() then
     raise exception 'Only admins can delete teams' using errcode = '42501';
   end if;
 
-  if not exists (select 1 from public.teams where id = p_team_id) then
+  select deleted_at into v_deleted_at from public.teams where id = p_team_id;
+  if not found then
     raise exception 'Team not found';
+  end if;
+  if v_deleted_at is not null then
+    return;  -- already in the trash
   end if;
 
   perform pg_advisory_xact_lock(748291);
 
+  -- Reverse totals for fixtures that are visible right now. Trashed
+  -- fixtures were already reversed when they were deleted.
   for v_match in
     select id, events_counted
     from public.matches
-    where home_id = p_team_id or away_id = p_team_id
+    where (home_id = p_team_id or away_id = p_team_id)
+      and deleted_at is null
   loop
     if v_match.events_counted then
       for v_event in
@@ -769,16 +848,243 @@ begin
     end if;
   end loop;
 
-  -- Remove events before the team cascade so the history-protection
-  -- policy on players cannot block the cascade.
-  delete from public.match_events
-  where match_id in (
-    select id
-    from public.matches
-    where home_id = p_team_id or away_id = p_team_id
-  );
+  -- Events and players stay in place: the RLS policies above hide them
+  -- while the club is in the trash, and a restore brings them back.
+  update public.teams set deleted_at = now() where id = p_team_id;
+end;
+$$;
 
-  delete from public.teams where id = p_team_id;
+-- ------------------------------------------------------------
+-- 6d-2. SOFT DELETE + RESTORE (admin only)
+--    Trashed rows stay in the database with deleted_at set, so a
+--    restore is exact. RLS hides them from every client.
+-- ------------------------------------------------------------
+create or replace function public.delete_season(p_season_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_active boolean;
+  v_deleted_at timestamptz;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can delete seasons' using errcode = '42501';
+  end if;
+
+  perform pg_advisory_xact_lock(748291);
+
+  select is_active, deleted_at into v_active, v_deleted_at
+  from public.seasons
+  where id = p_season_id;
+
+  if not found then
+    raise exception 'Season not found';
+  end if;
+  if v_deleted_at is not null then
+    return;
+  end if;
+  if v_active then
+    raise exception 'The active season cannot be deleted' using errcode = '42501';
+  end if;
+  if exists (
+    select 1 from public.matches
+    where season_id = p_season_id
+      and deleted_at is null
+  ) then
+    raise exception 'Season still has fixtures';
+  end if;
+
+  update public.seasons set deleted_at = now() where id = p_season_id;
+end;
+$$;
+
+create or replace function public.restore_match(p_match_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_event record;
+  v_counted boolean;
+  v_season_id text;
+  v_home_id text;
+  v_away_id text;
+  v_deleted_at timestamptz;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can restore matches' using errcode = '42501';
+  end if;
+
+  perform pg_advisory_xact_lock(748291);
+
+  select events_counted, season_id, home_id, away_id, deleted_at
+    into v_counted, v_season_id, v_home_id, v_away_id, v_deleted_at
+  from public.matches
+  where id = p_match_id;
+
+  if not found then
+    raise exception 'Match not found';
+  end if;
+  if v_deleted_at is null then
+    return;
+  end if;
+
+  if exists (select 1 from public.seasons where id = v_season_id and deleted_at is not null) then
+    raise exception 'Restore the season before this match';
+  end if;
+  if exists (
+    select 1 from public.teams
+    where id in (v_home_id, v_away_id) and deleted_at is not null
+  ) then
+    raise exception 'Restore the teams before this match';
+  end if;
+
+  update public.matches set deleted_at = null where id = p_match_id;
+
+  if v_counted then
+    for v_event in
+      select player_id, event_type
+      from public.match_events
+      where match_id = p_match_id
+    loop
+      update public.players
+         set goals = goals + case when v_event.event_type = 'goal' then 1 else 0 end,
+             yellow = yellow + case when v_event.event_type = 'yellow' then 1 else 0 end,
+             red = red + case when v_event.event_type = 'red' then 1 else 0 end
+       where id = v_event.player_id;
+    end loop;
+  end if;
+end;
+$$;
+
+create or replace function public.restore_team(p_team_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_match record;
+  v_event record;
+  v_deleted_at timestamptz;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can restore teams' using errcode = '42501';
+  end if;
+
+  perform pg_advisory_xact_lock(748291);
+
+  select deleted_at into v_deleted_at from public.teams where id = p_team_id;
+  if not found then
+    raise exception 'Team not found';
+  end if;
+  if v_deleted_at is null then
+    return;
+  end if;
+
+  update public.teams set deleted_at = null where id = p_team_id;
+
+  -- Re-apply totals only for fixtures this restore makes visible again.
+  for v_match in
+    select id, events_counted
+    from public.matches
+    where (home_id = p_team_id or away_id = p_team_id)
+      and deleted_at is null
+  loop
+    if v_match.events_counted then
+      for v_event in
+        select player_id, event_type
+        from public.match_events
+        where match_id = v_match.id
+      loop
+        update public.players
+           set goals = goals + case when v_event.event_type = 'goal' then 1 else 0 end,
+               yellow = yellow + case when v_event.event_type = 'yellow' then 1 else 0 end,
+               red = red + case when v_event.event_type = 'red' then 1 else 0 end
+         where id = v_event.player_id;
+      end loop;
+    end if;
+  end loop;
+end;
+$$;
+
+create or replace function public.restore_season(p_season_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can restore seasons' using errcode = '42501';
+  end if;
+
+  if not exists (select 1 from public.seasons where id = p_season_id) then
+    raise exception 'Season not found';
+  end if;
+
+  update public.seasons set deleted_at = null where id = p_season_id;
+end;
+$$;
+
+create or replace function public.list_deleted()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can read the deleted items' using errcode = '42501';
+  end if;
+
+  return jsonb_build_object(
+    'teams', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', t.id,
+        'name', t.name,
+        'code', t.code,
+        'deletedAt', t.deleted_at,
+        'playerCount', (select count(*) from public.players p where p.team_id = t.id),
+        'matchCount', (
+          select count(*) from public.matches m
+          where (m.home_id = t.id or m.away_id = t.id)
+            and m.deleted_at is null
+        )
+      ) order by t.deleted_at desc)
+      from public.teams t
+      where t.deleted_at is not null
+    ), '[]'::jsonb),
+    'matches', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', m.id,
+        'homeName', h.name,
+        'awayName', a.name,
+        'homeScore', m.home_score,
+        'awayScore', m.away_score,
+        'round', m.round,
+        'seasonId', m.season_id,
+        'deletedAt', m.deleted_at
+      ) order by m.deleted_at desc)
+      from public.matches m
+      left join public.teams h on h.id = m.home_id
+      left join public.teams a on a.id = m.away_id
+      where m.deleted_at is not null
+    ), '[]'::jsonb),
+    'seasons', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', s.id,
+        'name', s.name,
+        'deletedAt', s.deleted_at
+      ) order by s.deleted_at desc)
+      from public.seasons s
+      where s.deleted_at is not null
+    ), '[]'::jsonb)
+  );
 end;
 $$;
 
@@ -824,6 +1130,16 @@ grant execute on function public.save_match(jsonb, jsonb) to authenticated;
 grant execute on function public.delete_team(text) to authenticated;
 grant execute on function public.archive_player(text) to authenticated;
 grant execute on function public.restore_player(text) to authenticated;
+revoke execute on function public.delete_season(text) from public, anon;
+revoke execute on function public.restore_match(text) from public, anon;
+revoke execute on function public.restore_team(text) from public, anon;
+revoke execute on function public.restore_season(text) from public, anon;
+revoke execute on function public.list_deleted() from public, anon;
+grant execute on function public.delete_season(text) to authenticated;
+grant execute on function public.restore_match(text) to authenticated;
+grant execute on function public.restore_team(text) to authenticated;
+grant execute on function public.restore_season(text) to authenticated;
+grant execute on function public.list_deleted() to authenticated;
 
 -- ------------------------------------------------------------
 -- 6e. ATOMIC FULL-DATA IMPORT (admin only)
@@ -1161,6 +1477,7 @@ declare
   v_after jsonb;
   v_row jsonb;
   v_actor uuid := auth.uid();
+  v_action text := tg_op;
 begin
   -- Bulk imports record one summary entry instead of every row.
   if v_skip = '1' then
@@ -1175,13 +1492,23 @@ begin
   end if;
   v_row := coalesce(v_after, v_before);
 
+  -- Soft deletes and restores are updates of deleted_at. Label them so
+  -- the activity log reads "Deleted" / "Restored".
+  if tg_op = 'UPDATE' then
+    if (v_before->>'deleted_at') is null and (v_after->>'deleted_at') is not null then
+      v_action := 'DELETE';
+    elsif (v_before->>'deleted_at') is not null and (v_after->>'deleted_at') is null then
+      v_action := 'RESTORE';
+    end if;
+  end if;
+
   insert into public.audit_log (
     actor_id, actor_email, action, entity, entity_id, season_id, before, after
   )
   values (
     v_actor,
     (select u.email from auth.users u where u.id = v_actor),
-    tg_op,
+    v_action,
     tg_table_name,
     v_row->>'id',
     v_row->>'season_id',

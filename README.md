@@ -92,7 +92,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── match-events-migration.sql   # Upgrade an existing database to match events
     ├── atomic-import-migration.sql  # Install the one-transaction full-data import RPC
     ├── integrity-migration.sql      # Archive players, lock archived seasons and make deletes safe
-    └── audit-log-migration.sql      # Trigger-fed, admin-only audit log + Activity log panel
+    ├── audit-log-migration.sql      # Trigger-fed, admin-only audit log + Activity log panel
+    └── soft-delete-migration.sql    # Trash + restore for teams, matches and seasons
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -138,8 +139,13 @@ plus Supabase.
 > 5. [`supabase/audit-log-migration.sql`](supabase/audit-log-migration.sql) —
 >    creates the append-only `audit_log` (triggers on teams, players, matches,
 >    events and seasons) and the admin-only `list_audit_log()` RPC used by the
->    **Activity log** panel. **Run this last**; if you re-run an earlier
->    migration later, run this one again.
+>    **Activity log** panel.
+> 6. [`supabase/soft-delete-migration.sql`](supabase/soft-delete-migration.sql) —
+>    turns deletion into a reversible trash for teams, matches and seasons. It adds
+>    `deleted_at`, hides trashed rows through RLS, and installs `delete_season`,
+>    `restore_team`, `restore_match`, `restore_season` and `list_deleted()` for the
+>    **Recently deleted** panel. **Run this last**; if you re-run an earlier
+>    migration afterwards, run this one again.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. Do not re-run the sample seed block
@@ -148,7 +154,8 @@ plus Supabase.
 > After the integrity migration, team/match deletion and match-event writes are
 > intentionally RPC-only. The app uses `delete_team`, `delete_match`, `save_match` and
 > `replace_match_events`; direct REST deletes/writes are denied so player totals cannot
-> drift from the event history.
+> drift from the event history. After the soft-delete migration, deletes only stamp
+> `deleted_at`; restoring re-applies the same event totals.
 
 ### 2. Add your keys
 
@@ -340,7 +347,7 @@ file is out of date.
 ### Tests
 
 ```bash
-npm run test:sql        # in-memory Postgres: RLS, archive locks, atomic saves, safe deletes, audit log
+npm run test:sql        # in-memory Postgres: RLS, archive locks, atomic saves, trash restore, audit log
 npm run check:secrets   # fail if a privileged key is committed
 ```
 
@@ -388,13 +395,14 @@ Seven tables in the `public` schema. Column names are snake_case in Postgres and
 to camelCase by `js/backend.js`.
 
 ```
-seasons      (id text pk, name, start_date, end_date, is_active, created_at)
-teams        (id text pk, name, code, color)
+seasons      (id text pk, name, start_date, end_date, is_active, created_at,
+              deleted_at)
+teams        (id text pk, name, code, color, deleted_at)
 players      (id text pk, team_id → teams.id, name, pos, num, goals, yellow, red,
               is_active)
 matches      (id text pk, season_id → seasons.id, round, home_id → teams.id,
               away_id → teams.id, home_score, away_score, status, datetime, venue,
-              scorers_text, events_counted)
+              scorers_text, events_counted, deleted_at)
 match_events (id text pk, match_id → matches.id, team_id → teams.id,
               player_id → players.id, event_type: goal|yellow|red, minute, created_at)
 profiles     (id uuid pk → auth.users.id, email, role: admin|viewer)
@@ -403,11 +411,24 @@ audit_log    (id bigint pk, occurred_at, actor_id, actor_email, action, entity,
 ```
 
 `status` is one of `SCHEDULED`, `LIVE`, `FINISHED`. Only `FINISHED` matches count
-towards the league table. Deleting a team cascades to its players and matches, but the
-`delete_team` RPC first reverses that team's event contributions to opponent player
-totals. A unique partial index guarantees that at most one season is active. The
-`create_season` and `activate_season` database functions are admin-only and run in
-a single transaction, so the active season always switches cleanly.
+towards the league table. Deleting a team hides it and its squad/fixtures from every
+client without destroying the rows; the `delete_team` RPC first reverses that team's
+event contributions to opponent player totals. A unique partial index guarantees that at
+most one season is active. The `create_season` and `activate_season` database functions
+are admin-only and run in a single transaction, so the active season always switches
+cleanly.
+
+### Recently deleted (soft delete)
+
+`seasons`, `teams` and `matches` carry a nullable `deleted_at`. A delete stamps it and
+RLS immediately hides the row, its squad and its events from anonymous and signed-in
+readers alike. Admins see the trash through `list_deleted()` and bring items back with
+`restore_team`, `restore_match` or `restore_season`; restoring clears `deleted_at` and
+re-applies the event totals that were reversed on delete, so standings, squads and
+timelines return exactly as they were. A match can only be restored after its season and
+both teams are visible again, and a season can only be trashed when it is inactive and
+has no visible fixtures. `deleted_at` changes are labelled `DELETE` / `RESTORE` in the
+activity log.
 
 `players.is_active` is `false` for archived players. Archived players keep their goals,
 cards and match history, are hidden from public squads and new event dropdowns, and can
@@ -428,7 +449,8 @@ default to `true`, so events keep the totals in sync. Imported backups preserve 
 flag. See [`data/README.md`](data/README.md#eventscsv) for the CSV column.
 
 `audit_log` is written by AFTER triggers on the five league tables and by
-`replace_all_data` (one `IMPORT` row per import). There are no client grants on the
+`replace_all_data` (one `IMPORT` row per import). Soft deletes and restores are labelled
+`DELETE` and `RESTORE` instead of a generic update. There are no client grants on the
 table and RLS is enabled with no policy; admins read the newest entries through
 `list_audit_log(limit)`. It is a history, not a backup — export JSON regularly.
 
