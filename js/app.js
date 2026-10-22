@@ -324,7 +324,7 @@ function renderStandings() {
   const rows = calculateStandings();
 
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-slate-400">${esc(t('noTeamsFound'))}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" class="py-8 text-center text-slate-400">${esc(t('noTeamsFound'))}</td></tr>`;
     return;
   }
 
@@ -337,6 +337,7 @@ function renderStandings() {
 
     const gdClass = s.gd > 0 ? 'text-pitch-400' : s.gd < 0 ? 'text-rose-400' : 'text-slate-400';
     const gdText = s.gd > 0 ? '+' + s.gd : s.gd;
+    const ppg = s.mp > 0 ? (s.pts / s.mp).toFixed(2) : '0.00';
 
     return `
       <tr class="hover:bg-slate-800/40 transition">
@@ -358,6 +359,7 @@ function renderStandings() {
         <td class="py-3 px-3 text-center text-slate-400 hidden sm:table-cell">${s.ga}</td>
         <td class="py-3 px-3 text-center font-medium ${gdClass}">${gdText}</td>
         <td class="py-3 px-4 text-center font-extrabold text-white bg-slate-800/30">${s.pts}</td>
+        <td class="py-3 px-3 text-center text-slate-400 hidden md:table-cell">${ppg}</td>
         <td class="py-3 px-4 text-center">
           <div class="flex items-center justify-center gap-1">${s.form.length ? s.form.map(formBadge).join('') : '<span class="text-slate-600 text-[10px]">-</span>'}</div>
         </td>
@@ -530,7 +532,7 @@ function renderFixtures() {
     const badge = m.status === 'FINISHED'
       ? `<span class="bg-slate-700/60 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-600">${esc(t('optFinished'))}</span>`
       : m.status === 'LIVE'
-      ? `<span class="bg-rose-500/20 text-rose-400 text-[10px] font-bold px-2 py-0.5 rounded border border-rose-500/30 animate-pulse">${esc(t('optLiveNow'))}</span>`
+      ? `<span class="bg-rose-500/20 text-rose-400 text-[10px] font-bold px-2 py-0.5 rounded border border-rose-500/30 animate-pulse flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping"></span>${esc(t('optLiveNow'))}</span>`
       : `<span class="bg-blue-500/20 text-blue-400 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-500/30">${esc(t('optUpcoming'))}</span>`;
 
     const matchDate = m.datetime
