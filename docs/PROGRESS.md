@@ -372,3 +372,9 @@ Shipped on `main` after the small standings/LIVE tweaks. All of it is read-only 
 - Lighthouse on the local build: **Accessibility 100, Best Practices 100, SEO 100**.
 - Tailwind rebuilt (`npm.cmd run build:css`) so new utility classes ship.
 - No data imported or mutated: the in-memory test events used during the browser pass were never saved.
+
+### Live deployment check
+- GitHub Pages serves `v3.6.0` (`js/app.js?v=3.6.0`, badge `v3.6.0`).
+- Production data is unchanged: 1 season, 6 teams, 9 players, 9 matches, 1 event; all matches keep `events_counted = false`.
+- The single production event renders through the new timeline (`4' ⚽ Ethan Hunt`, TTN), top scorers render five rows, and the console is clean.
+- `v3.6.0` tag created; the `prod` tag moved from `36d85c9` to `3be0967`.
