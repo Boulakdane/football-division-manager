@@ -1,0 +1,52 @@
+name: Weekly data backup
+
+on:
+  schedule:
+    # Mondays 06:00 UTC. GitHub may delay scheduled runs by a few minutes.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Export production data (public read)
+        run: node tools/export-backup.js --env=prod --out=backup.json
+
+      - name: Summarise backup
+        run: |
+          node -e "
+            const data = require('./backup.json');
+            const counts = {
+              seasons: data.seasons.length,
+              teams: data.teams.length,
+              players: data.players.length,
+              matches: data.matches.length,
+              events: data.matchEvents.length
+            };
+            console.log(counts);
+            require('fs').appendFileSync(
+              process.env.GITHUB_STEP_SUMMARY,
+              '### KickOff Division backup\n\n' +
+              Object.entries(counts).map(([k, v]) => '- ' + k + ': ' + v).join('\n') + '\n'
+            );
+          "
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kickoff-backup-${{ github.run_number }}
+          path: backup.json
+          retention-days: 90
+          if-no-files-found: error

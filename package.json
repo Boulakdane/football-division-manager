@@ -8,7 +8,9 @@
     "build:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --minify",
     "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch",
     "test:sql": "node tools/test-sql-integrity.js",
-    "check:secrets": "node tools/check-secrets.js"
+    "check:secrets": "node tools/check-secrets.js",
+    "backup:prod": "node tools/export-backup.js --env=prod",
+    "backup:dev": "node tools/export-backup.js --env=dev"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.6",

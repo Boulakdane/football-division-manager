@@ -381,6 +381,27 @@ npm run check:secrets   # fail if a privileged key is committed
 `test:sql` uses PGlite (Postgres compiled to WASM), so it needs no Docker daemon or
 hosted database. CI also runs the JavaScript syntax check and the CSV round-trip test.
 
+### Backups
+
+Supabase Free has no automatic database backups, so the repository includes a
+public-read exporter and a scheduled GitHub Actions job:
+
+```bash
+npm run backup:prod     # writes backups/prod-backup-YYYY-MM-DD.json
+npm run backup:dev      # writes backups/dev-backup-YYYY-MM-DD.json
+```
+
+The scripts use only the publishable/anon key, so no secret is needed in CI. They
+refuse to write an empty backup if the project is unreachable or has no seasons/teams.
+The output is the same JSON shape as **Export Backup (JSON)** in the admin menu and can
+be re-imported there.
+
+[`Weekly data backup`](.github/workflows/backup.yml) runs every Monday, uploads the
+JSON as a 90-day artifact, and prints the row counts in the workflow summary. Because it
+reads the project once a week, it also prevents the Free project from being paused for
+inactivity during the off-season. Download an artifact before any risky migration and
+keep a local copy; artifacts expire.
+
 ## Bulk data entry (CSV)
 
 For a full league, editing five CSV files is faster than entering every fixture in the

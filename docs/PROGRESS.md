@@ -1,6 +1,6 @@
 # KickOff Division — Progress Update
 
-- **Last updated:** 2026-10-22
+- **Last updated:** 2026-10-24
 - **Working-tree version:** `v3.9.0`
 - **Deployed version:** `v3.9.0`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete and MFA migrations applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
@@ -283,6 +283,7 @@ Local CSV / JSON tools
 - [x] Replace client-side `dbReplaceAll` with one transactional `replace_all_data(jsonb)` RPC (installed and live-tested in production).
 - [x] Add an audit log (triggers + admin panel, `v3.7.0`).
 - [x] Add soft delete and restore for teams, matches and seasons (`v3.8.0`, applied in both projects).
+- [x] Add scheduled public-read JSON backups (weekly GitHub Actions artifact + keepalive, `2026-10-24`).
 - Add database `CHECK` constraints for scores, names, colours and dates.
 - [x] Add a SQL/RLS suite with PGlite and run it in CI.
 - Add a Playwright smoke test (public read, login, admin save, archive, import).
@@ -544,3 +545,27 @@ A stolen password is no longer enough to change league data. Admins can enrol a 
 4. ✅ Check **Activity log** shows the `SECURITY` entry for enabling and disabling the requirement.
 5. ✅ Repeat on production with a fresh backup; the data hash was unchanged afterwards.
 6. 🔲 Enrol the real admin account(s) again when you are ready to keep MFA on, and store a backup of the authenticator secret. Recovery is through another admin or the Supabase dashboard, with SQL Editor access always available.
+
+## 16. Free-tier assessment and backups (2026-10-24)
+
+### Is Supabase Free enough?
+Yes, comfortably, at both the current size and the realistic “busy” league size.
+
+- Current production data is ~5.8 KB of JSON (1 season / 6 teams / 9 players / 9 matches / 1 event). Even at 20 teams / 500 players / 200 matches / 2,000 events, the dataset is well under 1 MB.
+- The Free plan includes 500 MB database, 5 GB egress, 50,000 monthly active users and unlimited API requests. A full page load fetches the whole league (a few KB now, a few hundred KB at the busy scale), so egress supports tens of thousands of visits per month after compression.
+- Writes are tens to low hundreds per week; audit rows are 1–3 KB each, so the log grows by a few MB per year.
+
+Caveats and mitigations:
+- **No automatic backups on Free.** Solved with `tools/export-backup.js` and the weekly GitHub Actions artifact (90 days) plus local exports before risky changes.
+- **Projects pause after 7 days of inactivity.** The weekly backup queries the database, which doubles as a keepalive. A public visitor also counts as activity.
+- **1-day log retention and no PITR.** Acceptable for a community league; move to Pro (~$25/month) if uptime, longer logs or point-in-time recovery become requirements.
+- **Session timeouts / leaked-password protection are Pro-only.** The app has MFA but no idle timeout on Free.
+
+### Backup workflow
+- `tools/export-backup.js` reads the public tables with the publishable key (no admin session, no secrets) and emits the same camelCase JSON shape as the in-app export. It refuses to write an empty backup.
+- `npm run backup:prod` / `npm run backup:dev` write dated files to `backups/` (gitignored).
+- [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) runs every Monday, prints row counts to the job summary and uploads a 90-day artifact.
+- Verified against production: the script output is deep-equal to the admin JSON export (`1/6/9/9/1`), and the CI job needs no repository secrets.
+
+### Database review brief
+- [`docs/DATABASE_REVIEW_BRIEF.md`](DATABASE_REVIEW_BRIEF.md) is a self-contained prompt for Gemini (or another assistant) describing the app, data model, security requirements, scale and free-tier limits, and asking for a stay-or-move recommendation. It contains no credentials.
