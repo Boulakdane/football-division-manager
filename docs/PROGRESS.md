@@ -29,7 +29,7 @@
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.10.1` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Admin two-factor is enrolled and proven in both projects: a password-only session cannot write until the authenticator code is entered, and the requirement was returned to **off** afterwards so the accounts stay usable. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session. The remaining operational work is loading the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.10.1` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Admin two-factor is enrolled and proven in both projects: a password-only session cannot write until the authenticator code is entered, and the requirement was returned to **off** afterwards so the accounts stay usable. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. The remaining operational work is loading the real league data and enabling MFA on the real admin account.
 
 ## 2. Architecture
 
@@ -711,16 +711,18 @@ Admin flows are now proven live but remain manual: automated admin E2E still nee
 - Read-only exports after the change are unchanged and both restore drills pass: development
   `1/6/9/9/0`, SHA-256 `b26b6fb2…be6e96`; production `1/6/9/9/1`, SHA-256
   `bd746e91…15466`. No league rows were written during verification.
-- No recovery email was sent from CI or during local verification. A real inbox round trip
-  remains to be done with the production admin when convenient; no database migration is
-  required for either feature.
+- CI and local verification use mocked recovery requests and never send mail. After
+  deployment, the production admin completed a real inbox reset from the live site and
+  confirmed the new password works; the reset flow also performs the global sign-out. No
+  database migration is required.
 
 ### Activation
 1. In both Supabase projects, set **Authentication → URL Configuration → Site URL** and
    add the production/localhost wildcard redirects
    (`https://<user>.github.io/<repo>/**` and `http://localhost:8765/**`; see README §5).
-2. Request a reset for the production admin from the deployed site, open the email link,
-   save a new password, and confirm the old sessions are signed out.
+2. ✅ Completed: the production admin reset the password from the deployed site, opened
+   the real email link, saved a new password and signed in with it. This also confirms the
+   configured redirect URL for the production origin.
 3. Keep the 30-minute idle timeout in mind on shared devices; lock the device or use
    **Log out** when leaving sooner.
 4. If a device may be compromised, use **Data settings → Sign out all devices**; this
