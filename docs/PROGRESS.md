@@ -288,7 +288,7 @@ Local CSV / JSON tools
 - [x] Add `CHECK` constraints for IDs, names, team codes/colours, player numbers/totals, rounds/scores and season dates, with PGlite coverage (`2026-10-24`).
 - [x] Apply `supabase/check-constraints-migration.sql` in development, then production, after a fresh backup (`2026-10-24`).
 - [x] Add a SQL/RLS suite with PGlite and run it in CI.
-- Add a Playwright smoke test (public read, login, admin save, archive, import).
+- [x] Add a Playwright public-read smoke test (standings, fixtures, squads, FR/AR + RTL, login dialog, no console errors). Admin save/archive/import flows remain manual until a disposable test account exists (`2026-10-24`).
 
 ### P2 — product and operations
 
@@ -622,3 +622,18 @@ from pg_constraint
 where conname like 'kickoff_%'
 order by conrelid::regclass::text, conname;
 ```
+
+## 18. Public Playwright smoke test (2026-10-24)
+
+`tests/e2e/public.spec.js` starts the local static server, opens `/?env=prod`, and checks the visitor path in Chromium:
+
+- standings rows render and the data-error banner stays hidden;
+- the fixtures tab contains at least one card;
+- the teams tab contains at least one squad card;
+- French changes the navigation label, and Arabic sets `lang="ar"` plus `dir="rtl"` before English restores LTR;
+- the admin login dialog opens with email/password/submit controls and closes cleanly;
+- no console errors or uncaught page errors are recorded.
+
+It uses no credentials, performs no writes and needs no repository secrets. `npm run test:e2e` passes locally (1 test, ~4 s after startup). [`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml) installs Chromium and runs it on every push and pull request; failure traces/screenshots are uploaded for seven days.
+
+Still manual: password login, MFA step-up, admin save, archive/restore and import rollback. Automating those needs a dedicated development account and disposable data, so production is not mutated by CI.

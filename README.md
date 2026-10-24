@@ -75,7 +75,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── backend.js             # Supabase client, reads, writes, row mapping
 │   ├── auth.js                # Login/signup, session, role-based UI
 │   └── app.js                 # Rendering, standings math, modals, import/export
-├── package.json               # Tailwind build scripts (dev-only dependency)
+├── package.json               # Tailwind build and test scripts (dev-only dependencies)
+├── playwright.config.js       # Chromium smoke-test configuration and local server
 ├── tailwind.config.js         # Tailwind theme (pitch palette, fonts, content)
 ├── data/
 │   ├── README.md              # CSV column reference and workflow
@@ -94,6 +95,9 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── backup-map.js          # Shared camelCase ⇄ database row mapping
 │   ├── keepalive.js           # One public read to prevent Free-tier pausing
 │   └── check-secrets.js       # Fail CI if a privileged secret is committed
+├── tests/
+│   └── e2e/
+│       └── public.spec.js     # Public read, FR/AR, RTL and login-dialog smoke test
 ├── vendor/
 │   ├── lucide-1.60.0.js       # Icon set (ISC) served from this origin
 │   └── supabase-js-2.118.0.js # Supabase client (MIT) served from this origin
@@ -390,11 +394,21 @@ file is out of date.
 
 ```bash
 npm run test:sql        # in-memory Postgres: RLS, archive locks, atomic saves, trash restore, audit log, MFA gate
+npm run test:e2e        # Chromium: public read, fixtures, squads, FR/AR + RTL, login dialog
 npm run check:secrets   # fail if a privileged key is committed
 ```
 
 `test:sql` uses PGlite (Postgres compiled to WASM), so it needs no Docker daemon or
 hosted database. CI also runs the JavaScript syntax check and the CSV round-trip test.
+
+The Playwright smoke test starts `tools/serve.js`, opens `/?env=prod`, and asserts that
+the public standings, fixtures and squads load, that French and Arabic (RTL) switch
+correctly, that the admin login dialog opens, and that the browser records no console
+or page errors. It uses no credentials and performs no writes. Install Chromium once
+locally with `npx playwright install chromium`; the
+[`E2E smoke`](.github/workflows/e2e.yml) workflow installs it automatically on every
+push and pull request. Admin login, saves, archive/restore and import rollback remain
+manual until a dedicated test account and disposable development data are available.
 
 ### Backups and keepalive
 

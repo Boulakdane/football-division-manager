@@ -8,6 +8,7 @@
     "build:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --minify",
     "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch",
     "test:sql": "node tools/test-sql-integrity.js",
+    "test:e2e": "playwright test",
     "check:secrets": "node tools/check-secrets.js",
     "check:backup": "node tools/validate-backup.js",
     "drill:backup": "node tools/restore-drill.js",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.6",
+    "@playwright/test": "1.64.1",
     "tailwindcss": "3.4.17"
   }
 }
