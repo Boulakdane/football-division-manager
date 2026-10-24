@@ -76,7 +76,7 @@ CI      ──push──► GitHub Pages
 ### SEC-01 — Admin account takeover has no second factor
 
 **Severity:** High
-**Status:** Mitigated in code (`v3.9.0`); the SQL migration still has to be run in both hosted projects and the admin still has to enrol.
+**Status:** Mitigated and verified in both hosted projects (`v3.9.0`). The requirement is currently off because the verification factor was removed afterwards; enrol the real admin account to keep it on.
 
 **Evidence (original):** `js/auth.js` used email + password only. Password minimum is 6 characters. There was no MFA prompt, no `aal2` check in `is_admin()`, no session timeout, no “sign out all devices”, and no notification on admin login. The admin role can call `replace_match_events`, `delete_match`, `activate_season` and full-data replacement.
 
@@ -95,7 +95,7 @@ CI      ──push──► GitHub Pages
 - ✅ An `aal2` admin can write (PGlite).
 - ✅ A viewer or anonymous caller receives `42501` for every write RPC, including the MFA toggle.
 - ✅ The UI explains how to enrol MFA and prompts for step-up.
-- ⏳ Run `mfa-migration.sql` in development and production, enrol an authenticator, enable the requirement, and confirm a real `aal1` login cannot write until verified.
+- ✅ `mfa-migration.sql` is applied in development and production; a real admin login (`aal1`) could not update teams or call admin RPCs until a TOTP code was verified, and writes succeeded after step-up. Production data hashed identically before and after the test.
 
 ### SEC-02 — XSS risk from `innerHTML` rendering (mitigated in `v3.6.2`)
 
@@ -425,7 +425,7 @@ CI      ──push──► GitHub Pages
 | ✅ Re-apply patched `atomic-import-migration.sql` in development and production | Both passed no-op/hash/anon/rollback checks |
 | ✅ Apply `integrity-migration.sql` in development, then production | Archived-season writes rejected; archive/restore, atomic save and safe team delete pass live |
 | Re-run anonymous/viewer/admin RLS matrix | Anon and viewer writes return `42501`; admin writes succeed |
-| ✅ Add MFA for admins and enforce `aal2` for writes | SQL gate and UI implemented; PGlite proves password-only admin cannot write; hosted migration/enrolment pending |
+| ✅ Add MFA for admins and enforce `aal2` for writes | SQL gate and UI implemented; PGlite proves password-only admin cannot write; applied in both hosted projects and verified live (password-only writes rejected until TOTP step-up) |
 | ✅ Replace `dbReplaceAll` with an atomic import RPC | RPC installed and live-tested in production; no-op import and rollback passed |
 | ✅ Remove inline handlers and add a strict CSP | 0 inline `on*` attributes; `<script>` injection blocked by `script-src 'self'`; all delegated actions tested live on development |
 | ✅ Add CSV formula-injection protection | Dangerous cells export as text; round-trip stable |

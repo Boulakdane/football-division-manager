@@ -11,6 +11,8 @@ let mfaFactors = [];
 let currentAal = 'aal1';
 let nextAal = 'aal1';
 let mfaEnrollmentId = null;
+/** Set once the RPC is known to be missing, to avoid repeating 404s. */
+let mfaBackendMissing = false;
 
 function resetMfaState() {
   mfaRequired = false;
@@ -50,14 +52,22 @@ async function refreshMfaState() {
   let level = 'aal1';
   let nextLevel = 'aal1';
 
-  if (isSignedIn()) {
+  if (isSignedIn() && !mfaBackendMissing) {
     try {
       const { data, error } = await db.rpc('admin_mfa_required');
-      if (!error && data === true) required = true;
+      if (error) {
+        if (typeof isMissingFunction === 'function' && isMissingFunction(error)) {
+          mfaBackendMissing = true;
+        }
+      } else if (data === true) {
+        required = true;
+      }
     } catch (err) {
       // Before supabase/mfa-migration.sql the feature is simply off.
     }
+  }
 
+  if (isSignedIn()) {
     try {
       const { data } = await db.auth.mfa.getAuthenticatorAssuranceLevel();
       if (data) {
