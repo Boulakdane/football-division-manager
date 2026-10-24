@@ -13,7 +13,7 @@
     "backup:dev": "node tools/export-backup.js --env=dev"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.3.6",
-    "tailwindcss": "3.4.17"
+    "@electric-sql/pglite": "0.5.11",
+    "tailwindcss": "4.3.3"
   }
 }
