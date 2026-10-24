@@ -124,3 +124,62 @@ test('public pages load, languages switch and the admin login opens', async ({ p
   );
   expect(unexpectedConsoleErrors, 'unexpected console errors').toEqual([]);
 });
+
+test('sign out everywhere confirms, uses the global scope and handles failure', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+
+  await page.goto('/?env=prod');
+  await expect(page.locator('#standings-table-body tr').first()).toBeVisible();
+  // initAuth() runs alongside the first render; wait for its idle watcher so a
+  // late applySession(null) cannot overwrite the fake state below.
+  await page.waitForFunction(() => typeof idleWatcherInstalled !== 'undefined' && idleWatcherInstalled === true);
+
+  // This is a UI-level test with a mocked auth call: it never creates a real
+  // session or revokes any account. Fake admin state is enough to open the
+  // admin-only control.
+  await page.evaluate(() => {
+    window.__logoutAllScopes = [];
+    currentUser = { id: 'e2e-user', email: 'e2e@example.com' };
+    currentRole = 'admin';
+    updateAuthUI();
+    db.auth.signOut = async options => {
+      window.__logoutAllScopes.push(options && options.scope);
+      return { error: null };
+    };
+    openLogoutAllModal();
+  });
+
+  const modal = page.locator('#modal-logout-all');
+  await expect(modal).toBeVisible();
+  await expect(modal).toContainText('Sign out everywhere?');
+
+  // Cancel leaves the current state untouched.
+  await page.locator('#modal-logout-all [data-action="close-modal"]').last().click();
+  await expect(modal).toBeHidden();
+  expect(await page.evaluate(() => isSignedIn())).toBe(true);
+
+  // Confirm calls global revocation, clears local state and returns to login.
+  await page.evaluate(() => openLogoutAllModal());
+  await page.locator('[data-action="logout-all-confirm"]').click();
+  await expect(page.locator('#modal-login')).toBeVisible();
+  await expect(page.locator('#login-success')).toContainText('Signed out on all devices');
+  expect(await page.evaluate(() => window.__logoutAllScopes)).toEqual(['global']);
+  expect(await page.evaluate(() => isSignedIn())).toBe(false);
+
+  // A failed global call keeps the session and surfaces the retry message.
+  await page.evaluate(() => {
+    closeAllModals();
+    currentUser = { id: 'e2e-user', email: 'e2e@example.com' };
+    currentRole = 'admin';
+    updateAuthUI();
+    db.auth.signOut = async () => ({ error: { message: 'temporary failure' } });
+    openLogoutAllModal();
+  });
+  await page.locator('[data-action="logout-all-confirm"]').click();
+  await expect(modal).toBeVisible();
+  await expect(page.locator('#logout-all-error')).toContainText('Could not sign out all devices');
+  expect(await page.evaluate(() => isSignedIn())).toBe(true);
+
+  expect(pageErrors, 'uncaught page errors').toEqual([]);
+});

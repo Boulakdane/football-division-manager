@@ -36,6 +36,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
 - **Account recovery & idle logout** — request a password-reset link from the login
   dialog; a successful reset signs out every existing session. Signed-in sessions end
   after 30 minutes without activity.
+- **Sign out everywhere** — admins can revoke every refresh token, including on other
+  devices, from the settings menu.
 - **Shared data** — every visitor sees the same league, from any device.
 - **Activity log** — admins see the last 50 changes (adds, edits, deletes, restores,
   imports and security changes) with who made them, when, and before/after values. The
@@ -275,16 +277,18 @@ available for recovery. Turning the requirement off also needs a verified sessio
 4. Test recovery against the development project from `http://localhost:8765/`; the
    `?env=dev` preview on GitHub Pages also returns to the development project now that
    the environment is preserved.
+5. As an admin, **Data settings → Sign out all devices** revokes every active refresh
+   token without changing the password. Use it if another device may be compromised.
 
 Signed-in sessions end after **30 minutes without pointer, keyboard, touch or scroll
 activity**. The check also runs when the tab becomes visible again, so background timer
 throttling cannot keep a forgotten session alive. Signed-in tabs share the last-activity
 timestamp, so an active tab keeps the session alive while an anonymous tab cannot. This
 is an app-level control: it clears the browser session and calls Supabase sign-out, but
-it does not shorten the server-side JWT lifetime. The normal **Log out** button and idle timeout end only the
-current browser session; password recovery is the only flow that performs a global
-sign-out of other devices. If no email arrives, check the project's Auth email rate
-limits and SMTP settings; old or reused links are rejected.
+it does not shorten the server-side JWT lifetime. The normal **Log out** button and idle
+timeout end only the current browser session. Password recovery and the admin-only
+**Sign out all devices** action revoke every refresh token. If no email arrives, check the
+project's Auth email rate limits and SMTP settings; old or reused links are rejected.
 
 ### Confirmation email issues
 
@@ -649,8 +653,8 @@ before seasons existed are upgraded automatically into a single default season:
   and can only be switched off from a verified session.
 - The 30-minute idle logout is a browser-side safety net. It does not revoke a token
   that has already been copied out of the browser; Supabase's JWT expiry, MFA gate and
-  RLS remain the server-side controls. Use **Forgot password** to force a global
-  sign-out after a suspected compromise.
+  RLS remain the server-side controls. Use **Data settings → Sign out all devices** (or
+  **Forgot password**) to revoke every refresh token after a suspected compromise.
 - No third-party JavaScript, CSS or fonts are loaded at runtime. A CSP meta tag pins
   every directive to this origin, with Supabase allowed only for API/auth connections.
   `script-src` is exactly `'self'`: there are no inline handlers, and buttons, selects,

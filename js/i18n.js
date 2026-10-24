@@ -311,7 +311,13 @@ const I18N = {
     authResetCancelled: "Password not changed. Sign in with your current password.",
     authResetSignOut: "Cancel and sign out",
     authResetUpdateFailed: "Could not update the password. Request a new link and try again.",
-    authIdleLogout: "Signed out after 30 minutes of inactivity."
+    authIdleLogout: "Signed out after 30 minutes of inactivity.",
+    authLogoutAll: "Sign out all devices",
+    authLogoutAllTitle: "Sign out everywhere?",
+    authLogoutAllWarning: "This ends every active session for this account, including this browser. You will need to sign in again on each device.",
+    authLogoutAllConfirm: "Sign out everywhere",
+    authLogoutAllDone: "Signed out on all devices. Sign in again to continue.",
+    authLogoutAllFailed: "Could not sign out all devices. Check your connection and try again, or log out of this browser only."
   },
   fr: {
     appTitle: "KickOff Division",
@@ -619,7 +625,13 @@ const I18N = {
     authResetCancelled: "Mot de passe inchangé. Connectez-vous avec votre mot de passe actuel.",
     authResetSignOut: "Annuler et se déconnecter",
     authResetUpdateFailed: "Impossible de mettre à jour le mot de passe. Demandez un nouveau lien et réessayez.",
-    authIdleLogout: "Déconnecté après 30 minutes d'inactivité."
+    authIdleLogout: "Déconnecté après 30 minutes d'inactivité.",
+    authLogoutAll: "Se déconnecter de tous les appareils",
+    authLogoutAllTitle: "Se déconnecter partout ?",
+    authLogoutAllWarning: "Cela met fin à toutes les sessions actives de ce compte, y compris ce navigateur. Vous devrez vous reconnecter sur chaque appareil.",
+    authLogoutAllConfirm: "Se déconnecter partout",
+    authLogoutAllDone: "Déconnecté de tous les appareils. Reconnectez-vous pour continuer.",
+    authLogoutAllFailed: "Impossible de se déconnecter de tous les appareils. Vérifiez votre connexion et réessayez, ou déconnectez-vous uniquement de ce navigateur."
   },
   ar: {
     appTitle: "كيك أوف ديڤيزيون",
@@ -926,7 +938,13 @@ const I18N = {
     authResetCancelled: "لم يتم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الحالية.",
     authResetSignOut: "إلغاء وتسجيل الخروج",
     authResetUpdateFailed: "تعذر تحديث كلمة المرور. اطلب رابطاً جديداً وحاول مجدداً.",
-    authIdleLogout: "تم تسجيل الخروج بعد 30 دقيقة من عدم النشاط."
+    authIdleLogout: "تم تسجيل الخروج بعد 30 دقيقة من عدم النشاط.",
+    authLogoutAll: "تسجيل الخروج من كل الأجهزة",
+    authLogoutAllTitle: "تسجيل الخروج من كل مكان؟",
+    authLogoutAllWarning: "سينهي هذا كل الجلسات النشطة لهذا الحساب، بما فيها هذا المتصفح. ستحتاج إلى تسجيل الدخول مجدداً على كل جهاز.",
+    authLogoutAllConfirm: "تسجيل الخروج من كل مكان",
+    authLogoutAllDone: "تم تسجيل الخروج من كل الأجهزة. سجّل الدخول مجدداً للمتابعة.",
+    authLogoutAllFailed: "تعذر تسجيل الخروج من كل الأجهزة. تحقق من اتصالك وحاول مجدداً، أو سجّل الخروج من هذا المتصفح فقط."
   }
 };
 

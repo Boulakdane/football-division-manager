@@ -632,6 +632,57 @@ async function logout(noticeKey) {
   if (noticeKey && typeof showToast === 'function') showToast(t(noticeKey));
 }
 
+/* ---------- sign out everywhere (global revocation) ---------- */
+
+function openLogoutAllModal() {
+  if (!isSignedIn()) {
+    openLoginModal();
+    return;
+  }
+  if (typeof closeDataMenu === 'function') closeDataMenu();
+  setAuthError('logout-all-error', null);
+  const confirm = document.querySelector('#modal-logout-all [data-action="logout-all-confirm"]');
+  if (confirm) confirm.disabled = false;
+  openModal('modal-logout-all');
+}
+
+async function logoutEverywhere() {
+  if (!BACKEND_READY || !db) {
+    setAuthError('logout-all-error', authUnavailableKey());
+    return;
+  }
+  if (!currentUser) {
+    openLoginModal();
+    return;
+  }
+
+  const confirm = document.querySelector('#modal-logout-all [data-action="logout-all-confirm"]');
+  if (confirm) confirm.disabled = true;
+  setAuthError('logout-all-error', null);
+
+  try {
+    const { error } = await db.auth.signOut({ scope: 'global' });
+    if (error) {
+      setAuthError('logout-all-error', 'authLogoutAllFailed');
+      return;
+    }
+
+    currentUser = null;
+    currentRole = null;
+    passwordRecoveryMode = false;
+    clearIdleActivity();
+    if (typeof resetMfaState === 'function') resetMfaState();
+    updateAuthUI();
+    closeAllModals();
+    openLoginModal();
+    setAuthNotice('login-success', 'authLogoutAllDone');
+  } catch (err) {
+    setAuthError('logout-all-error', 'authLogoutAllFailed');
+  } finally {
+    if (confirm) confirm.disabled = false;
+  }
+}
+
 /* ---------- idle logout ---------- */
 
 function markIdleActivity() {

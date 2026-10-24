@@ -67,7 +67,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -270,6 +270,8 @@ const CLICK_ACTIONS = {
 
   'login-modal': () => openLoginModal(),
   logout: () => logout(),
+  'logout-all-modal': () => openLogoutAllModal(),
+  'logout-all-confirm': () => logoutEverywhere(),
   'password-modal': () => openPasswordModal(),
   'forgot-password': () => openResetRequest(),
   'reset-back': () => showLoginFromReset(),
