@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
 - **Last updated:** 2026-10-24
-- **Working-tree version:** `v3.9.1`
-- **Deployed version:** `v3.9.1`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete and MFA migrations applied in development and production
+- **Working-tree version:** `v3.10.0`
+- **Deployed version:** `v3.10.0`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete, MFA and data-quality migrations applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -24,11 +24,12 @@
 | Audit log | ✅ Applied in development and production; verified in development | Admin-only activity panel over trigger-fed `audit_log`; graceful message until the migration is applied |
 | Recently deleted (soft delete) | ✅ Applied in development and production; dev round trip verified | Teams, matches and seasons go to a trash; `restore_*` reinstates rows and totals; graceful message until the migration is applied |
 | Admin two-factor (MFA) | ✅ Applied and verified in development and production | TOTP enrolment/step-up in the UI; `is_admin()` requires `aal2` once the admin opts in; live lockout, step-up and audit checks passed in both projects |
+| Account recovery and idle logout | ✅ Done in `v3.10.0` | Generic reset request, recovery-link password change, global sign-out after reset, 30-minute app-level idle logout, EN/FR/AR copy |
 | UX polish and shareability | ✅ Done in `v3.6.0` | Shareable filter URLs, clear filters, guided empty states, match timeline, keyboard/focus handling, Lighthouse 100/100/100 |
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.9.1` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Admin two-factor is enrolled and proven in both projects: a password-only session cannot write until the authenticator code is entered, and the requirement was returned to **off** afterwards so the accounts stay usable. The remaining operational work is loading the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.10.0` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Admin two-factor is enrolled and proven in both projects: a password-only session cannot write until the authenticator code is entered, and the requirement was returned to **off** afterwards so the accounts stay usable. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; a successful reset invalidates every existing session. The remaining operational work is loading the real league data.
 
 ## 2. Architecture
 
@@ -202,7 +203,7 @@ Local CSV / JSON tools
 4. **Production and development differ.** For example, `m6` is 1–1 in development but 2–4 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
 5. **The integrity migration is live; re-apply it after any older migration.** `supabase/integrity-migration.sql` has been run in development and production and `PLAYERS_ARCHIVE_READY` is true in both. If an older migration is re-run later, run the integrity migration again afterwards and re-check `PLAYERS_ARCHIVE_READY`.
 6. **Full imports replace the dataset.** Team, match and season deletes now go to **Recently deleted** and can be restored with their events and totals, and every change is in the activity log. A full JSON import still replaces the dataset; the import flow now downloads the current state automatically before replacing it, but keep a separate fresh export before trying real data. Transfers for players with events remain blocked in the UI.
-7. **Operational gaps.** Admin MFA is applied and tested in both projects, but enrolment has been removed after the verification run, so the requirement is currently **off** on both databases. There is still no password reset flow, automated hosted RLS test, session lifetime policy or login notification. A credential-free Playwright smoke test now covers public read, fixtures, squads, FR/AR + RTL and the login dialog; admin create/delete/restore and import rollback were exercised live in development and production was checked read-only, but they remain manual. These are covered in the security and modernization plans.
+7. **Operational gaps.** Admin MFA is applied and tested in both projects, but enrolment has been removed after the verification run, so the requirement is currently **off** on both databases. Password recovery and a 30-minute client-side idle logout now exist (`v3.10.0`), but server-enforced session lifetime, a general “sign out all devices” control, automated hosted RLS tests and login notifications remain open. A credential-free Playwright smoke test covers public read, fixtures, squads, FR/AR + RTL, the login dialog and the reset-request path (with GoTrue mocked); admin create/delete/restore and import rollback were exercised live in development and production was checked read-only, but they remain manual. These are covered in the security and modernization plans.
 
 ## 6. Release checklist for the match-events release
 
@@ -565,7 +566,7 @@ Caveats and mitigations:
 - **Projects pause after 7 days of low activity.** Supabase's current guidance is “a few requests per day”, so the backup alone is not enough. A separate keepalive job reads one season row every six hours.
 - **Scheduled workflows stop after 60 days without repository activity.** Run either job manually from the Actions tab during a long off-season, or make a small commit. Supabase also emails the owner about a week before pausing.
 - **1-day log retention and no PITR.** Acceptable for a community league; move to Pro (~$25/month) if uptime, longer logs or point-in-time recovery become requirements.
-- **Session timeouts / leaked-password protection are Pro-only.** The app has MFA but no idle timeout on Free.
+- **Server-side session controls and leaked-password protection are paid features.** `v3.10.0` adds a 30-minute client-side idle logout and global sign-out after password recovery; a copied JWT is still governed by Supabase's token expiry, MFA gate and RLS until Pro-level session controls are justified.
 
 ### Independent review (Gemini, 2026-10-24)
 The second opinion reached the same verdict: **stay on Supabase Free**; a move would be premature optimization. Its scale estimates were in the same range (tens of MB at the 10-season “busy” size, <2% of egress).
@@ -633,6 +634,9 @@ order by conrelid::regclass::text, conname;
 - the teams tab contains at least one squad card;
 - French changes the navigation label, and Arabic sets `lang="ar"` plus `dir="rtl"` before English restores LTR;
 - the admin login dialog opens with email/password/submit controls and closes cleanly;
+- **Forgot password?** switches to the reset panel, shows the translated title and form,
+  returns to login, and submits a captured `/auth/v1/recover` request with the expected
+  `redirect_to` and email (the request is mocked, so CI never sends mail);
 - no console errors or uncaught page errors are recorded.
 
 It uses no credentials, performs no writes and needs no repository secrets. `npm run test:e2e` passes locally (1 test, ~4 s after startup). [`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml) installs Chromium and runs it on every push and pull request; failure traces/screenshots are uploaded for seven days.
@@ -651,3 +655,70 @@ Using the signed-in development admin (`demo@kickoff.com`), I exercised the dest
 Production was checked **read-only** with the signed-in production admin: 6 teams / 9 players / 9 matches / 1 event, the audit log was readable, and there were no data or console errors. No production writes were made.
 
 Admin flows are now proven live but remain manual: automated admin E2E still needs a disposable account/storage state, and CI stays public-only.
+
+## 19. Account recovery and idle logout (v3.10.0, 2026-10-24)
+
+### Password recovery
+- The login dialog now has **Forgot password?**. It calls
+  `supabase.auth.resetPasswordForEmail(email, { redirectTo })`; account lookups get a
+  generic success message so the form cannot enumerate accounts, while rate limits and
+  network/server failures show a retry message.
+- `auth.js` captures the recovery flag before supabase-js consumes the URL hash, handles
+  the `PASSWORD_RECOVERY` auth event and keeps a URL-based fallback for an event that
+  fires before the listener is attached. An invalid or expired link returns to the login
+  dialog with a clear error.
+- The recovery dialog requires a 6+ character password and confirmation. Admin controls
+  are hidden while recovery mode is active. A successful `updateUser({ password })` calls
+  `signOut({ scope: 'global' })`, so every existing session is invalidated, then shows the
+  login dialog with a success notice. If the global call is unavailable it falls back to a
+  local sign-out.
+- Closing or pressing Escape on the recovery dialog cancels it and signs out; it does not
+  leave a half-finished recovery session behind.
+
+### Idle logout
+- Signed-in sessions end after 30 minutes without `pointerdown`, `keydown`, `touchstart`
+  or `scroll` activity. The timer checks every 30 seconds, and `visibilitychange` / window
+  `focus` compare wall-clock time so background timer throttling cannot preserve a
+  forgotten session. Signed-in tabs share the last-activity timestamp through
+  `localStorage` (throttled writes), so an active tab keeps the session alive while an
+  anonymous tab cannot extend it.
+- Logout goes through the same `signOut({ scope: 'local' })` path as the header button,
+  resets role/MFA state and shows the translated inactivity toast. It does not sign out
+  the user's other devices; password recovery is the flow that revokes all sessions.
+  Public visitors have no session and are not affected.
+- This is an app-level safety net, not server-side token revocation. A JWT already copied
+  out of the browser remains valid until Supabase expires it; the MFA gate and RLS still
+  protect writes.
+
+### Verification
+- `npm run test:e2e` passes with the new reset-panel navigation, title and a mocked
+  `/auth/v1/recover` request asserting the POST method, email and the preserved
+  `redirect_to=…?env=prod` value.
+- Development admin (`demo@kickoff.com`) in Chromium: the reset panel/title/back flow
+  rendered in EN; the recovery dialog opened with admin controls hidden; short and
+  mismatched passwords were rejected with the translated errors; cancel returned to the
+  login dialog with the “password not changed” notice. The dev session was restored after
+  each simulated sign-out.
+- Idle path in development: with `db.auth.signOut` temporarily stubbed (to preserve the
+  demo login), forcing **both** the in-memory and shared `kickoff_last_activity`
+  timestamps past 30 minutes made `isSignedIn()` false, removed `is-admin`/`is-authed`
+  from `<body>`, cleared the shared key and displayed “Signed out after 30 minutes of
+  inactivity.” A second check with a fresh shared timestamp but a stale in-memory timestamp
+  kept the session, proving an active tab protects a background one. Reloading restored
+  the real session. A separate spy confirmed normal/idle logout calls
+  `signOut({ scope: 'local' })`, while recovery uses the global scope.
+- Read-only exports after the change are unchanged and both restore drills pass: development
+  `1/6/9/9/0`, SHA-256 `b26b6fb2…be6e96`; production `1/6/9/9/1`, SHA-256
+  `bd746e91…15466`. No league rows were written during verification.
+- No recovery email was sent from CI or during local verification. A real inbox round trip
+  remains to be done with the production admin when convenient; no database migration is
+  required for either feature.
+
+### Activation
+1. In both Supabase projects, set **Authentication → URL Configuration → Site URL** and
+   add the production/localhost wildcard redirects
+   (`https://<user>.github.io/<repo>/**` and `http://localhost:8765/**`; see README §5).
+2. Request a reset for the production admin from the deployed site, open the email link,
+   save a new password, and confirm the old sessions are signed out.
+3. Keep the 30-minute idle timeout in mind on shared devices; lock the device or use
+   **Log out** when leaving sooner.

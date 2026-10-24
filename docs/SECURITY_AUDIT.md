@@ -87,8 +87,9 @@ CI      ──push──► GitHub Pages
 2. The database enforces the assurance level, not the UI: `supabase/mfa-migration.sql` replaces `is_admin()` with a role check **and**, while `security_settings.require_admin_mfa` is on, `coalesce(auth.jwt()->>'aal','aal1') = 'aal2'`. Every RLS policy and admin RPC inherits the gate.
 3. The requirement defaults to off, so the migration cannot lock anyone out. `set_require_admin_mfa()` is admin-only, requires an `aal2` session, and records a `SECURITY` audit entry.
 4. The frontend prompts for the code after login when the session is locked, shows a header shield/badge, and degrades quietly when the migration has not been applied.
+5. `v3.10.0` adds self-service password recovery and a 30-minute app-level idle logout. A successful recovery sets a new password and calls `signOut({ scope: 'global' })`, invalidating every existing session; closing recovery or logging out normally uses the local scope. The idle timer checks wall-clock time on visibility/focus changes, but it is client-side only.
 
-**Still open (tracked elsewhere):** password minimum/pwned-password protection (SEC-03), session lifetime/“sign out all devices”, login notifications, and rate limits (SEC-11).
+**Still open (tracked elsewhere):** password minimum/pwned-password protection (SEC-03), server-enforced session lifetime and a general “sign out all devices” control, login notifications, and rate limits (SEC-11).
 
 **Acceptance criteria:**
 - ✅ A password-only (`aal1`) admin session cannot execute write RPCs (PGlite: direct updates filtered; `save_match`, `list_audit_log`, `list_deleted` raise `42501`).
@@ -439,7 +440,8 @@ CI      ──push──► GitHub Pages
 - ✅ Make match saves, team deletes and event writes atomic/RPC-only (pending hosted migration).
 - Move hosting to Cloudflare Pages for security headers, or add an edge proxy.
 - Self-host Supabase JS, Lucide and fonts.
-- ✅ Add an in-memory SQL/RLS regression suite (PGlite) and run it in CI; Playwright is still pending.
+- ✅ Add an in-memory SQL/RLS regression suite (PGlite) and run it in CI; add a credential-free Playwright public smoke test. Admin E2E remains manual.
+- ✅ Add self-service password recovery (with global sign-out) and an app-level 30-minute idle logout (`v3.10.0`). Server-enforced session lifetime is still open.
 - Add rate limits/statement timeouts and Supabase log alerts.
 - Encrypt backups and document a restore drill.
 

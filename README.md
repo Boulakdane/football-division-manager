@@ -33,6 +33,9 @@ accounts live in a free [Supabase](https://supabase.com) project.
 - **Two-factor authentication** — admins can enrol any TOTP authenticator app. When the
   requirement is enabled, the database rejects writes from password-only (`aal1`)
   sessions, so a stolen password is not enough to change the league.
+- **Account recovery & idle logout** — request a password-reset link from the login
+  dialog; a successful reset signs out every existing session. Signed-in sessions end
+  after 30 minutes without activity.
 - **Shared data** — every visitor sees the same league, from any device.
 - **Activity log** — admins see the last 50 changes (adds, edits, deletes, restores,
   imports and security changes) with who made them, when, and before/after values. The
@@ -73,7 +76,7 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── i18n.js                # EN/FR/AR dictionary, t(), language + RTL switching
 │   ├── store.js               # In-memory state + demo/seed dataset
 │   ├── backend.js             # Supabase client, reads, writes, row mapping
-│   ├── auth.js                # Login/signup, session, role-based UI
+│   ├── auth.js                # Login/signup/recovery, idle logout, role-based UI
 │   └── app.js                 # Rendering, standings math, modals, import/export
 ├── package.json               # Tailwind build and test scripts (dev-only dependencies)
 ├── playwright.config.js       # Chromium smoke-test configuration and local server
@@ -251,12 +254,46 @@ the authenticator: if it is lost, use another admin account or remove the factor
 **Authentication → Users** in the Supabase dashboard. SQL Editor access always remains
 available for recovery. Turning the requirement off also needs a verified session.
 
+### 5. Password recovery and idle logout
+
+1. In each Supabase project, open **Authentication → URL Configuration**. Set the
+   **Site URL** to the matching site (production for the production project,
+   `http://localhost:8765/` for development), then add both redirect patterns to **both**
+   projects:
+   - `https://<user>.github.io/<repo>/**`
+   - `http://localhost:8765/**`
+
+   The trailing `**` allows the optional `?env=dev` / `?env=prod` query that the app
+   preserves when it builds the return URL.
+2. In the login dialog, click **Forgot password?**, enter the account email and request
+   the link. Account lookups get a deliberately generic response, so the form cannot be
+   used to discover which emails have accounts; network/server failures and rate limits
+   show a retry message.
+3. Open the link from the inbox. The app asks for a new password (6+ characters). Saving
+   it signs out **all** existing sessions, including the recovery session, then returns
+   to the login dialog.
+4. Test recovery against the development project from `http://localhost:8765/`; the
+   `?env=dev` preview on GitHub Pages also returns to the development project now that
+   the environment is preserved.
+
+Signed-in sessions end after **30 minutes without pointer, keyboard, touch or scroll
+activity**. The check also runs when the tab becomes visible again, so background timer
+throttling cannot keep a forgotten session alive. Signed-in tabs share the last-activity
+timestamp, so an active tab keeps the session alive while an anonymous tab cannot. This
+is an app-level control: it clears the browser session and calls Supabase sign-out, but
+it does not shorten the server-side JWT lifetime. The normal **Log out** button and idle timeout end only the
+current browser session; password recovery is the only flow that performs a global
+sign-out of other devices. If no email arrives, check the project's Auth email rate
+limits and SMTP settings; old or reused links are rejected.
+
 ### Confirmation email issues
 
 If a confirmation link redirects to `localhost:3000` or says it expired:
 
 1. Set **Authentication → URL Configuration → Site URL** to your deployed URL
-   (`https://<user>.github.io/<repo>/`) and add the same URL under **Redirect URLs**.
+   (`https://<user>.github.io/<repo>/`) and add `https://<user>.github.io/<repo>/**`
+   under **Redirect URLs** (the wildcard allows the optional `?env=` query). Add
+   `http://localhost:8765/**` too if you test locally.
 2. In the login modal, enter your email and click **Didn't get the confirmation email?
    Resend it**. Old links cannot be reused.
 3. Or disable **Confirm email** under **Authentication → Providers → Email**, delete the
@@ -291,7 +328,8 @@ non-admin writes in both projects.
     where email = 'dev-admin@example.com';
    ```
 5. Set **Authentication → URL Configuration → Site URL** to
-   `http://localhost:8765` and add the same value under **Redirect URLs**.
+   `http://localhost:8765/` and add `http://localhost:8765/**` under **Redirect URLs**
+   (plus `https://<user>.github.io/<repo>/**` if you use the deployed `?env=dev` preview).
 6. Optionally disable email confirmation in the dev project to speed up sign-in.
 
 ### Add the development keys
@@ -603,10 +641,16 @@ before seasons existed are upgraded automatically into a single default season:
   restore the project to wake it; the app shows a "could not load data" banner with a
   **Retry** button while the backend is unavailable.
 - Passwords are handled by Supabase Auth (hashed and never stored in this repository).
-  Use a strong, unique password for the admin account.
+  Use a strong, unique password for the admin account. Recovery links are single-use,
+  expire according to the project's Auth settings, and a successful reset signs out all
+  sessions.
 - Admins can add a TOTP second factor. For enforcement, the database checks the JWT
   assurance level (`aal2`) in `is_admin()`, not just the UI. The requirement is opt-in
   and can only be switched off from a verified session.
+- The 30-minute idle logout is a browser-side safety net. It does not revoke a token
+  that has already been copied out of the browser; Supabase's JWT expiry, MFA gate and
+  RLS remain the server-side controls. Use **Forgot password** to force a global
+  sign-out after a suspected compromise.
 - No third-party JavaScript, CSS or fonts are loaded at runtime. A CSP meta tag pins
   every directive to this origin, with Supabase allowed only for API/auth connections.
   `script-src` is exactly `'self'`: there are no inline handlers, and buttons, selects,

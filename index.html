@@ -20,19 +20,19 @@
 
   <!-- Fonts: Inter (EN/FR) + Cairo (AR), self-hosted variable woff2 -->
   <link rel="preload" href="fonts/inter-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/fonts.css?v=3.9.1">
+  <link rel="stylesheet" href="css/fonts.css?v=3.10.0">
 
   <!-- Tailwind CSS (compiled locally, no CDN dependency) -->
-  <link rel="stylesheet" href="css/tailwind.css?v=3.9.1">
+  <link rel="stylesheet" href="css/tailwind.css?v=3.10.0">
 
   <!-- Lucide icons (vendored UMD build, previously pinned with SRI on unpkg) -->
-  <script src="vendor/lucide-1.60.0.js?v=3.9.1" defer></script>
+  <script src="vendor/lucide-1.60.0.js?v=3.10.0" defer></script>
 
   <!-- Supabase JS client (vendored; auth must not depend on a CDN) -->
-  <script src="vendor/supabase-js-2.118.0.js?v=3.9.1" defer></script>
+  <script src="vendor/supabase-js-2.118.0.js?v=3.10.0" defer></script>
 
   <!-- App styles -->
-  <link rel="stylesheet" href="css/styles.css?v=3.9.1">
+  <link rel="stylesheet" href="css/styles.css?v=3.10.0">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200 antialiased">
 
@@ -71,7 +71,7 @@
           <div>
             <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
               <span data-i18n="appTitle">KickOff Division</span>
-              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.9.1</span>
+              <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.10.0</span>
             </h1>
             <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Football League Management</p>
           </div>
@@ -803,7 +803,7 @@
       <div class="flex justify-between items-center border-b border-slate-800 pb-3">
         <h3 class="text-base font-bold text-white flex items-center gap-2">
           <i data-lucide="shield-check" class="w-4 h-4 text-pitch-400"></i>
-          <span data-i18n="adminLogin">Admin Login</span>
+          <span id="auth-modal-title" data-i18n="adminLogin">Admin Login</span>
         </h3>
         <button data-action="close-modal" data-modal="modal-login" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
@@ -821,6 +821,9 @@
             <label class="text-xs font-medium text-slate-400 block mb-1" for="login-password" data-i18n="authPassword">Password</label>
             <input type="password" id="login-password" required autocomplete="current-password"
                    class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
+          </div>
+          <div class="flex justify-end">
+            <button type="button" data-action="forgot-password" class="text-[11px] text-pitch-400 hover:text-pitch-300 font-medium" data-i18n="authForgotPassword">Forgot password?</button>
           </div>
           <p id="login-error" class="hidden text-xs text-rose-400"></p>
           <p id="login-success" class="hidden text-xs text-emerald-400"></p>
@@ -861,6 +864,25 @@
           </button>
         </form>
         <button data-action="toggle-signup" class="text-[11px] text-pitch-400 hover:text-pitch-300 mt-3 font-medium" data-i18n="authHaveAccount">Already have an account? Log in</button>
+      </div>
+
+      <!-- FORGOTTEN PASSWORD -->
+      <div id="reset-request-panel" class="hidden">
+        <p class="text-xs text-slate-400 mb-3" data-i18n="authResetRequestSubtitle">Enter your account email and we will send a reset link.</p>
+        <form id="form-reset-request" data-submit="request-password-reset" class="space-y-3">
+          <div>
+            <label class="text-xs font-medium text-slate-400 block mb-1" for="reset-email" data-i18n="authEmail">Email</label>
+            <input type="email" id="reset-email" required autocomplete="email"
+                   class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
+          </div>
+          <p id="reset-error" class="hidden text-xs text-rose-400"></p>
+          <p id="reset-success" class="hidden text-xs text-emerald-400"></p>
+          <button type="submit" class="w-full px-4 py-2.5 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-60 text-white rounded-lg text-sm font-semibold shadow-md flex items-center justify-center gap-2 transition">
+            <i data-lucide="send" class="w-4 h-4"></i>
+            <span data-i18n="authResetSend">Send reset link</span>
+          </button>
+        </form>
+        <button type="button" data-action="reset-back" class="text-[11px] text-pitch-400 hover:text-pitch-300 mt-3 font-medium" data-i18n="authBackToLogin">Back to log in</button>
       </div>
     </div>
   </div>
@@ -905,18 +927,55 @@
     </div>
   </div>
 
+  <!-- MODAL: PASSWORD RECOVERY (opened from the email link) -->
+  <div id="modal-reset" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="key" class="w-4 h-4 text-pitch-400"></i>
+          <span data-i18n="authResetTitle">Choose a new password</span>
+        </h3>
+        <button type="button" data-action="cancel-password-reset" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <p class="text-xs text-slate-400 leading-relaxed" data-i18n="authResetSubtitle">You opened a recovery link. Set a new password to finish, then sign in again.</p>
+
+      <form id="form-reset-password" data-submit="reset-password" class="space-y-3">
+        <div>
+          <label class="text-xs font-medium text-slate-400 block mb-1" for="reset-new" data-i18n="authNewPassword">New password</label>
+          <input type="password" id="reset-new" required minlength="6" autocomplete="new-password"
+                 class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-400 block mb-1" for="reset-confirm" data-i18n="authConfirmPassword">Confirm password</label>
+          <input type="password" id="reset-confirm" required minlength="6" autocomplete="new-password"
+                 class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pitch-500">
+        </div>
+
+        <p id="reset-pw-error" class="hidden text-xs text-rose-400"></p>
+
+        <button type="submit" class="w-full px-4 py-2.5 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-60 text-white rounded-lg text-sm font-semibold shadow-md flex items-center justify-center gap-2 transition">
+          <i data-lucide="save" class="w-4 h-4"></i>
+          <span data-i18n="authResetSave">Save new password</span>
+        </button>
+      </form>
+
+      <button type="button" data-action="cancel-password-reset" class="w-full px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="authResetSignOut">Cancel and sign out</button>
+    </div>
+  </div>
+
   <!-- Transient toast (share links, copy confirmations) -->
   <div id="toast" role="status" aria-live="polite"
        class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-xl bg-slate-800/95 border border-slate-600 text-xs font-medium text-white shadow-2xl backdrop-blur">
   </div>
 
   <!-- Application scripts (deferred, loaded in dependency order) -->
-  <script src="js/i18n.js?v=3.9.1" defer></script>
-  <script src="js/store.js?v=3.9.1" defer></script>
-  <script src="js/config.js?v=3.9.1" defer></script>
-  <script src="js/backend.js?v=3.9.1" defer></script>
-  <script src="js/auth.js?v=3.9.1" defer></script>
-  <script src="js/mfa.js?v=3.9.1" defer></script>
-  <script src="js/app.js?v=3.9.1" defer></script>
+  <script src="js/i18n.js?v=3.10.0" defer></script>
+  <script src="js/store.js?v=3.10.0" defer></script>
+  <script src="js/config.js?v=3.10.0" defer></script>
+  <script src="js/backend.js?v=3.10.0" defer></script>
+  <script src="js/auth.js?v=3.10.0" defer></script>
+  <script src="js/mfa.js?v=3.10.0" defer></script>
+  <script src="js/app.js?v=3.10.0" defer></script>
 </body>
 </html>

@@ -11,9 +11,34 @@ let currentUser = null;
 let currentRole = null;
 /** Set from Supabase project settings; hides the signup UI when disabled. */
 let signupsDisabled = false;
+/** True while the visitor is completing a password-recovery link. */
+let passwordRecoveryMode = false;
+
+/** Capture before supabase-js consumes and clears the recovery hash. */
+const AUTH_RECOVERY_LINK = (() => {
+  try {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const query = new URLSearchParams(window.location.search);
+    return hash.get('type') === 'recovery' || query.get('type') === 'recovery';
+  } catch (err) {
+    return false;
+  }
+})();
+
+/* App-level idle logout. The browser timer is a backstop; visibility and focus
+   events also compare wall-clock time, so background throttling cannot keep a
+   forgotten session alive indefinitely. */
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const IDLE_CHECK_MS = 30 * 1000;
+const IDLE_ACTIVITY_KEY = 'kickoff_last_activity';
+let idleLastActivity = Date.now();
+let idleLastStored = 0;
+let idleCheckTimer = null;
+let idleWatcherInstalled = false;
+let idleSigningOut = false;
 
 function isAdmin() {
-  return currentRole === 'admin';
+  return currentRole === 'admin' && !passwordRecoveryMode;
 }
 
 function isSignedIn() {
@@ -24,6 +49,7 @@ function isSignedIn() {
 
 async function initAuth() {
   const redirectErrorKey = consumeAuthRedirectError();
+  const recoveryLink = AUTH_RECOVERY_LINK && !redirectErrorKey;
   await loadAuthSettings();
 
   if (!BACKEND_READY) {
@@ -35,15 +61,56 @@ async function initAuth() {
     db.auth.onAuthStateChange(async (event, session) => {
       // INITIAL_SESSION is already handled above; TOKEN_REFRESHED needs no UI work.
       if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return;
+
+      if (event === 'PASSWORD_RECOVERY') {
+        if (session && session.user) {
+          enterPasswordRecoveryMode();
+          await applySession(session);
+          openResetPasswordModal();
+        } else {
+          await applySession(null);
+          openLoginModal();
+          setAuthError('login-error', 'authResetInvalid');
+        }
+        renderApp();
+        return;
+      }
+
       await applySession(session);
       renderApp();
     });
+
+    // The PASSWORD_RECOVERY event can fire before this listener is attached
+    // (during supabase-js initialisation), so the URL flag is the fallback.
+    if (recoveryLink && currentUser) {
+      enterPasswordRecoveryMode();
+      openResetPasswordModal();
+    }
   }
+
+  startIdleWatcher();
 
   if (redirectErrorKey) {
     openLoginModal();
     setAuthError('login-error', redirectErrorKey);
+  } else if (recoveryLink && !currentUser) {
+    openLoginModal();
+    setAuthError('login-error', 'authResetInvalid');
   }
+}
+
+function enterPasswordRecoveryMode() {
+  passwordRecoveryMode = true;
+  updateAuthUI();
+}
+
+/** Remove an already-consumed recovery token from the address bar/history. */
+function clearRecoveryHash() {
+  if (!window.location.hash && !window.location.search) return;
+  const url = new URL(window.location.href);
+  url.hash = '';
+  ['code', 'type'].forEach(key => url.searchParams.delete(key));
+  history.replaceState(null, '', url.pathname + url.search);
 }
 
 /**
@@ -92,6 +159,7 @@ async function loadAuthSettings() {
 async function applySession(session) {
   currentUser = session ? session.user : null;
   currentRole = null;
+  if (currentUser) markIdleActivity();
 
   if (currentUser) {
     const { data, error } = await db
@@ -178,7 +246,8 @@ function setAuthNotice(elementId, key) {
 }
 
 function clearAuthMessages() {
-  ['login-error', 'login-success', 'signup-error', 'signup-success', 'pw-error'].forEach(id => {
+  ['login-error', 'login-success', 'signup-error', 'signup-success', 'pw-error',
+    'reset-error', 'reset-success', 'reset-pw-error'].forEach(id => {
     setAuthError(id, null);
     setAuthNotice(id, null);
   });
@@ -186,7 +255,11 @@ function clearAuthMessages() {
 
 /** URL Supabase should send users back to after confirming an email. */
 function authRedirectUrl() {
-  return window.location.origin + window.location.pathname;
+  // Preserve an explicit environment choice so a recovery link opened from
+  // ?env=dev (or ?env=prod) returns to the same Supabase project.
+  const env = new URLSearchParams(window.location.search).get('env');
+  const query = (env === 'dev' || env === 'prod') ? '?env=' + env : '';
+  return window.location.origin + window.location.pathname + query;
 }
 
 /* ---------- login / signup modal ---------- */
@@ -194,8 +267,11 @@ function authRedirectUrl() {
 function openLoginModal() {
   const loginForm = document.getElementById('form-login');
   const signupForm = document.getElementById('form-signup');
+  const resetForm = document.getElementById('form-reset-request');
   if (loginForm) loginForm.reset();
   if (signupForm) signupForm.reset();
+  if (resetForm) resetForm.reset();
+  passwordRecoveryMode = false;
   clearAuthMessages();
   showLoginPanel(true);
   openModal('modal-login');
@@ -206,10 +282,35 @@ function openLoginModal() {
   if (!BACKEND_READY) setAuthError('login-error', authUnavailableKey());
 }
 
-function showLoginPanel(showLogin) {
-  document.getElementById('login-panel').classList.toggle('hidden', !showLogin);
-  document.getElementById('signup-panel').classList.toggle('hidden', showLogin);
+/** Switch between the login, signup and forgotten-password panels. */
+function showAuthPanel(panel) {
+  const panels = {
+    login: 'login-panel',
+    signup: 'signup-panel',
+    reset: 'reset-request-panel'
+  };
+
+  Object.entries(panels).forEach(([name, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', name !== panel);
+  });
+
+  const titleKeys = {
+    login: 'adminLogin',
+    signup: 'authSignupTitle',
+    reset: 'authResetRequestTitle'
+  };
+  const title = document.getElementById('auth-modal-title');
+  if (title && titleKeys[panel]) {
+    title.dataset.i18n = titleKeys[panel];
+    title.textContent = t(titleKeys[panel]);
+  }
+
   clearAuthMessages();
+}
+
+function showLoginPanel(showLogin) {
+  showAuthPanel(showLogin ? 'login' : 'signup');
 }
 
 function toggleSignup(e) {
@@ -372,17 +473,237 @@ async function resendConfirmation(event) {
   }
 }
 
-async function logout() {
+function openResetRequest() {
+  const loginEmail = document.getElementById('login-email');
+  const resetEmail = document.getElementById('reset-email');
+  if (loginEmail && resetEmail) resetEmail.value = loginEmail.value.trim();
+  showAuthPanel('reset');
+  if (resetEmail) resetEmail.focus();
+}
+
+function showLoginFromReset() {
+  showAuthPanel('login');
+  const email = document.getElementById('login-email');
+  if (email) email.focus();
+}
+
+async function requestPasswordReset(e) {
+  e.preventDefault();
+  clearAuthMessages();
+
+  if (!BACKEND_READY) {
+    setAuthError('reset-error', authUnavailableKey());
+    return;
+  }
+
+  const email = document.getElementById('reset-email').value.trim();
+  if (!email) {
+    setAuthError('reset-error', 'authEmailRequired');
+    return;
+  }
+
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+
+  try {
+    const { error } = await db.auth.resetPasswordForEmail(email, {
+      redirectTo: authRedirectUrl()
+    });
+
+    if (error) {
+      const message = (error.message || '').toLowerCase();
+      if (error.status === 429 || message.includes('rate limit')) {
+        setAuthError('reset-error', 'authTooManyRequests');
+        return;
+      }
+      if (!error.status || error.status >= 500) {
+        setAuthError('reset-error', 'authResetFailed');
+        return;
+      }
+      // 4xx responses stay generic so the form cannot be used to discover
+      // whether an address has an account.
+    }
+
+    setAuthNotice('reset-success', 'authResetSent');
+  } catch (err) {
+    setAuthError('reset-error', 'authResetFailed');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+/** Open the "choose a new password" dialog after a recovery link is opened. */
+function openResetPasswordModal() {
+  if (!currentUser) {
+    openLoginModal();
+    setAuthError('login-error', 'authResetInvalid');
+    return;
+  }
+
+  passwordRecoveryMode = true;
+  clearRecoveryHash();
+  const form = document.getElementById('form-reset-password');
+  if (form) form.reset();
+  clearAuthMessages();
+  closeModal('modal-login');
+  updateAuthUI();
+  openModal('modal-reset');
+
+  const input = document.getElementById('reset-new');
+  if (input) input.focus();
+}
+
+async function saveRecoveredPassword(e) {
+  e.preventDefault();
+  clearAuthMessages();
+
+  if (!BACKEND_READY || !currentUser) {
+    setAuthError('reset-pw-error', 'authResetInvalid');
+    return;
+  }
+
+  const next = document.getElementById('reset-new').value;
+  const confirmation = document.getElementById('reset-confirm').value;
+
+  if (next.length < 6) { setAuthError('reset-pw-error', 'authTooShort'); return; }
+  if (next !== confirmation) { setAuthError('reset-pw-error', 'authMismatch'); return; }
+
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+
+  try {
+    const { error } = await db.auth.updateUser({ password: next });
+    if (error) {
+      const message = (error.message || '').toLowerCase();
+      const key = /expired|invalid|session/.test(message) ? 'authResetInvalid' : 'authResetUpdateFailed';
+      setAuthError('reset-pw-error', key);
+      return;
+    }
+
+    // Invalidate every existing session, including any attacker who already
+    // had the old password. Fall back to a local sign-out if the global call
+    // is unavailable.
+    try {
+      const { error: signOutError } = await db.auth.signOut({ scope: 'global' });
+      if (signOutError) await db.auth.signOut({ scope: 'local' });
+    } catch (err) {
+      try { await db.auth.signOut({ scope: 'local' }); } catch (ignored) { /* ignore */ }
+    }
+
+    currentUser = null;
+    currentRole = null;
+    passwordRecoveryMode = false;
+    clearIdleActivity();
+    if (typeof resetMfaState === 'function') resetMfaState();
+    updateAuthUI();
+    closeAllModals();
+    openLoginModal();
+    setAuthNotice('login-success', 'authResetDone');
+  } catch (err) {
+    setAuthError('reset-pw-error', 'authResetUpdateFailed');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function cancelPasswordReset() {
+  passwordRecoveryMode = false;
+  closeModal('modal-reset');
+  await logout();
+  openLoginModal();
+  setAuthError('login-error', 'authResetCancelled');
+}
+
+async function logout(noticeKey) {
   if (BACKEND_READY && db) {
-    try { await db.auth.signOut(); } catch (e) { /* ignore */ }
+    // End this browser session only. Password recovery deliberately uses the
+    // global scope to revoke every existing session after a credential change.
+    try { await db.auth.signOut({ scope: 'local' }); } catch (e) { /* ignore */ }
   }
   currentUser = null;
   currentRole = null;
+  passwordRecoveryMode = false;
+  clearIdleActivity();
   if (typeof resetMfaState === 'function') resetMfaState();
   updateAuthUI();
   closeAllModals();
   const menu = document.getElementById('data-menu');
   if (menu) menu.classList.add('hidden');
+  if (noticeKey && typeof showToast === 'function') showToast(t(noticeKey));
+}
+
+/* ---------- idle logout ---------- */
+
+function markIdleActivity() {
+  const now = Date.now();
+  idleLastActivity = now;
+  // Anonymous tabs must not keep an authenticated session alive.
+  if (!currentUser) return;
+  // Share activity between signed-in tabs so a background tab cannot sign out
+  // a session the user is still using elsewhere. Throttle storage writes.
+  if (now - idleLastStored < 5000) return;
+  idleLastStored = now;
+  try { localStorage.setItem(IDLE_ACTIVITY_KEY, String(now)); } catch (err) { /* ignore */ }
+}
+
+function lastIdleActivity() {
+  const now = Date.now();
+  // If the wall clock moved backwards, do not wait for it to catch up.
+  if (idleLastActivity > now) idleLastActivity = now;
+
+  let stored = 0;
+  try {
+    const parsed = Number(localStorage.getItem(IDLE_ACTIVITY_KEY));
+    // A future timestamp is invalid and must not extend the session forever.
+    if (Number.isFinite(parsed) && parsed <= now) stored = parsed;
+  } catch (err) { /* ignore */ }
+
+  return Math.max(idleLastActivity, stored);
+}
+
+function clearIdleActivity() {
+  idleLastActivity = Date.now();
+  idleLastStored = 0;
+  try { localStorage.removeItem(IDLE_ACTIVITY_KEY); } catch (err) { /* ignore */ }
+}
+
+function checkIdleTimeout() {
+  if (!currentUser || idleSigningOut) return;
+  if (Date.now() - lastIdleActivity() >= IDLE_TIMEOUT_MS) idleLogout();
+}
+
+async function idleLogout() {
+  if (!currentUser || idleSigningOut) return;
+  idleSigningOut = true;
+  try {
+    await logout('authIdleLogout');
+  } finally {
+    idleSigningOut = false;
+  }
+}
+
+function startIdleWatcher() {
+  if (idleWatcherInstalled) return;
+  idleWatcherInstalled = true;
+  markIdleActivity();
+
+  ['pointerdown', 'keydown', 'touchstart'].forEach(type => {
+    document.addEventListener(type, markIdleActivity, { passive: true });
+  });
+  window.addEventListener('scroll', markIdleActivity, { passive: true });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    checkIdleTimeout();
+    markIdleActivity();
+  });
+
+  window.addEventListener('focus', () => {
+    checkIdleTimeout();
+    markIdleActivity();
+  });
+
+  idleCheckTimer = setInterval(checkIdleTimeout, IDLE_CHECK_MS);
 }
 
 /* ---------- change password ---------- */

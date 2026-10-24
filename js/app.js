@@ -67,7 +67,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -79,6 +79,10 @@ function trapModalKeyboard(event) {
 
   if (event.key === 'Escape') {
     event.preventDefault();
+    if (open.id === 'modal-reset' && typeof cancelPasswordReset === 'function') {
+      cancelPasswordReset();
+      return;
+    }
     closeModal(open.id);
     return;
   }
@@ -267,6 +271,9 @@ const CLICK_ACTIONS = {
   'login-modal': () => openLoginModal(),
   logout: () => logout(),
   'password-modal': () => openPasswordModal(),
+  'forgot-password': () => openResetRequest(),
+  'reset-back': () => showLoginFromReset(),
+  'cancel-password-reset': () => cancelPasswordReset(),
   'audit-log': () => openAuditModal(),
   'audit-refresh': () => renderAuditLog(),
   'trash-open': () => openTrashModal(),
@@ -338,6 +345,8 @@ const SUBMIT_ACTIONS = {
   login: (el, event) => handleLogin(event),
   signup: (el, event) => handleSignup(event),
   password: (el, event) => saveNewPassword(event),
+  'request-password-reset': (el, event) => requestPasswordReset(event),
+  'reset-password': (el, event) => saveRecoveredPassword(event),
   'mfa-verify': (el, event) => handleMfaVerifySubmit(event),
   'mfa-enroll-verify': (el, event) => handleMfaEnrollSubmit(event)
 };
