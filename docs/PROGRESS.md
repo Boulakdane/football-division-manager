@@ -286,7 +286,7 @@ Local CSV / JSON tools
 - [x] Add scheduled public-read JSON backups (daily artifact + validation) and a 4×/day keepalive (`2026-10-24`).
 - [x] Add a restore drill that loads each backup through `replace_all_data` into PGlite and compares every field (`2026-10-24`).
 - [x] Add `CHECK` constraints for IDs, names, team codes/colours, player numbers/totals, rounds/scores and season dates, with PGlite coverage (`2026-10-24`).
-- [ ] Apply `supabase/check-constraints-migration.sql` in development, then production, after a fresh backup.
+- [x] Apply `supabase/check-constraints-migration.sql` in development, then production, after a fresh backup (`2026-10-24`).
 - [x] Add a SQL/RLS suite with PGlite and run it in CI.
 - Add a Playwright smoke test (public read, login, admin save, archive, import).
 
@@ -613,7 +613,7 @@ The migration is idempotent: it adds a constraint only when missing. If existing
 Verification:
 - `npm run test:sql` applies the migration twice, then asserts that invalid colour, name, number, totals, round, same-team and season-name rows are rejected by name.
 - The production backup and the older event-less backup both restore through `schema.sql` + `replace_all_data` without violating any constraint.
-- **Not yet applied to hosted development/production.** Run the SQL Editor step in both projects, then re-run the constraint checks against live data.
+- **Applied in hosted development and production on 2026-10-24** (SQL Editor reported success in both projects). A fresh production export immediately afterwards is still `1 season / 6 teams / 9 players / 9 matches / 1 event` with the same SHA-256 as before the migration, and it passes validation and the restore drill.
 
 ```sql
 -- Verify after applying (development, then production)
