@@ -31,7 +31,7 @@
 | Data | Supabase Postgres + PostgREST; RLS public read/admin write; RPC-only destructive writes; archived seasons read-only |
 | Auth | Supabase Auth email + password; `profiles.role` |
 | Realtime | Not used |
-| Imports | Client-side validation plus atomic `replace_all_data(jsonb)` RPC; legacy fallback retained for older projects |
+| Imports | Client-side validation plus atomic `replace_all_data(jsonb)` RPC; the non-atomic client fallback was removed (2026-10-24), so an import now fails closed if the migration is missing |
 | History | `players.is_active` archive/restore; `save_match` atomic match + events; `delete_team` reverses opponent totals |
 | CSV | Node tools + browser exports |
 | Tests | JS syntax, CSV round trip, PGlite/Postgres integrity suite, manual browser/Lighthouse checks |
@@ -509,3 +509,147 @@ This is a larger change; do it only when a second competition is a real requirem
 | 2026-10-20 | Prefer atomic RPCs over multi-request client writes | Data integrity |
 | 2026-10-20 | Keep the current vanilla stack until tests exist | Avoid a risky rewrite |
 | 2026-10-20 | Add security work before flashy features | Admin role can erase the league |
+| 2026-10-24 | Remove the non-atomic import fallback; revoke `anon` EXECUTE on season RPCs | A failed fallback could half-delete the league; defence in depth for admin RPCs |
+| 2026-10-24 | Add reviewer proposals (section 22) | Independent code and security review; see section 22 for priorities |
+
+## 22. Reviewer proposals (2026-10-24)
+
+Added after an independent read of the code, SQL and workflows (see `SECURITY_AUDIT.md` for the findings this builds on). These complement sections 5–16 and avoid repeating them. Each proposal says what it removes or enables, how to prove it works, and where it fits in the phases.
+
+### 22.1 Priority at a glance
+
+| # | Proposal | Tier | Effort | Why now |
+|---|---|---|---|---|
+| A | Derive player and team totals from events instead of storing them | Data integrity | M | Removes the whole class of "totals drifted" bugs and the need for `events_counted` |
+| B | Least-privilege roles: `scorer` for live match entry | Security | M | Lets more people help on match day without handing out `admin` |
+| C | Security drift monitor in CI | Security | S | Catches a dashboard toggle (signups, MFA) silently flipping back |
+| D | Tamper-evident audit log and off-site backup copy | Security | M | A compromised admin is the main residual risk; today the log lives in the same database it protects |
+| E | Extract pure domain code into ES modules with Node tests | Maintainability | M | `js/app.js` is ~2,500 lines of globals; the first safe seam to cut |
+| F | Fixture generator (round-robin scheduler) | Product | M | Biggest time saver for the person running a real league |
+| G | Calendar feeds (`.ics`) and web push for followed teams | Product | M | Matches how people actually follow local football |
+| H | Merge import with a diff preview | Data integrity | M | Replaces "wipe everything" as the normal bulk path |
+| I | Team crests and photos with a safe upload path | Product / security | M | Looks modern; must not reopen XSS or privacy holes |
+| J | Privacy and retention policy for player data | Compliance | S | Many local leagues include minors; names are public by design |
+
+Suggested order: **C → A → B → E → H → D → F → G → I → J.** C is a day of work and protects what is already deployed; A and B change the data model and should land before real league data is loaded.
+
+### 22.2 A — Derive totals from events
+
+**Today:** `players.goals / yellow / red` and match scores are stored values that RPCs (`save_match`, `delete_match`, `delete_team`, `restore_*`) must adjust by hand, and `matches.events_counted` exists to avoid double counting. Every new write path is another place to get the arithmetic wrong.
+
+**Proposal:**
+- Make `match_events` the single source of truth for goals and cards.
+- Replace the stored columns with views: `v_player_stats(season_id, player_id, goals, yellow, red)` and `v_standings` (see 7.2).
+- Keep a nullable `legacy_goals / legacy_yellow / legacy_red` offset only for historical rows imported without events, then drop `events_counted`.
+- Add a CHECK-style guard (trigger or RPC validation) that a finished match's score equals the goal events for each side whenever events exist; otherwise reject with a clear message.
+
+**Prove it:**
+- PGlite test: every existing RPC leaves `v_player_stats` equal to a recomputation from raw events (property-style, random operation sequences).
+- The scale rehearsal from `PROGRESS.md` section 21 still round-trips with an identical hash.
+- Dual-run in development: the UI shows both the old and new totals and logs any difference before the old columns are removed.
+
+**Risk:** views over thousands of events are cheap, but index `match_events (match_id)` and `(player_id)` and confirm the read path stays well under the Lighthouse budget.
+
+### 22.3 B — A `scorer` role for live match entry
+
+**Today:** the only privileged role is `admin`, and an admin can replace the whole dataset. Match day needs several helpers entering goals and cards.
+
+**Proposal:**
+- Add `app_role = 'scorer'` and a `match_officials (match_id, user_id)` assignment table.
+- New RPC `record_live_event(match_id, event)` that a scorer may call only for an assigned match that is `LIVE` or scheduled today, in the active season, and only for goal/yellow/red inserts and removals within a short undo window.
+- Scorers cannot edit teams, seasons, imports or other matches; `is_admin()` stays unchanged.
+- Admin-only RPC to grant and revoke roles, writing an audit row, replacing "promotion is manual SQL".
+- Require MFA for scorers too if it is practical, otherwise keep their reach small enough that a stolen scorer password is a nuisance, not a disaster.
+
+**Prove it:** extend the RLS/RPC matrix test so a scorer gets `42501` on every admin RPC and on unassigned matches, and the audit log records the actor for every event.
+
+### 22.4 C — Security drift monitor
+
+Some protections live in the Supabase dashboard and cannot be seen in the repo (signups disabled, email confirmation, MFA requirement). Add a scheduled workflow that fails loudly if any of them changes:
+
+- `GET /auth/v1/settings` (public, already used by `loadAuthSettings`) must report signups disabled for production.
+- `rpc/admin_mfa_required` (public) must return `true` for production.
+- A probe with the anon key must receive `42501` or a permission error from each admin RPC (`create_season`, `activate_season`, `replace_all_data`, `save_match`, `list_audit_log`) and an empty result for direct writes.
+- Expected values live in a small `tools/check-security-drift.js`, reusing `tools/supabase-config.js`; the workflow runs daily next to the keepalive and opens an issue (or fails) on mismatch.
+- Anon probes must use obviously invalid arguments and never send a write that could succeed.
+
+**Done when:** flipping signups back on in a test project turns the next run red.
+
+### 22.5 D — Tamper-evident log and off-site copy
+
+- Add `prev_hash` and `row_hash` to `audit_log` (hash of the previous row plus the new row's canonical JSON), computed in the existing trigger. A periodic job re-verifies the chain, so an edit or deletion of history by someone with database access is detectable.
+- Publish the latest chain head with each daily backup. The backup workflow already exports data; also keep the artifact somewhere the Supabase admin cannot rewrite, such as a private repository, a release asset or an encrypted object store. Note that artifacts on a public repository can be downloaded by any signed-in GitHub user and expire after 90 days.
+- Encrypt backups at rest (age or GPG with a key held outside the repo) before they leave CI, and document the restore path in `docs/PROGRESS.md`.
+
+**Done when:** a restored backup plus the log's hash chain proves the sequence of changes, and a quarterly restore drill from the off-site copy is on the calendar.
+
+### 22.6 E — Extract pure domain code into ES modules
+
+`js/app.js` is about 97 KB of global functions sharing one mutable `appState`, with 27 `innerHTML` render sites. A rewrite is not needed; cut along the seams that are already pure:
+
+1. Move `esc`, `toInt`, `csvEscape`, `contrastTextColor`, `calculateStandings` and the event-summary helpers into `js/domain/*.js` as ES modules with no DOM access.
+2. Load them with `<script type="module">` (CSP `script-src 'self'` already covers it), keeping classic scripts for the rest until each piece is moved.
+3. Run the same modules under `node --test` in CI, with fixtures for tiebreakers, postponed matches, empty seasons and RTL names.
+4. Replace direct `innerHTML` assignment with one `renderInto(element, html)` helper plus an ESLint rule (`no-restricted-syntax` on `innerHTML`) so every new render path is forced through the audited escape function.
+5. Only then consider TypeScript or JSDoc types, starting with the domain modules.
+
+**Done when:** standings logic has unit tests that run without a browser, and the JS and SQL standings can be compared in CI (section 17, "dual-run").
+
+### 22.7 F — Fixture generator
+
+Running a league means building 100+ fixtures by hand. Add an admin tool that produces a full schedule:
+
+- Single or double round-robin using the circle method, with bye rounds for an odd number of teams.
+- Home/away balancing so no team has more than two consecutive home or away games.
+- Constraints: venues, kick-off slots, blackout dates, minimum rest days between a team's games.
+- Preview before saving, then insert through one atomic RPC (reuse the import validation) so a bad schedule never half-applies.
+- Rescheduling helper that shifts later rounds after a postponement.
+
+**Done when:** a 20-team double round-robin generates in under a second, passes the same invariants the import validator enforces, and every team plays every other exactly twice.
+
+### 22.8 G — Calendar feeds and push notifications
+
+- Per-team and per-competition `.ics` feeds generated from the public read views (a static file refreshed by a GitHub Action after data changes, or a small Edge Function), so fixtures appear in the user's own calendar app.
+- Optional web push for "my team" kick-off reminders and final scores, with the subscription stored per device and no personal account required.
+- "Follow a team" kept in `localStorage` on the device; never put follower lists in the public database.
+- Respect `prefers-reduced-motion` and offline mode from section 10; never cache authenticated responses.
+
+### 22.9 H — Merge import with a diff preview
+
+`replace_all_data` is safe but blunt. Add a second mode that compares an uploaded backup with the live data and shows what would be added, changed and removed per table before anything is written:
+
+- `import_preview(payload)` returns counts and a per-entity diff without writing.
+- `import_merge(payload, idempotency_key)` upserts by id inside one transaction and never deletes unless the admin ticks an explicit "remove missing rows" box.
+- Store a checksum and the key in an `import_runs` table, so retrying the same upload cannot apply twice.
+- Keep `replace_all_data` for disaster recovery, behind step-up MFA and a typed confirmation.
+
+This closes the open acceptance items in `SECURITY_AUDIT.md` SEC-03 (dry-run summary, idempotency key, confirmation with counts).
+
+### 22.10 I — Team crests and player photos
+
+- Store images in Supabase Storage with an admin-only write policy and public read.
+- Accept PNG/JPEG/WebP only; **do not accept SVG uploads** (script and external-reference risk). Re-encode and resize server-side or in the browser before upload, and strip metadata (EXIF location).
+- Keep the CSP's `img-src` to this origin plus the project's storage host; no hotlinking.
+- Photos of players are personal data; make them opt-in and see 22.11 first.
+
+### 22.11 J — Privacy and retention
+
+- Document what personal data the site publishes (names, shirt numbers, goals and cards) and who may request correction or removal.
+- Add a small "request removal or correction" path and an admin action that anonymises a player (for example to "Player 12") without deleting their history. Check the local data-protection rules that apply to your leagues, such as Algeria's Law 18-07, and the GDPR if you have EU visitors.
+- Treat youth leagues as higher risk: consider initials or first names only, and no photos.
+- Define retention: how long soft-deleted and archived records, audit rows and backups are kept, and who can purge them.
+
+### 22.12 Mapping to the phases
+
+| Phase | Add these proposals |
+|---|---|
+| Phase 1 — Trustworthy data platform | C, A, B, H (D as the log hardening step) |
+| Phase 2 — Modern match-day experience | E (as the enabling refactor), F, G |
+| Phase 3 — Scale and ecosystem | I, J, and the multi-competition work in section 15 |
+
+### 22.13 Open questions for the maintainer
+
+1. Will more than one or two people enter results on match day? If yes, B moves to the top.
+2. Are any leagues youth or school leagues? If yes, J and the photo policy in I come before any photo feature.
+3. Is a second competition expected within a year? If not, skip section 15 and spend that time on A, F and G.
+4. Is there a budget for a custom domain and Cloudflare in front of GitHub Pages? Real response headers (`frame-ancestors`, `Permissions-Policy`) remove the last CSP gaps listed in `SECURITY_AUDIT.md` SEC-02 and SEC-08.
