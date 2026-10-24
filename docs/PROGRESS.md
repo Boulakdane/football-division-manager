@@ -202,7 +202,7 @@ Local CSV / JSON tools
 4. **Production and development differ.** For example, `m6` is 1–1 in development but 2–4 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
 5. **The integrity migration is live; re-apply it after any older migration.** `supabase/integrity-migration.sql` has been run in development and production and `PLAYERS_ARCHIVE_READY` is true in both. If an older migration is re-run later, run the integrity migration again afterwards and re-check `PLAYERS_ARCHIVE_READY`.
 6. **Full imports replace the dataset.** Team, match and season deletes now go to **Recently deleted** and can be restored with their events and totals, and every change is in the activity log. A full JSON import still replaces the dataset; the import flow now downloads the current state automatically before replacing it, but keep a separate fresh export before trying real data. Transfers for players with events remain blocked in the UI.
-7. **Operational gaps.** Admin MFA is applied and tested in both projects, but enrolment has been removed after the verification run, so the requirement is currently **off** on both databases. There is still no password reset flow, automated hosted RLS test, session lifetime policy or login notification. A credential-free Playwright smoke test now covers public read, fixtures, squads, FR/AR + RTL and the login dialog; admin login/save/archive/import flows remain manual until a disposable test account exists. These are covered in the security and modernization plans.
+7. **Operational gaps.** Admin MFA is applied and tested in both projects, but enrolment has been removed after the verification run, so the requirement is currently **off** on both databases. There is still no password reset flow, automated hosted RLS test, session lifetime policy or login notification. A credential-free Playwright smoke test now covers public read, fixtures, squads, FR/AR + RTL and the login dialog; admin create/delete/restore and import rollback were exercised live in development and production was checked read-only, but they remain manual. These are covered in the security and modernization plans.
 
 ## 6. Release checklist for the match-events release
 
@@ -288,7 +288,8 @@ Local CSV / JSON tools
 - [x] Add `CHECK` constraints for IDs, names, team codes/colours, player numbers/totals, rounds/scores and season dates, with PGlite coverage (`2026-10-24`).
 - [x] Apply `supabase/check-constraints-migration.sql` in development, then production, after a fresh backup (`2026-10-24`).
 - [x] Add a SQL/RLS suite with PGlite and run it in CI.
-- [x] Add a Playwright public-read smoke test (standings, fixtures, squads, FR/AR + RTL, login dialog, no console errors). Admin save/archive/import flows remain manual until a disposable test account exists (`2026-10-24`).
+- [x] Add a Playwright public-read smoke test (standings, fixtures, squads, FR/AR + RTL, login dialog, no console errors) (`2026-10-24`).
+- [x] Exercise admin create, soft delete/restore and UI import rollback live in development, restoring the exact pre-test hash (`2026-10-24`).
 
 ### P2 — product and operations
 
@@ -636,4 +637,17 @@ order by conrelid::regclass::text, conname;
 
 It uses no credentials, performs no writes and needs no repository secrets. `npm run test:e2e` passes locally (1 test, ~4 s after startup). [`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml) installs Chromium and runs it on every push and pull request; failure traces/screenshots are uploaded for seven days.
 
-Still manual: password login, MFA step-up, admin save, archive/restore and import rollback. Automating those needs a dedicated development account and disposable data, so production is not mutated by CI.
+### Live admin regression (development, 2026-10-24)
+
+Using the signed-in development admin (`demo@kickoff.com`), I exercised the destructive path end to end:
+
+- created **E2E Temp** (`E2T`, `#0ea5e9`) and **E2E Player** (#7 FWD, 3 goals, 1 yellow) through the real team/player dialogs;
+- confirmed both appeared in **Teams & Players**, and the empty team appeared in the standings;
+- deleted the team through the UI; the confirm warned that its player would go too, and both left the active data;
+- opened **Data settings → Recently deleted**, saw `E2E Temp (E2T) · 1 players · 0 fixtures`, restored it, and confirmed the same player ID and totals returned;
+- imported `backups/dev-admin-e2e-before.json` through the real file input and accepted the confirmation; the app downloaded its pre-import safety backup before replacing;
+- active data returned to **6 teams / 9 players / 9 matches / 0 events**, the raw public export SHA-256 returned to `b26b6fb2a501e8bae2962b7dcfbb47d137d05bf22251a1b985c065648ebe6e96`, `list_deleted` was empty, and the audit log showed the `IMPORT`, `RESTORE`, `DELETE` and `INSERT` entries.
+
+Production was checked **read-only** with the signed-in production admin: 6 teams / 9 players / 9 matches / 1 event, the audit log was readable, and there were no data or console errors. No production writes were made.
+
+Admin flows are now proven live but remain manual: automated admin E2E still needs a disposable account/storage state, and CI stays public-only.
