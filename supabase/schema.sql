@@ -152,7 +152,10 @@ create table if not exists public.seasons (
   end_date date,
   is_active boolean not null default false,
   created_at timestamptz not null default now(),
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  constraint kickoff_seasons_id_not_blank check (length(btrim(id)) between 1 and 100),
+  constraint kickoff_seasons_name_length check (length(btrim(name)) between 1 and 100),
+  constraint kickoff_seasons_dates_order check (start_date is null or end_date is null or start_date <= end_date)
 );
 
 -- Keep the existing default season (or create it) without changing
@@ -211,7 +214,11 @@ create table if not exists public.teams (
   code text not null default 'TBD',
   color text not null default '#16a34a',
   created_at timestamptz not null default now(),
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  constraint kickoff_teams_id_not_blank check (length(btrim(id)) between 1 and 100),
+  constraint kickoff_teams_name_length check (length(btrim(name)) between 1 and 100),
+  constraint kickoff_teams_code_length check (length(btrim(code)) between 1 and 8),
+  constraint kickoff_teams_color_hex check (color ~ '^#[0-9A-Fa-f]{6}$')
 );
 
 create table if not exists public.players (
@@ -224,7 +231,11 @@ create table if not exists public.players (
   yellow int not null default 0,
   red int not null default 0,
   is_active boolean not null default true,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint kickoff_players_id_not_blank check (length(btrim(id)) between 1 and 100),
+  constraint kickoff_players_name_length check (length(btrim(name)) between 1 and 100),
+  constraint kickoff_players_num_range check (num between 0 and 999),
+  constraint kickoff_players_totals_range check (goals >= 0 and yellow >= 0 and red >= 0)
 );
 
 alter table public.players
@@ -244,7 +255,11 @@ create table if not exists public.matches (
   scorers_text text,
   events_counted boolean not null default true,
   created_at timestamptz not null default now(),
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  constraint kickoff_matches_id_not_blank check (length(btrim(id)) between 1 and 100),
+  constraint kickoff_matches_round_range check ("round" between 1 and 1000),
+  constraint kickoff_matches_scores_range check (home_score between 0 and 999 and away_score between 0 and 999),
+  constraint kickoff_matches_distinct_teams check (home_id <> away_id)
 );
 
 -- Upgrade a matches table created before seasons existed.

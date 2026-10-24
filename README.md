@@ -107,7 +107,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── integrity-migration.sql      # Archive players, lock archived seasons and make deletes safe
     ├── audit-log-migration.sql      # Trigger-fed, admin-only audit log + Activity log panel
     ├── soft-delete-migration.sql    # Trash + restore for teams, matches and seasons
-    └── mfa-migration.sql            # Database-enforced admin two-factor requirement
+    ├── mfa-migration.sql            # Database-enforced admin two-factor requirement
+    └── check-constraints-migration.sql # Reject malformed names, colours, scores and dates
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -166,10 +167,16 @@ plus Supabase.
 >    only returns true for `aal2` sessions, so every existing RLS policy and RPC
 >    rejects password-only writes. The requirement defaults to **off**, so this
 >    migration changes nothing until you opt in.
+> 8. [`supabase/check-constraints-migration.sql`](supabase/check-constraints-migration.sql)
+>    — adds database-level checks for non-blank names/IDs, team codes and hex colours,
+>    non-negative player numbers/totals, valid rounds/scores, distinct home and away
+>    teams, and season date order. It fails and rolls back if existing rows violate a
+>    rule, so export a backup first and fix the reported rows.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
-> idempotent and creates anything that is missing. Do not re-run the sample seed block
-> on a production database with real data.
+> idempotent and creates anything that is missing. It does **not** add the new `CHECK`
+> constraints to tables that already exist, so run step 8 separately on an upgraded
+> database. Do not re-run the sample seed block on a production database with real data.
 >
 > After the integrity migration, team/match deletion and match-event writes are
 > intentionally RPC-only. The app uses `delete_team`, `delete_match`, `save_match` and

@@ -284,7 +284,9 @@ Local CSV / JSON tools
 - [x] Add an audit log (triggers + admin panel, `v3.7.0`).
 - [x] Add soft delete and restore for teams, matches and seasons (`v3.8.0`, applied in both projects).
 - [x] Add scheduled public-read JSON backups (daily artifact + validation) and a 4×/day keepalive (`2026-10-24`).
-- Add database `CHECK` constraints for scores, names, colours and dates.
+- [x] Add a restore drill that loads each backup through `replace_all_data` into PGlite and compares every field (`2026-10-24`).
+- [x] Add `CHECK` constraints for IDs, names, team codes/colours, player numbers/totals, rounds/scores and season dates, with PGlite coverage (`2026-10-24`).
+- [ ] Apply `supabase/check-constraints-migration.sql` in development, then production, after a fresh backup.
 - [x] Add a SQL/RLS suite with PGlite and run it in CI.
 - Add a Playwright smoke test (public read, login, admin save, archive, import).
 
@@ -595,3 +597,28 @@ Deliberately deferred:
 
 ### Database review brief
 - [`docs/DATABASE_REVIEW_BRIEF.md`](DATABASE_REVIEW_BRIEF.md) is a self-contained prompt for Gemini (or another assistant) describing the app, data model, security requirements, scale and free-tier limits, and asking for a stay-or-move recommendation. It contains no credentials.
+
+## 17. Data-quality constraints (2026-10-24)
+
+The UI and RPCs validate most inputs, but an admin can still write directly through the REST API if a rule is only enforced in JavaScript. [`supabase/check-constraints-migration.sql`](../supabase/check-constraints-migration.sql) moves those rules into Postgres:
+
+- non-blank IDs and names (max 100 characters);
+- team codes 1–8 characters and six-digit hex colours;
+- player numbers 0–999 and non-negative goals/cards;
+- match rounds 1–1000, scores 0–999, and different home/away teams;
+- season start date not after end date.
+
+The migration is idempotent: it adds a constraint only when missing. If existing data violates a rule, `ALTER TABLE` fails and the whole script rolls back, so run it after a backup and fix the rows it reports. Fresh installs get the same constraints from `schema.sql`.
+
+Verification:
+- `npm run test:sql` applies the migration twice, then asserts that invalid colour, name, number, totals, round, same-team and season-name rows are rejected by name.
+- The production backup and the older event-less backup both restore through `schema.sql` + `replace_all_data` without violating any constraint.
+- **Not yet applied to hosted development/production.** Run the SQL Editor step in both projects, then re-run the constraint checks against live data.
+
+```sql
+-- Verify after applying (development, then production)
+select conname, conrelid::regclass as table_name
+from pg_constraint
+where conname like 'kickoff_%'
+order by conrelid::regclass::text, conname;
+```

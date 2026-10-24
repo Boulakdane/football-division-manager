@@ -76,6 +76,41 @@ async function run() {
     const mfaSql = fs.readFileSync(path.join(ROOT, 'supabase/mfa-migration.sql'), 'utf8');
     await exec(mfaSql);
     await exec(mfaSql);
+    const constraintSql = fs.readFileSync(path.join(ROOT, 'supabase/check-constraints-migration.sql'), 'utf8');
+    await exec(constraintSql);
+    await exec(constraintSql);
+
+    // Data-quality constraints reject malformed rows even for a direct table
+    // write, not just through the UI or an RPC.
+    await expectError(
+      () => q("insert into public.teams (id, name, code, color) values ('tbadcolor', 'Bad Color', 'BAD', 'red')"),
+      /kickoff_teams_color_hex/
+    );
+    await expectError(
+      () => q("insert into public.teams (id, name, code, color) values ('tbadname', '   ', 'BAD', '#123456')"),
+      /kickoff_teams_name_length/
+    );
+    await expectError(
+      () => q("insert into public.players (id, team_id, name, pos, num, goals) values ('pbadgoals', 't1', 'Bad Goals', 'FWD', 10, -1)"),
+      /kickoff_players_totals_range/
+    );
+    await expectError(
+      () => q("insert into public.players (id, team_id, name, pos, num) values ('pbadnum', 't1', 'Bad Number', 'FWD', -1)"),
+      /kickoff_players_num_range/
+    );
+    await expectError(
+      () => q("insert into public.matches (id, season_id, round, home_id, away_id) values ('mbadround', 's1', 0, 't1', 't2')"),
+      /kickoff_matches_round_range/
+    );
+    await expectError(
+      () => q("insert into public.matches (id, season_id, round, home_id, away_id) values ('mbadsame', 's1', 1, 't1', 't1')"),
+      /kickoff_matches_distinct_teams/
+    );
+    await expectError(
+      () => q("insert into public.seasons (id, name, is_active) values ('sbadname', '   ', false)"),
+      /kickoff_seasons_name_length/
+    );
+    console.log('OK data-quality constraints reject malformed rows');
 
     // Archived season + isolated team-deletion fixtures.
     await exec(`
