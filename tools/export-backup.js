@@ -20,6 +20,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { fail, readConfig } = require('./supabase-config');
+const {
+  seasonFromRow,
+  teamFromRow,
+  playerFromRow,
+  matchFromRow,
+  eventFromRow
+} = require('./backup-map');
 
 const args = process.argv.slice(2);
 const envArg = (args.find(a => a.startsWith('--env=')) || '--env=prod').split('=')[1];
@@ -59,59 +66,23 @@ async function getRows(base, table, order) {
 }
 
 function seasonRow(row) {
-  return {
-    id: row.id,
-    name: row.name,
-    startDate: row.start_date || '',
-    endDate: row.end_date || '',
-    isActive: Boolean(row.is_active)
-  };
+  return seasonFromRow(row);
 }
 
 function teamRow(row) {
-  return { id: row.id, name: row.name, code: row.code, color: row.color };
+  return teamFromRow(row);
 }
 
 function playerRow(row) {
-  return {
-    id: row.id,
-    teamId: row.team_id,
-    name: row.name,
-    pos: row.pos,
-    num: row.num,
-    goals: row.goals,
-    yellow: row.yellow,
-    red: row.red,
-    isActive: row.is_active !== false
-  };
+  return playerFromRow(row);
 }
 
 function matchRow(row) {
-  return {
-    id: row.id,
-    seasonId: row.season_id,
-    round: row.round,
-    homeId: row.home_id,
-    awayId: row.away_id,
-    homeScore: row.home_score,
-    awayScore: row.away_score,
-    status: row.status,
-    datetime: row.datetime || '',
-    venue: row.venue || '',
-    scorersText: row.scorers_text || '',
-    eventsCounted: row.events_counted !== false
-  };
+  return matchFromRow(row);
 }
 
 function eventRow(row) {
-  return {
-    id: row.id,
-    matchId: row.match_id,
-    teamId: row.team_id,
-    playerId: row.player_id,
-    type: row.event_type,
-    minute: row.minute
-  };
+  return eventFromRow(row);
 }
 
 (async () => {

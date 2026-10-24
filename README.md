@@ -90,6 +90,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── backup-to-csv.js       # Turn a JSON backup into editable CSV files
 │   ├── export-backup.js       # Export public data without an admin session
 │   ├── validate-backup.js     # Check structure and referential integrity
+│   ├── restore-drill.js       # Restore a backup into in-memory Postgres and compare
+│   ├── backup-map.js          # Shared camelCase ⇄ database row mapping
 │   ├── keepalive.js           # One public read to prevent Free-tier pausing
 │   └── check-secrets.js       # Fail CI if a privileged secret is committed
 ├── vendor/
@@ -396,6 +398,7 @@ public-read exporter, a validator, and two scheduled GitHub Actions jobs:
 npm run backup:prod     # writes backups/prod-backup-YYYY-MM-DD.json
 npm run backup:dev      # writes backups/dev-backup-YYYY-MM-DD.json
 npm run check:backup -- backups/prod-backup-2026-10-24.json
+npm run drill:backup -- backups/prod-backup-2026-10-24.json
 npm run keepalive:prod  # one lightweight read, for manual testing
 ```
 
@@ -405,16 +408,19 @@ The output is the same JSON shape as **Export Backup (JSON)** in the admin menu 
 be re-imported there.
 
 - [`Daily data backup`](.github/workflows/backup.yml) runs at 06:15 UTC, validates every
-  foreign key and the active-season rule, uploads the JSON as a 90-day artifact, and
-  prints the row counts in the workflow summary. Artifact storage is tiny: even a
-  400 KB “busy” export × 90 days is ~36 MB of the 500 MB GitHub allowance.
+  foreign key and the active-season rule, **restores the backup into an in-memory
+  Postgres database**, uploads the JSON as a 90-day artifact, and prints the row counts
+  in the workflow summary. Artifact storage is tiny: even a 400 KB “busy” export × 90
+  days is ~36 MB of the 500 MB GitHub allowance.
 - [`Database keepalive`](.github/workflows/keepalive.yml) makes one public read every
   six hours. Supabase's current guidance is “a few requests per day”; one ping per week
   is **not** enough to prevent a Free project from being paused.
-- The validator proves the payload is structurally sound and every reference resolves.
-  It does not prove the import path works: for that, import the artifact into the
-  **development** project and check standings, fixtures and squads before touching
-  production.
+- `validate-backup.js` proves the payload is structurally sound and every reference
+  resolves. `restore-drill.js` goes further: it runs `replace_all_data` against
+  `supabase/schema.sql` in PGlite, then compares the restored database back to the
+  backup (counts, active season, audit row and every field). It still does not prove the
+  live import path or RLS, so also import the artifact into the **development** project
+  and check standings, fixtures and squads before touching production.
 
 GitHub disables scheduled workflows after 60 days without repository activity. During a
 long off-season, run either job from **Actions → Run workflow**, or make a small commit.

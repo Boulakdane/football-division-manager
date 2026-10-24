@@ -66,3 +66,6 @@ jobs:
 
       - name: Validate backup structure and references
         run: node tools/validate-backup.js /tmp/kickoff-first.json
+
+      - name: Restore drill into in-memory Postgres
+        run: node tools/restore-drill.js /tmp/kickoff-first.json

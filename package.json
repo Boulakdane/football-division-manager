@@ -10,6 +10,7 @@
     "test:sql": "node tools/test-sql-integrity.js",
     "check:secrets": "node tools/check-secrets.js",
     "check:backup": "node tools/validate-backup.js",
+    "drill:backup": "node tools/restore-drill.js",
     "backup:prod": "node tools/export-backup.js --env=prod",
     "backup:dev": "node tools/export-backup.js --env=dev",
     "keepalive:prod": "node tools/keepalive.js --env=prod"

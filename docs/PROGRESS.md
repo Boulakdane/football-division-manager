@@ -568,7 +568,7 @@ Caveats and mitigations:
 The second opinion reached the same verdict: **stay on Supabase Free**; a move would be premature optimization. Its scale estimates were in the same range (tens of MB at the 10-season “busy” size, <2% of egress).
 
 Accepted and implemented:
-- Daily backups instead of weekly, with a structural/referential validator before upload.
+- Daily backups instead of weekly, with a structural/referential validator and a full restore drill before upload.
 - A 4×/day keepalive, because one weekly ping does not meet Supabase's current activity guidance.
 - Paginated reads in both the app and the exporter, so PostgREST's 1,000-row cap cannot silently drop match events at the busy scale.
 - An automatic pre-import backup download in the admin JSON import flow.
@@ -585,10 +585,13 @@ Deliberately deferred:
 - `tools/export-backup.js` reads the public tables with the publishable key (no admin session, no secrets) and emits the same camelCase JSON shape as the in-app export. It refuses to write an empty backup.
 - `npm run backup:prod` / `npm run backup:dev` write dated files to `backups/` (gitignored).
 - `tools/validate-backup.js` checks array shapes, duplicate IDs, exactly one active season, scores/rounds/minutes, and every team/season/player/match reference. It runs on every CI backup and on the CSV round trip.
+- `tools/restore-drill.js` loads the backup through the real `replace_all_data` RPC into `supabase/schema.sql` inside PGlite, then compares every restored field to the backup. It also asserts one active season, one `IMPORT` audit row and no orphan events. It runs in CI and in the daily backup job.
+- `npm run drill:backup -- backups/prod-backup-YYYY-MM-DD.json` runs the same check locally against any artifact before a risky import.
+- `tools/backup-map.js` holds the shared camelCase ⇄ database row mapping used by the exporter and the drill, so the two cannot drift.
 - The admin JSON import now asks for confirmation and downloads the current dataset as a dated backup before replacing it.
-- [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) runs daily, validates, prints row counts to the job summary and uploads a 90-day artifact.
+- [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) runs daily, validates, restores into in-memory Postgres, prints row counts to the job summary and uploads a 90-day artifact.
 - [`.github/workflows/keepalive.yml`](../.github/workflows/keepalive.yml) performs one public read every six hours with no artifact.
-- Verified against production: the script output is deep-equal to the admin JSON export (`1/6/9/9/1`), the validator accepts it, and the CI jobs need no repository secrets.
+- Verified against production: the script output is deep-equal to the admin JSON export (`1/6/9/9/1`); the production backup and an older backup without `matchEvents` both pass the restore drill; the CI jobs need no repository secrets.
 
 ### Database review brief
 - [`docs/DATABASE_REVIEW_BRIEF.md`](DATABASE_REVIEW_BRIEF.md) is a self-contained prompt for Gemini (or another assistant) describing the app, data model, security requirements, scale and free-tier limits, and asking for a stay-or-move recommendation. It contains no credentials.
