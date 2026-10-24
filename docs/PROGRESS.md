@@ -27,9 +27,10 @@
 | Account recovery, sign-out everywhere and idle logout | ✅ Done in `v3.10.1` | Generic reset request, recovery-link password change, global sign-out after reset or from the admin menu, 30-minute app-level idle logout, EN/FR/AR copy |
 | UX polish and shareability | ✅ Done in `v3.6.0` | Shareable filter URLs, clear filters, guided empty states, match timeline, keyboard/focus handling, Lighthouse 100/100/100 |
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
+| Realistic-scale import rehearsal | ✅ Done in development (2026-10-24) | 20 teams / 500 players / 200 matches / 2,043 events imported through the UI, exported, validated and restored to the exact original hash; production untouched |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.10.1` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Production now requires two-factor for admin writes (`admin_mfa_required()` returns `true`) and the real admin is enrolled; the development demo account remains password-only for disposable tests. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. The remaining operational work is loading the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.10.1` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Production now requires two-factor for admin writes (`admin_mfa_required()` returns `true`) and the real admin is enrolled; the development demo account remains password-only for disposable tests. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. A realistic-scale rehearsal (20 teams / 500 players / 200 matches / 2,043 events) imported through the admin UI, passed pagination, UI, export, audit and restore checks, and the original development data was restored with the identical SHA-256; production was verified unchanged. The remaining operational work is loading the real league data.
 
 ## 2. Architecture
 
@@ -275,6 +276,7 @@ Local CSV / JSON tools
 ### P0 — finish this release
 
 - [x] Enrol the real production admin in TOTP and enable **Require two-factor for admin writes**; `admin_mfa_required()` now returns `true` (2026-10-24).
+- [x] Run a realistic-scale import rehearsal in development (20 teams / 500 players / 200 matches / 2,043 events), verify pagination, UI, exports, audit and restore, then restore the original development data (2026-10-24).
 - Sign in on the live production site and repeat the archive/restore, atomic match-save and safe team-delete checks with temporary data.
 - Load the real league data into development, verify standings, fixtures and squads, then import into production.
 - Keep the fresh production backup and export another one immediately before the production import.
@@ -337,7 +339,7 @@ Synthetic test data for future import rehearsals:
 - The intermediate CSV folder (`data/synth/`) was removed; it can be regenerated from the backup if needed.
 - Nothing was imported into development or production. Both databases are unchanged from the `v3.5.1` baseline (`435a86dbcb7d69161f16fcfefef172ff703b0a6b9169a6ada027d879e6c80f54` for production).
 
-Next up: either continue the UX polish backlog (shareable filter URLs, "clear filters", empty states with CTAs, match timeline grouping, accessibility/focus states) or import the synthetic backup into development as a rehearsal and delete it afterwards.
+Superseded: the realistic-scale rehearsal in section 21 imported and restored a larger dataset (20 teams / 500 players / 200 matches / 2,043 events). This smaller synthetic backup remains a useful historical fixture for the CSV conversion path.
 
 ## 10. UX polish release (v3.6.0)
 
@@ -558,7 +560,7 @@ A stolen password is no longer enough to change league data. Admins can enrol a 
 ### Is Supabase Free enough?
 Yes, comfortably, at both the current size and the realistic “busy” league size.
 
-- Current production data is ~5.8 KB of JSON (1 season / 6 teams / 9 players / 9 matches / 1 event). Even at 20 teams / 500 players / 200 matches / 2,000 events, the dataset is well under 1 MB.
+- Current production data is ~5.8 KB of JSON (1 season / 6 teams / 9 players / 9 matches / 1 event). The 2026-10-24 rehearsal measured **554 KB** of pretty-printed JSON for 20 teams / 500 players / 200 matches / 2,043 events, so the realistic busy league remains well under 1 MB.
 - The Free plan includes 500 MB database, 5 GB egress, 50,000 monthly active users and unlimited API requests. A full page load fetches the whole league (a few KB now, a few hundred KB at the busy scale), so egress supports tens of thousands of visits per month after compression.
 - Writes are tens to low hundreds per week; audit rows are 1–3 KB each, so the log grows by a few MB per year.
 
@@ -758,3 +760,33 @@ Admin flows are now proven live but remain manual: automated admin E2E still nee
 ### Activation
 - No migration or Supabase setting is required. The control appears automatically for
   admins in the settings menu after deployment.
+
+## 21. Realistic-scale import rehearsal (2026-10-24)
+
+Development-only rehearsal before real league data. No production writes, schema changes or app changes.
+
+### Dataset
+- 1 active season, 20 teams, 500 players (25 per team), 200 matches (180 finished, 20 scheduled) and 2,043 events (goals, yellow cards and red cards).
+- 554,498-byte JSON; all references, player numbers, scores and event totals are internally consistent.
+- `tools/validate-backup.js` passed.
+- `tools/restore-drill.js` loaded it through `replace_all_data` into PGlite and compared every field; exact round trip in **3.36 s**.
+
+### Hosted development pass
+- Signed in as `demo@kickoff.com` on `?env=dev` (development MFA off, as intended) and imported through the real admin file input.
+- The app automatically downloaded the pre-import safety backup: 1/6/9/9/0; canonical hash `d578b9fa...`.
+- Post-import public export: 1/20/500/200/2043; canonical hash `4d8918e5...`; every field matched the source backup.
+- The app loaded all **2,043 events**, proving pagination beyond PostgREST's 1,000-row cap.
+- UI: 20 standings rows, 200 fixture cards, 20 team cards and 500 player rows; client render ~**200 ms**; squad search ~**20 ms**; no console or page errors.
+- Sample match `m_scale_001` rendered all 13 events with player, minute, goal/yellow/red marker and the 2–1 score.
+- JSON export matched the source canonically. CSV exports: 20 standings rows, 200 fixtures and 500 squad rows. A recomputation from the source matches every standings column (0 mismatches); 586 goals and 495 points.
+- The activity log recorded the import with exact counts and `demo@kickoff.com`; **Recently deleted** was empty.
+
+### Restore
+- Re-imported the original development backup through the same UI.
+- The app downloaded the 554 KB scale state first; it matched the synthetic source canonically.
+- Final public export returned to **1/6/9/9/0**, SHA-256 `b26b6fb2a501e8bae2962b7dcfbb47d137d05bf22251a1b985c065648ebe6e96`, byte-identical to the pre-rehearsal export.
+- UI returned to 6 standings rows, 9 fixture cards, 6 team cards and 9 player rows; no scale data remained; no console errors.
+- A read-only production export after the rehearsal remained **1/6/9/9/1**, SHA-256 `bd746e91eb7fdb6d063ba94a5fe0af93d9cabf96efdb0e848d4c881744015466`.
+
+### Result
+The import path is safe at the busy-league scale: validation, atomic replacement, pagination, rendering, JSON/CSV exports, the audit log and automatic pre-import backups all behave. The 554 KB scale JSON and the temporary generator were not committed; any future rehearsal can use the same validated-backup path.
