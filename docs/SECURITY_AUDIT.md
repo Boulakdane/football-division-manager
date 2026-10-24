@@ -76,7 +76,7 @@ CI      ──push──► GitHub Pages
 ### SEC-01 — Admin account takeover has no second factor
 
 **Severity:** High
-**Status:** Mitigated and verified in both hosted projects (`v3.9.0`). The requirement is currently off because the verification factor was removed afterwards; enrol the real admin account to keep it on.
+**Status:** Mitigated and verified in both hosted projects (`v3.9.0`). The real production admin has now enrolled a TOTP factor and enabled the requirement; `admin_mfa_required()` returns `true` in production. Development remains off for disposable testing.
 
 **Evidence (original):** `js/auth.js` used email + password only. Password minimum is 6 characters. There was no MFA prompt, no `aal2` check in `is_admin()`, no session timeout, no “sign out all devices”, and no notification on admin login. The admin role can call `replace_match_events`, `delete_match`, `activate_season` and full-data replacement.
 
@@ -97,6 +97,7 @@ CI      ──push──► GitHub Pages
 - ✅ A viewer or anonymous caller receives `42501` for every write RPC, including the MFA toggle.
 - ✅ The UI explains how to enrol MFA and prompts for step-up.
 - ✅ `mfa-migration.sql` is applied in development and production; a real admin login (`aal1`) could not update teams or call admin RPCs until a TOTP code was verified, and writes succeeded after step-up. Production data hashed identically before and after the test.
+- ✅ The real production admin enrolled a TOTP factor and enabled the requirement; the public `admin_mfa_required()` RPC returns `true` (2026-10-24). Development returns `false` so disposable tests stay password-only.
 
 ### SEC-02 — XSS risk from `innerHTML` rendering (mitigated in `v3.6.2`)
 
