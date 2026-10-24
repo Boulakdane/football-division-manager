@@ -606,65 +606,33 @@ function buildAtomicImportPayload(data) {
   };
 }
 
-/** Replace the whole dataset (used by JSON import and reset). Admin only. */
+/**
+ * Replace the whole dataset (used by JSON import and reset). Admin only.
+ *
+ * Runs only through the single-transaction replace_all_data() RPC. There is
+ * deliberately no table-by-table fallback: a failure partway through such a
+ * fallback could leave the league half-deleted. If the migration is missing,
+ * the import fails before anything is changed.
+ */
 async function dbReplaceAll(data) {
   assertBackend();
 
-  const seasonsReady = Boolean(appState && appState.seasonsReady);
-  const eventsReady = Boolean(appState && appState.eventsReady);
-
-  // Prefer the single-transaction RPC. If it has not been installed yet,
-  // fall back to the older client-orchestrated import so existing projects
-  // remain usable until the migration is applied.
-  if (seasonsReady && eventsReady) {
-    const { error } = await db.rpc('replace_all_data', {
-      p_data: buildAtomicImportPayload(data)
-    });
-    if (!error) return;
-    if (!isMissingFunction(error)) throw error;
-  }
-
-  const seasons = Array.isArray(data.seasons) ? data.seasons : [];
-  const tables = [];
-  if (eventsReady) tables.push('match_events');
-  tables.push('matches', 'players', 'teams');
-  if (seasonsReady) tables.push('seasons');
-
-  for (const table of tables) {
-    const { error } = await db.from(table).delete().not('id', 'is', null);
-    if (error) throw error;
-  }
-
-  if (seasonsReady && seasons.length) {
-    const { error } = await db.from('seasons').insert(seasons.map(seasonToRow));
-    if (error) throw error;
-  }
-  if (data.teams.length) {
-    const { error } = await db.from('teams').insert(data.teams.map(teamToRow));
-    if (error) throw error;
-  }
-  if (data.players.length) {
-    const { error } = await db.from('players').insert(
-      data.players.map(player => playerToRow(player, PLAYERS_ARCHIVE_READY))
+  const ready = Boolean(appState && appState.seasonsReady && appState.eventsReady);
+  if (!ready) {
+    throw new Error(
+      'Import is unavailable: run the database migrations (supabase/schema.sql) so the atomic import function exists.'
     );
-    if (error) throw error;
-  }
-  if (data.matches.length) {
-    const fallbackSeason = seasons.find(season => season.isActive) || seasons[0];
-    const rows = data.matches.map(match => matchToRow(
-      seasonsReady
-        ? { ...match, seasonId: match.seasonId || (fallbackSeason && fallbackSeason.id) }
-        : { ...match, seasonId: null }
-    ));
-    const { error } = await db.from('matches').insert(rows);
-    if (error) throw error;
   }
 
-  // Imported player totals are authoritative, so events are inserted
-  // directly without adjusting them again.
-  const matchEvents = Array.isArray(data.matchEvents) ? data.matchEvents : [];
-  if (eventsReady && matchEvents.length) {
-    const { error } = await db.from('match_events').insert(matchEvents.map(matchEventToRow));
-    if (error) throw error;
+  const { error } = await db.rpc('replace_all_data', {
+    p_data: buildAtomicImportPayload(data)
+  });
+  if (error) {
+    if (isMissingFunction(error)) {
+      throw new Error(
+        'Import is unavailable: replace_all_data() is not installed. Run supabase/atomic-import-migration.sql.'
+      );
+    }
+    throw error;
   }
 }

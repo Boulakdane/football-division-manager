@@ -568,6 +568,8 @@ begin
 end;
 $$;
 
+revoke execute on function public.create_season(text, text, date, date) from public, anon;
+revoke execute on function public.activate_season(text) from public, anon;
 grant execute on function public.create_season(text, text, date, date) to authenticated;
 grant execute on function public.activate_season(text) to authenticated;
 
