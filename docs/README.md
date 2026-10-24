@@ -5,6 +5,7 @@
 | [PROGRESS.md](PROGRESS.md) | Current release status, completed work, blockers and release checklist |
 | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Threat model, findings, remediation plan and verification steps |
 | [MODERNIZATION_PLAN.md](MODERNIZATION_PLAN.md) | Phased roadmap and sophisticated technical/product changes |
+| [DATABASE_REVIEW_BRIEF.md](DATABASE_REVIEW_BRIEF.md) | Self-contained prompt for an independent database/hosting review |
 
 ## Suggested reading order
 

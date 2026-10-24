@@ -1,0 +1,31 @@
+name: Database keepalive
+
+on:
+  schedule:
+    # Four light public reads per day. Supabase Free pauses projects after about
+    # a week without enough database activity; its docs say a few requests per
+    # day are typically enough. GitHub may delay scheduled runs.
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kickoff-keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Ping production database
+        run: node tools/keepalive.js --env=prod

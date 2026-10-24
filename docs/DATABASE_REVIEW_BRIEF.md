@@ -63,25 +63,25 @@
 > Realistic target (the actual league, not a global service):
 > - **Typical:** 1 season, 8–16 teams, 150–350 players, 60–120 matches/season, 300–800 events/season; maybe 3–5 seasons retained.
 > - **Busy:** 20 teams, 500 players, 200 matches/season, 2,000 events/season, 10 seasons archived.
-> - **Traffic:** a few hundred to a few thousand page views per month; spikes on matchday. 1–3 admins editing. One full page load currently fetches the whole league (all tables) in ~5 parallel queries.
+> - **Traffic:** a few hundred to a few thousand page views per month; spikes on matchday. 1-3 admins editing. One full page load currently fetches the whole league (all tables) in parallel, paged at 1,000 rows per request.
 > - **Writes:** tens to low hundreds per week. Audit log grows by roughly 1–3 KB per write.
 > - No images, video, file uploads, chat, notifications, or high-frequency telemetry.
 >
 > ### 6. Current pain points / risks
 >
-> 1. Supabase Free has **no automatic backups** and pauses projects after **7 days of inactivity** (mitigated by a weekly public-read backup job that also acts as a keepalive). Backups are JSON exports kept as CI artifacts / local files.
+> 1. Supabase Free has **no automatic backups** and pauses projects after about **7 days of low activity** (mitigated by a daily public-read backup and a 4×/day keepalive). Backups are validated JSON exports kept as CI artifacts / local files.
 > 2. Free plan log retention is **1 day**, which limits incident investigation.
 > 3. The RLS + RPC + MFA model is tightly coupled to Supabase/Postgres features. Moving to a non-Postgres or non-RLS platform would require re-implementing authorization in an API layer.
 > 4. The browser talks directly to PostgREST; there is no custom API server. Any replacement must preserve this “static frontend + managed backend” shape or add serverless functions.
 > 5. Vendor lock-in: auth users, RLS policies, triggers and RPCs are Supabase/Postgres-specific.
 > 6. No session timeout / “sign out all devices” / login notifications on the Free plan (some are Pro-only features).
-> 7. The whole league is fetched on each load. At the “busy” scale this is still small, but it is not a paginated/API-first design.
+> 7. The whole league is fetched on each load (paged at 1,000 rows to avoid PostgREST's default cap). Archived seasons could be lazy-loaded later, but the payload is still small at the realistic scale.
 >
 > ### 7. Current Supabase Free limits (October 2026, for comparison)
 >
 > - 500 MB database per project, 5 GB egress, 5 GB cached egress, 1 GB file storage.
 > - 50,000 monthly active users; unlimited API requests.
-> - 2 active projects; projects pause after 1 week of inactivity.
+> - 2 active projects; projects pause after ~1 week of low database activity (a few requests per day are recommended).
 > - No automatic backups; 1-day log retention; 200 concurrent Realtime connections.
 > - Pro is from ~$25/month (includes 8 GB disk, 250 GB egress, daily backups, 7-day logs, no pausing, session timeouts/leaked-password protection).
 >
@@ -123,7 +123,7 @@
 | Writes | tens–low hundreds/week |
 | Auth | Supabase email/password + TOTP MFA (`aal2`) |
 | Security boundary | Postgres RLS + `SECURITY DEFINER` RPCs |
-| Backups | JSON export; weekly GitHub Actions artifact (90 days) + local files |
+| Backups | Validated JSON export; daily GitHub Actions artifact (90 days) + 4×/day keepalive + local files |
 | Budget | €0 preferred; up to ~$25/month if justified |
 | Non-negotiables | public read, DB-enforced admin writes, MFA step-up, audit log, reversible deletes, static frontend |
 

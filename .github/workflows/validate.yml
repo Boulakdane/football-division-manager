@@ -63,3 +63,6 @@ jobs:
             }
             console.log('CSV round trip is stable.');
           "
+
+      - name: Validate backup structure and references
+        run: node tools/validate-backup.js /tmp/kickoff-first.json

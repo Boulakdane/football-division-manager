@@ -19,52 +19,43 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { fail, readConfig } = require('./supabase-config');
 
 const args = process.argv.slice(2);
 const envArg = (args.find(a => a.startsWith('--env=')) || '--env=prod').split('=')[1];
 const outArg = (args.find(a => a.startsWith('--out=')) || '').slice('--out='.length);
-const root = path.resolve(__dirname, '..');
 
-function fail(message) {
-  console.error('\nError: ' + message + '\n');
-  process.exit(1);
-}
-
-function readConfig() {
-  let url = process.env.SUPABASE_URL;
-  let key = process.env.SUPABASE_ANON_KEY;
-  if (url && key) return { url, key, source: 'environment' };
-
-  const configFile = path.join(root, 'js', 'config.js');
-  const source = fs.readFileSync(configFile, 'utf8');
-  const blockName = envArg === 'dev' ? 'DEVELOPMENT' : 'PRODUCTION';
-  const block = source.match(new RegExp(`const ${blockName} = \\{([\\s\\S]*?)\\};`));
-  if (!block) fail(`Could not find the ${blockName} block in js/config.js`);
-
-  const urlMatch = block[1].match(/SUPABASE_URL:\s*'([^']+)'/);
-  const keyMatch = block[1].match(/SUPABASE_ANON_KEY:\s*'([^']+)'/);
-  if (!urlMatch || !keyMatch) fail(`Incomplete ${blockName} configuration in js/config.js`);
-
-  return {
-    url: urlMatch[1],
-    key: keyMatch[1],
-    source: `js/config.js (${envArg === 'dev' ? 'development' : 'production'})`
-  };
-}
 
 async function getRows(base, table, order) {
-  const response = await fetch(`${base.url}/rest/v1/${table}?select=*&order=${order}`, {
-    headers: {
-      apikey: base.key,
-      Authorization: 'Bearer ' + base.key,
-      Accept: 'application/json'
+  const pageSize = 1000;
+  const rows = [];
+  let from = 0;
+
+  while (true) {
+    const response = await fetch(`${base.url}/rest/v1/${table}?select=*&order=${order}`, {
+      headers: {
+        apikey: base.key,
+        Authorization: 'Bearer ' + base.key,
+        Accept: 'application/json',
+        Range: `${from}-${from + pageSize - 1}`,
+        'Range-Unit': 'items'
+      }
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      fail(`${table} request failed (${response.status}): ${body.slice(0, 300)}`);
     }
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    fail(`${table} request failed (${response.status}): ${body.slice(0, 300)}`);
+
+    const page = await response.json();
+    if (!Array.isArray(page)) fail(`${table} returned an unexpected response.`);
+    rows.push(...page);
+    if (!page.length) return rows;
+
+    from += page.length;
+    if (from > 100000) {
+      fail(`Refusing to paginate ${table} beyond ${from} rows.`);
+    }
   }
-  return response.json();
 }
 
 function seasonRow(row) {
@@ -124,16 +115,16 @@ function eventRow(row) {
 }
 
 (async () => {
-  const base = readConfig();
+  const base = readConfig(envArg);
   console.log(`Reading ${envArg === 'dev' ? 'development' : 'production'} data from ${base.url}`);
   console.log(`Credentials: ${base.source}`);
 
   const [seasons, teams, players, matches, events] = await Promise.all([
-    getRows(base, 'seasons', 'created_at.desc'),
-    getRows(base, 'teams', 'name.asc'),
-    getRows(base, 'players', 'num.asc'),
-    getRows(base, 'matches', 'round.asc'),
-    getRows(base, 'match_events', 'minute.asc')
+    getRows(base, 'seasons', 'created_at.desc,id.asc'),
+    getRows(base, 'teams', 'name.asc,id.asc'),
+    getRows(base, 'players', 'num.asc,id.asc'),
+    getRows(base, 'matches', 'round.asc,id.asc'),
+    getRows(base, 'match_events', 'minute.asc,id.asc')
   ]);
 
   if (!seasons.length) fail('The export contains no seasons; refusing to write an empty backup.');

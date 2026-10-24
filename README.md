@@ -55,6 +55,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
   prioritised remediation and verification commands.
 - [Modernization plan](docs/MODERNIZATION_PLAN.md) — phased roadmap and sophisticated
   data, security, UX and platform improvements.
+- [Database review brief](docs/DATABASE_REVIEW_BRIEF.md) — self-contained prompt for an
+  external review of the database/hosting choice, including current limits and scale.
 - [Security policy](SECURITY.md) — how to report a vulnerability privately.
 
 ## Project structure
@@ -81,10 +83,14 @@ accounts live in a free [Supabase](https://supabase.com) project.
 ├── docs/
 │   ├── PROGRESS.md            # Current status, blockers and release checklist
 │   ├── SECURITY_AUDIT.md      # Findings, threat model and remediation plan
-│   └── MODERNIZATION_PLAN.md  # Phased roadmap and advanced improvements
+│   ├── MODERNIZATION_PLAN.md  # Phased roadmap and advanced improvements
+│   └── DATABASE_REVIEW_BRIEF.md # Prompt for an independent database review
 ├── tools/
 │   ├── csv-to-backup.js       # Validate CSVs and build an importable JSON backup
 │   ├── backup-to-csv.js       # Turn a JSON backup into editable CSV files
+│   ├── export-backup.js       # Export public data without an admin session
+│   ├── validate-backup.js     # Check structure and referential integrity
+│   ├── keepalive.js           # One public read to prevent Free-tier pausing
 │   └── check-secrets.js       # Fail CI if a privileged secret is committed
 ├── vendor/
 │   ├── lucide-1.60.0.js       # Icon set (ISC) served from this origin
@@ -381,14 +387,16 @@ npm run check:secrets   # fail if a privileged key is committed
 `test:sql` uses PGlite (Postgres compiled to WASM), so it needs no Docker daemon or
 hosted database. CI also runs the JavaScript syntax check and the CSV round-trip test.
 
-### Backups
+### Backups and keepalive
 
 Supabase Free has no automatic database backups, so the repository includes a
-public-read exporter and a scheduled GitHub Actions job:
+public-read exporter, a validator, and two scheduled GitHub Actions jobs:
 
 ```bash
 npm run backup:prod     # writes backups/prod-backup-YYYY-MM-DD.json
 npm run backup:dev      # writes backups/dev-backup-YYYY-MM-DD.json
+npm run check:backup -- backups/prod-backup-2026-10-24.json
+npm run keepalive:prod  # one lightweight read, for manual testing
 ```
 
 The scripts use only the publishable/anon key, so no secret is needed in CI. They
@@ -396,11 +404,22 @@ refuse to write an empty backup if the project is unreachable or has no seasons/
 The output is the same JSON shape as **Export Backup (JSON)** in the admin menu and can
 be re-imported there.
 
-[`Weekly data backup`](.github/workflows/backup.yml) runs every Monday, uploads the
-JSON as a 90-day artifact, and prints the row counts in the workflow summary. Because it
-reads the project once a week, it also prevents the Free project from being paused for
-inactivity during the off-season. Download an artifact before any risky migration and
-keep a local copy; artifacts expire.
+- [`Daily data backup`](.github/workflows/backup.yml) runs at 06:15 UTC, validates every
+  foreign key and the active-season rule, uploads the JSON as a 90-day artifact, and
+  prints the row counts in the workflow summary. Artifact storage is tiny: even a
+  400 KB “busy” export × 90 days is ~36 MB of the 500 MB GitHub allowance.
+- [`Database keepalive`](.github/workflows/keepalive.yml) makes one public read every
+  six hours. Supabase's current guidance is “a few requests per day”; one ping per week
+  is **not** enough to prevent a Free project from being paused.
+- The validator proves the payload is structurally sound and every reference resolves.
+  It does not prove the import path works: for that, import the artifact into the
+  **development** project and check standings, fixtures and squads before touching
+  production.
+
+GitHub disables scheduled workflows after 60 days without repository activity. During a
+long off-season, run either job from **Actions → Run workflow**, or make a small commit.
+Supabase also emails the project owner about a week before pausing a project.
+Download an artifact before any risky migration and keep a local copy; artifacts expire.
 
 ## Bulk data entry (CSV)
 
@@ -413,9 +432,11 @@ node tools/csv-to-backup.js
 ```
 
 This validates the data and writes `backups/kickoff-import-YYYY-MM-DD.json`, which you
-import from **Settings → Import Backup (JSON)**. See [`data/README.md`](data/README.md)
-for the column reference. Test the import in the development project first — importing
-replaces all teams, players, seasons, matches and match events in the connected database.
+import from **Settings → Import Backup (JSON)**. The import asks for confirmation and
+downloads the current league as a safety backup before replacing anything. See
+[`data/README.md`](data/README.md) for the column reference. Test the import in the
+development project first — importing replaces all teams, players, seasons, matches and
+match events in the connected database.
 
 If you already have a JSON backup and want to edit it in a spreadsheet, generate the
 five CSV files from it first:

@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
 - **Last updated:** 2026-10-24
-- **Working-tree version:** `v3.9.0`
-- **Deployed version:** `v3.9.0`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete and MFA migrations applied in development and production
+- **Working-tree version:** `v3.9.1`
+- **Deployed version:** `v3.9.1`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete and MFA migrations applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -28,7 +28,7 @@
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.9.0` is on `main`. All four database migrations (integrity, audit log, soft delete, MFA) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Admin two-factor is enrolled and proven in both projects: a password-only session cannot write until the authenticator code is entered, and the requirement was returned to **off** afterwards so the accounts stay usable. The remaining operational work is loading the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.9.1` is on `main`. All four database migrations (integrity, audit log, soft delete, MFA) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Admin two-factor is enrolled and proven in both projects: a password-only session cannot write until the authenticator code is entered, and the requirement was returned to **off** afterwards so the accounts stay usable. The remaining operational work is loading the real league data.
 
 ## 2. Architecture
 
@@ -201,7 +201,7 @@ Local CSV / JSON tools
 3. **Real-data replacement is still untested.** The no-op production import and rollback paths passed; now test with real data in development first, then production with a fresh backup and keep the previous JSON export for rollback.
 4. **Production and development differ.** For example, `m6` is 1–1 in development but 2–4 in production, and Karim Ziani has different card totals. Do not assume the environments are identical.
 5. **The integrity migration is live; re-apply it after any older migration.** `supabase/integrity-migration.sql` has been run in development and production and `PLAYERS_ARCHIVE_READY` is true in both. If an older migration is re-run later, run the integrity migration again afterwards and re-check `PLAYERS_ARCHIVE_READY`.
-6. **Full imports are still irreversible in-app.** Team, match and season deletes now go to **Recently deleted** and can be restored with their events and totals, and every change is in the activity log. A full JSON import still replaces the dataset; export a backup immediately before one. Transfers for players with events remain blocked in the UI.
+6. **Full imports replace the dataset.** Team, match and season deletes now go to **Recently deleted** and can be restored with their events and totals, and every change is in the activity log. A full JSON import still replaces the dataset; the import flow now downloads the current state automatically before replacing it, but keep a separate fresh export before trying real data. Transfers for players with events remain blocked in the UI.
 7. **Operational gaps.** Admin MFA is applied and tested in both projects, but enrolment has been removed after the verification run, so the requirement is currently **off** on both databases. There is also no password reset flow, automated hosted RLS test suite, Playwright test, session lifetime policy or login notification yet. These are covered in the security and modernization plans.
 
 ## 6. Release checklist for the match-events release
@@ -283,7 +283,7 @@ Local CSV / JSON tools
 - [x] Replace client-side `dbReplaceAll` with one transactional `replace_all_data(jsonb)` RPC (installed and live-tested in production).
 - [x] Add an audit log (triggers + admin panel, `v3.7.0`).
 - [x] Add soft delete and restore for teams, matches and seasons (`v3.8.0`, applied in both projects).
-- [x] Add scheduled public-read JSON backups (weekly GitHub Actions artifact + keepalive, `2026-10-24`).
+- [x] Add scheduled public-read JSON backups (daily artifact + validation) and a 4×/day keepalive (`2026-10-24`).
 - Add database `CHECK` constraints for scores, names, colours and dates.
 - [x] Add a SQL/RLS suite with PGlite and run it in CI.
 - Add a Playwright smoke test (public read, login, admin save, archive, import).
@@ -546,7 +546,9 @@ A stolen password is no longer enough to change league data. Admins can enrol a 
 5. ✅ Repeat on production with a fresh backup; the data hash was unchanged afterwards.
 6. 🔲 Enrol the real admin account(s) again when you are ready to keep MFA on, and store a backup of the authenticator secret. Recovery is through another admin or the Supabase dashboard, with SQL Editor access always available.
 
-## 16. Free-tier assessment and backups (2026-10-24)
+## 16. Free-tier assessment, backups and v3.9.1 (2026-10-24)
+
+**Released as `v3.9.1`:** paginated reads (the old code silently stopped at PostgREST's 1,000-row cap), an automatic pre-import backup download, a daily validated backup artifact and a 4×/day keepalive. No schema changes.
 
 ### Is Supabase Free enough?
 Yes, comfortably, at both the current size and the realistic “busy” league size.
@@ -556,16 +558,37 @@ Yes, comfortably, at both the current size and the realistic “busy” league s
 - Writes are tens to low hundreds per week; audit rows are 1–3 KB each, so the log grows by a few MB per year.
 
 Caveats and mitigations:
-- **No automatic backups on Free.** Solved with `tools/export-backup.js` and the weekly GitHub Actions artifact (90 days) plus local exports before risky changes.
-- **Projects pause after 7 days of inactivity.** The weekly backup queries the database, which doubles as a keepalive. A public visitor also counts as activity.
+- **No automatic backups on Free.** Solved with `tools/export-backup.js`, a daily GitHub Actions artifact (90 days) and local exports before risky changes.
+- **Projects pause after 7 days of low activity.** Supabase's current guidance is “a few requests per day”, so the backup alone is not enough. A separate keepalive job reads one season row every six hours.
+- **Scheduled workflows stop after 60 days without repository activity.** Run either job manually from the Actions tab during a long off-season, or make a small commit. Supabase also emails the owner about a week before pausing.
 - **1-day log retention and no PITR.** Acceptable for a community league; move to Pro (~$25/month) if uptime, longer logs or point-in-time recovery become requirements.
 - **Session timeouts / leaked-password protection are Pro-only.** The app has MFA but no idle timeout on Free.
+
+### Independent review (Gemini, 2026-10-24)
+The second opinion reached the same verdict: **stay on Supabase Free**; a move would be premature optimization. Its scale estimates were in the same range (tens of MB at the 10-season “busy” size, <2% of egress).
+
+Accepted and implemented:
+- Daily backups instead of weekly, with a structural/referential validator before upload.
+- A 4×/day keepalive, because one weekly ping does not meet Supabase's current activity guidance.
+- Paginated reads in both the app and the exporter, so PostgREST's 1,000-row cap cannot silently drop match events at the busy scale.
+- An automatic pre-import backup download in the admin JSON import flow.
+- Clear upgrade triggers: a paused project during a matchday, a requirement for PITR/physical backups, or compliance needs for longer logs and session controls.
+
+Deliberately deferred:
+- **Cloudflare D1 + Workers:** a 30–45 hour rewrite that loses native RLS, `aal2` checks and PostgREST, for no benefit at this size.
+- **Automatic wake-up via the Supabase Management API:** requires storing a privileged personal access token in GitHub; the 4×/day ping prevents the scenario instead.
+- **Secondary S3/R2 copy:** adds an account and credentials; 90-day artifacts plus local exports are enough for data that is public by design.
+- **Lazy-loading archived seasons:** worth revisiting if a full export exceeds ~1 MB or egress exceeds ~1 GB/month, which is far above the realistic league.
+- **Audit-log pruning:** 10 seasons of audit rows is tens of MB, well under the 500 MB database limit. Keep the history; add an archive-then-prune RPC only if it ever grows unexpectedly.
 
 ### Backup workflow
 - `tools/export-backup.js` reads the public tables with the publishable key (no admin session, no secrets) and emits the same camelCase JSON shape as the in-app export. It refuses to write an empty backup.
 - `npm run backup:prod` / `npm run backup:dev` write dated files to `backups/` (gitignored).
-- [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) runs every Monday, prints row counts to the job summary and uploads a 90-day artifact.
-- Verified against production: the script output is deep-equal to the admin JSON export (`1/6/9/9/1`), and the CI job needs no repository secrets.
+- `tools/validate-backup.js` checks array shapes, duplicate IDs, exactly one active season, scores/rounds/minutes, and every team/season/player/match reference. It runs on every CI backup and on the CSV round trip.
+- The admin JSON import now asks for confirmation and downloads the current dataset as a dated backup before replacing it.
+- [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) runs daily, validates, prints row counts to the job summary and uploads a 90-day artifact.
+- [`.github/workflows/keepalive.yml`](../.github/workflows/keepalive.yml) performs one public read every six hours with no artifact.
+- Verified against production: the script output is deep-equal to the admin JSON export (`1/6/9/9/1`), the validator accepts it, and the CI jobs need no repository secrets.
 
 ### Database review brief
 - [`docs/DATABASE_REVIEW_BRIEF.md`](DATABASE_REVIEW_BRIEF.md) is a self-contained prompt for Gemini (or another assistant) describing the app, data model, security requirements, scale and free-tier limits, and asking for a stay-or-move recommendation. It contains no credentials.

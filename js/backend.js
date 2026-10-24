@@ -218,6 +218,40 @@ function isMissingFunction(error) {
 
 /* ---------- reads ---------- */
 
+/**
+ * Fetch every visible row, not just PostgREST's first page (default 1000).
+ * Without this, a busy season with >1000 events would silently lose rows.
+ */
+async function selectAllRows(table, orderColumn, ascending) {
+  const pageSize = 1000;
+  const rows = [];
+  let from = 0;
+  let total = null;
+
+  while (true) {
+    const { data, error, count } = await db
+      .from(table)
+      .select('*', { count: 'exact' })
+      .order(orderColumn, { ascending })
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) return { data: null, error };
+    if (typeof count === 'number') total = count;
+
+    const page = data || [];
+    rows.push(...page);
+    if (!page.length || (total !== null && rows.length >= total)) break;
+
+    from += page.length;
+    if (from > 100000) {
+      return { data: null, error: new Error(`Refusing to paginate ${table} beyond 100000 rows.`) };
+    }
+  }
+
+  return { data: rows, error: null };
+}
+
 /** Replace the in-memory state with data from Supabase (or demo data). */
 async function refreshData() {
   if (!BACKEND_READY) {
@@ -231,11 +265,11 @@ async function refreshData() {
   }
 
   const [teamsResult, playersResult, matchesResult, seasonsResult, eventsResult] = await Promise.all([
-    db.from('teams').select('*').order('name', { ascending: true }),
-    db.from('players').select('*').order('num', { ascending: true }),
-    db.from('matches').select('*').order('round', { ascending: true }),
-    db.from('seasons').select('*').order('created_at', { ascending: false }),
-    db.from('match_events').select('*').order('minute', { ascending: true })
+    selectAllRows('teams', 'name', true),
+    selectAllRows('players', 'num', true),
+    selectAllRows('matches', 'round', true),
+    selectAllRows('seasons', 'created_at', false),
+    selectAllRows('match_events', 'minute', true)
   ]);
 
   const baseError = teamsResult.error || playersResult.error || matchesResult.error;

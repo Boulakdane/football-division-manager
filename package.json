@@ -1,6 +1,6 @@
 {
   "name": "kickoff-division",
-  "version": "3.9.0",
+  "version": "3.9.1",
   "private": true,
   "description": "KickOff Division — zero-server football league manager",
   "scripts": {
@@ -9,8 +9,10 @@
     "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch",
     "test:sql": "node tools/test-sql-integrity.js",
     "check:secrets": "node tools/check-secrets.js",
+    "check:backup": "node tools/validate-backup.js",
     "backup:prod": "node tools/export-backup.js --env=prod",
-    "backup:dev": "node tools/export-backup.js --env=dev"
+    "backup:dev": "node tools/export-backup.js --env=dev",
+    "keepalive:prod": "node tools/keepalive.js --env=prod"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.6",

@@ -2387,6 +2387,11 @@ function importData(event) {
   const file = event.target.files[0];
   event.target.value = ''; // allow re-importing the same file
   if (!file) return;
+  if (!confirm(t('confirmImport'))) return;
+
+  // Replace-all is destructive; download the current state before reading the
+  // new file. This is synchronous with the user gesture, so browsers allow it.
+  exportData();
 
   const reader = new FileReader();
   reader.onload = async function (e) {
