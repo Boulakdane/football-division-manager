@@ -18,6 +18,7 @@ Lanes: `DB` database/security · `FE` frontend · `DOC` docs/process (see COORDI
 | 8 | G | Calendar feeds and push notifications | FE | Open | — | — | — | Plan 22.8 |
 | 9 | I | Team crests and photos with safe upload | DB then FE | Open | — | — | J first for photos | Plan 22.10 |
 | 10 | J | Privacy and retention policy | DOC | Open | — | — | Maintainer input | Plan 22.11. Needs answers to the open questions |
+| — | X3 | Import a squad from Excel/CSV into a team (preview, validation, one atomic add) | DB then FE | Claimed | claude | `claude/X3-squad-excel-import` | — | Requested by the maintainer: ~15 teams each send a filled Excel. Touches `supabase/schema.sql`, `js/app.js`, `js/i18n.js`, `index.html` (hot) |
 | — | X1 | Pin GitHub Actions to commit SHAs | DB | Open | — | — | — | Security audit item; Dependabot keeps them current |
 
 ## How to add a task
