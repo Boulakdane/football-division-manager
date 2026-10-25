@@ -47,6 +47,9 @@ jobs:
       - name: Test add_players (squad import backend)
         run: npm run test:add-players
 
+      - name: Test derived player and team totals (roadmap A)
+        run: npm run test:derived-stats
+
       - name: Test squad import parser (xlsx/csv)
         run: npm run test:squad-import
 

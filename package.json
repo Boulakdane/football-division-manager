@@ -9,6 +9,7 @@
     "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch",
     "test:sql": "node tools/test-sql-integrity.js",
     "test:add-players": "node tools/test-add-players.js",
+    "test:derived-stats": "node tools/test-derived-stats.js",
     "test:grants": "node tools/test-anon-grants.js",
     "test:drift": "node tools/test-security-drift.js",
     "test:e2e": "playwright test",

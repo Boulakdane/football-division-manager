@@ -9,6 +9,30 @@
 -- Run in the Supabase SQL Editor for development, then production.
 -- ------------------------------------------------------------
 
+-- Imported totals have no event rows, so they are entirely a legacy offset.
+-- The columns also exist in derive-totals-migration.sql and schema.sql; add
+-- them here so this file stays safe to re-run after that migration.
+alter table public.players
+  add column if not exists legacy_goals int not null default 0;
+alter table public.players
+  add column if not exists legacy_yellow int not null default 0;
+alter table public.players
+  add column if not exists legacy_red int not null default 0;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'kickoff_players_legacy_totals_range'
+      and conrelid = 'public.players'::regclass
+  ) then
+    alter table public.players
+      add constraint kickoff_players_legacy_totals_range
+      check (legacy_goals >= 0 and legacy_yellow >= 0 and legacy_red >= 0);
+  end if;
+end $$;
+
 create or replace function public.add_players(p_team_id text, p_players jsonb)
 returns int
 language plpgsql
@@ -102,10 +126,18 @@ begin
     v_yellow := coalesce(nullif(btrim(v_item->>'yellow'), ''), '0')::int;
     v_red := coalesce(nullif(btrim(v_item->>'red'), ''), '0')::int;
 
-    insert into public.players (id, team_id, name, pos, num, goals, yellow, red, is_active)
+    insert into public.players (
+      id, team_id, name, pos, num,
+      goals, yellow, red,
+      legacy_goals, legacy_yellow, legacy_red,
+      is_active
+    )
     values (
       'p_' || replace(gen_random_uuid()::text, '-', ''),
-      p_team_id, v_name, v_pos, v_num, v_goals, v_yellow, v_red, true
+      p_team_id, v_name, v_pos, v_num,
+      v_goals, v_yellow, v_red,
+      v_goals, v_yellow, v_red,
+      true
     );
     v_count := v_count + 1;
   end loop;
