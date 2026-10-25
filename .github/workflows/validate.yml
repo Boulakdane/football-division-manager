@@ -41,6 +41,9 @@ jobs:
       - name: Test SQL integrity and RLS
         run: npm run test:sql
 
+      - name: Test add_players (squad import backend)
+        run: npm run test:add-players
+
       - name: Test the security drift monitor (offline mock)
         run: npm run test:drift
 
