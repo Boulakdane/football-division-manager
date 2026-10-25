@@ -185,7 +185,12 @@ async function checkDirectWrites() {
     const res = await call(method, path, body);
     const label = `Anonymous cannot ${method} ${path.split('?')[0].replace('/rest/v1/', '')}`;
     if (isDenied(res)) record('PASS', label, `denied (${res.status})`);
-    else record('FAIL', label, `status ${res.status}: ${snippet(res)}`);
+    else if ((method === 'PATCH' || method === 'DELETE') && res.status >= 200 && res.status < 300) {
+      // A fake id matches no row, so this proves the anon role holds the privilege, not that
+      // a real row could change. RLS is the second layer; the grant layer should refuse too.
+      record('FAIL', label, `status ${res.status}: anon holds the ${method === 'PATCH' ? 'UPDATE' : 'DELETE'} grant ` +
+        '(RLS filtered the probe, nothing changed); apply supabase/revoke-anon-write-grants-migration.sql');
+    } else record('FAIL', label, `status ${res.status}: ${snippet(res)}`);
   }
 }
 

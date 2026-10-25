@@ -8,6 +8,8 @@
     "build:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --minify",
     "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch",
     "test:sql": "node tools/test-sql-integrity.js",
+    "test:add-players": "node tools/test-add-players.js",
+    "test:grants": "node tools/test-anon-grants.js",
     "test:drift": "node tools/test-security-drift.js",
     "test:e2e": "playwright test",
     "check:secrets": "node tools/check-secrets.js",
@@ -17,7 +19,8 @@
     "backup:prod": "node tools/export-backup.js --env=prod",
     "backup:dev": "node tools/export-backup.js --env=dev",
     "keepalive:prod": "node tools/keepalive.js --env=prod",
-    "agents:status": "node tools/agent-status.js"
+    "agents:status": "node tools/agent-status.js",
+    "test:squad-import": "node tools/test-squad-import.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.6",

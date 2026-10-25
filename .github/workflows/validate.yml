@@ -41,6 +41,15 @@ jobs:
       - name: Test SQL integrity and RLS
         run: npm run test:sql
 
+      - name: Test anonymous grants are read-only
+        run: npm run test:grants
+
+      - name: Test add_players (squad import backend)
+        run: npm run test:add-players
+
+      - name: Test squad import parser (xlsx/csv)
+        run: npm run test:squad-import
+
       - name: Test the security drift monitor (offline mock)
         run: npm run test:drift
 

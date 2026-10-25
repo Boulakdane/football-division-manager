@@ -118,6 +118,14 @@ test('a direct anonymous write that succeeds is reported', async () => {
   assert.deepStrictEqual(failing(r), ['Anonymous cannot POST teams']);
 });
 
+test('an anonymous grant that RLS merely filters is still reported', async () => {
+  const r = await scenario((m, u) => m === 'PATCH' && u.startsWith('/rest/v1/teams') ? { status: 204 } : null);
+  assert.strictEqual(r.code, 1);
+  assert.deepStrictEqual(failing(r), ['Anonymous cannot PATCH teams']);
+  const detail = r.json.results.find(x => x.name === 'Anonymous cannot PATCH teams').detail;
+  assert.ok(/UPDATE grant/.test(detail) && /revoke-anon-write-grants/.test(detail), detail);
+});
+
 test('exposed private rows are reported', async () => {
   const r = await scenario((m, u) => m === 'GET' && u.startsWith('/rest/v1/profiles') ? { status: 200, json: [{ email: 'a@b.c' }] } : null);
   assert.strictEqual(r.code, 1);

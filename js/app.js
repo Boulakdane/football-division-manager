@@ -67,7 +67,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -303,6 +303,10 @@ const CLICK_ACTIONS = {
   'delete-player': el => deletePlayer(el.dataset.id),
   'restore-player': el => restorePlayer(el.dataset.id),
 
+  'import-squad': el => openSquadImport(el.dataset.team),
+  'squad-template': () => downloadSquadTemplate(),
+  'squad-import-confirm': () => confirmSquadImport(),
+
   'add-event': el => addMatchEvent(el.dataset.side, el.dataset.type),
   'remove-event': el => removeMatchEvent(el.dataset.id),
 
@@ -330,6 +334,7 @@ const CHANGE_ACTIONS = {
   'match-team-change': () => onMatchTeamChange(),
   'update-event': el => updateMatchEvent(el.dataset.id, el.dataset.field, el.value),
   'import-file': (el, event) => importData(event),
+  'squad-file': (el, event) => handleSquadFile(event),
   'mfa-require': el => toggleRequireMfa(el)
 };
 
@@ -372,6 +377,7 @@ const MFA_GATED_ACTIONS = new Set([
   'new-match', 'edit-match', 'delete-match', 'bump-score',
   'new-team', 'edit-team', 'delete-team',
   'new-player', 'edit-player', 'delete-player', 'restore-player',
+  'squad-import-confirm',
   'add-event', 'remove-event',
   'new-season', 'activate-season', 'delete-season',
   'restore-team', 'restore-match', 'restore-season',
@@ -1133,6 +1139,9 @@ function renderTeamsView() {
             </div>
           </div>
           <div class="admin-only flex items-center gap-2 shrink-0">
+            <button data-action="import-squad" data-team="${esc(team.id)}" class="p-1.5 text-slate-500 hover:text-pitch-400 rounded transition" aria-label="${esc(t('btnImportSquad'))}" title="${esc(t('btnImportSquad'))}">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+            </button>
             <button data-action="new-player" data-team="${esc(team.id)}" class="px-2.5 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-xs font-medium flex items-center gap-1 transition">
               <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddPlayer'))}
             </button>
@@ -1756,6 +1765,215 @@ async function restorePlayer(playerId) {
     alert(t(err && err.code === 'INTEGRITY_MIGRATION_REQUIRED'
       ? 'alertIntegrityMigration'
       : 'alertSaveFailed'));
+  }
+}
+
+/* ---------------------------------------------------------------
+ * 9b. SQUAD IMPORT (Excel / CSV)
+ *     Reads and checks the file in the browser (js/squad-import.js),
+ *     shows a preview, then adds every valid row in one transaction
+ *     through public.add_players(). Errors are translated from codes.
+ * --------------------------------------------------------------- */
+
+let squadImportState = null;
+
+function openSquadImport(teamId) {
+  const team = getTeam(teamId);
+  if (!team) return;
+  if (typeof isAdmin !== 'function' || !isAdmin()) return;
+  if (!BACKEND_READY) {
+    alert(t(authUnavailableKey()));
+    return;
+  }
+  if (typeof SquadImport === 'undefined') {
+    alert(t('squadImportUnavailable'));
+    return;
+  }
+
+  squadImportState = { teamId: team.id, analysis: null };
+
+  document.getElementById('squad-team-name').textContent = team.name;
+  document.getElementById('squad-file-name').textContent = '';
+  const input = document.getElementById('squad-file');
+  if (input) input.value = '';
+  document.getElementById('squad-preview').classList.add('hidden');
+  document.getElementById('squad-rows').innerHTML = '';
+  document.getElementById('squad-progress').classList.add('hidden');
+  setSquadError('');
+  setSquadImportEnabled(false);
+  const importButton = document.getElementById('squad-import-btn');
+  if (importButton) importButton.textContent = t('squadImport');
+  openModal('modal-squad');
+}
+
+async function handleSquadFile(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  input.value = ''; // allow choosing the same file again
+  if (!file || !squadImportState) return;
+
+  document.getElementById('squad-file-name').textContent = file.name;
+  document.getElementById('squad-preview').classList.add('hidden');
+  document.getElementById('squad-progress').classList.remove('hidden');
+  setSquadError('');
+  setSquadImportEnabled(false);
+  squadImportState.analysis = null;
+
+  try {
+    const sheets = await SquadImport.readFile(file);
+    const existing = appState.players.filter(player => player.teamId === squadImportState.teamId);
+    const analysis = SquadImport.analyze(sheets, existing);
+    document.getElementById('squad-progress').classList.add('hidden');
+
+    if (!analysis.headerFound) {
+      setSquadError(t('squadHeaderMissing'));
+      return;
+    }
+    squadImportState.analysis = analysis;
+    renderSquadPreview();
+  } catch (err) {
+    document.getElementById('squad-progress').classList.add('hidden');
+    setSquadError(t(squadFileErrorKey(err)));
+  }
+}
+
+function squadFileErrorKey(error) {
+  switch (error && error.code) {
+    case 'TOO_LARGE': return 'squadFileTooLarge';
+    case 'XLS_UNSUPPORTED': return 'squadXlsUnsupported';
+    case 'NOT_XLSX': return 'squadNotXlsx';
+    case 'ENCRYPTED': return 'squadEncrypted';
+    case 'NO_DECOMPRESSION': return 'squadNoDecompression';
+    case 'EMPTY': return 'squadFileEmpty';
+    default: return 'squadFileUnreadable';
+  }
+}
+
+function setSquadError(message) {
+  const el = document.getElementById('squad-error');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('hidden', !message);
+}
+
+function setSquadImportEnabled(enabled) {
+  const button = document.getElementById('squad-import-btn');
+  if (!button) return;
+  button.disabled = !enabled;
+  button.classList.toggle('opacity-50', !enabled);
+  button.classList.toggle('cursor-not-allowed', !enabled);
+}
+
+/** Translate one parser issue. Unknown codes fall back to a generic warning. */
+function squadIssueText(issue) {
+  const key = 'squadIssue' + issue.code.charAt(0).toUpperCase() + issue.code.slice(1);
+  let text = t(key);
+  if (text === key) text = t('squadIssueUnknown');
+  const params = issue.params || {};
+  const fieldKey = params.field
+    ? 'squadField' + params.field.charAt(0).toUpperCase() + params.field.slice(1)
+    : '';
+  const field = fieldKey ? t(fieldKey) : '';
+  return text
+    .replace('{value}', params.value == null ? '' : String(params.value))
+    .replace('{line}', String(toInt(params.line)))
+    .replace('{num}', String(toInt(params.num)))
+    .replace('{player}', params.player == null ? '' : String(params.player))
+    .replace('{max}', String(toInt(params.max)))
+    .replace('{field}', field === fieldKey ? '' : field);
+}
+
+const SQUAD_STATUS_STYLES = {
+  ok: 'bg-pitch-600/15 text-pitch-400 border-pitch-500/30',
+  warn: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  skip: 'bg-slate-700/50 text-slate-300 border-slate-600',
+  error: 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+};
+
+const SQUAD_STATUS_KEYS = {
+  ok: 'squadStatusOk',
+  warn: 'squadStatusWarn',
+  skip: 'squadStatusSkip',
+  error: 'squadStatusError'
+};
+
+function renderSquadPreview() {
+  const state = squadImportState;
+  const preview = document.getElementById('squad-preview');
+  const rowsBody = document.getElementById('squad-rows');
+  if (!preview || !rowsBody || !state || !state.analysis) return;
+
+  const analysis = state.analysis;
+  const counts = analysis.counts;
+  const number = new Intl.NumberFormat(currentLang);
+
+  document.getElementById('squad-summary').textContent = t('squadSummary')
+    .replace('{total}', number.format(counts.total))
+    .replace('{ready}', number.format(counts.ok + counts.warn))
+    .replace('{skip}', number.format(counts.skip))
+    .replace('{error}', number.format(counts.error));
+
+  rowsBody.innerHTML = analysis.rows.map(row => {
+    const issues = row.issues.map(squadIssueText).join('; ');
+    return `<tr class="border-t border-slate-800/80 align-top">
+      <td class="py-1.5 pe-2 text-slate-500">${toInt(row.line)}</td>
+      <td class="py-1.5 pe-2 text-slate-200 font-medium">${esc(row.name || '—')}</td>
+      <td class="py-1.5 pe-2 text-center text-slate-400">${esc(row.pos)}</td>
+      <td class="py-1.5 pe-2 text-center text-slate-400">${esc(row.num)}</td>
+      <td class="py-1.5">
+        <span class="inline-block px-1.5 py-0.5 rounded border text-[10px] font-semibold ${SQUAD_STATUS_STYLES[row.status]}">${esc(t(SQUAD_STATUS_KEYS[row.status]))}</span>
+        ${issues ? `<span class="block mt-0.5 text-[10px] leading-snug text-slate-400">${esc(issues)}</span>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  preview.classList.remove('hidden');
+  setSquadImportEnabled(analysis.canImport);
+}
+
+function refreshSquadPreviewIfOpen() {
+  const modal = document.getElementById('modal-squad');
+  if (modal && !modal.classList.contains('hidden') && squadImportState) renderSquadPreview();
+}
+
+function downloadSquadTemplate() {
+  if (typeof SquadImport === 'undefined') return;
+  const template = SquadImport.template(currentLang);
+  const blob = new Blob([template.text], { type: template.mime });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = template.filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function confirmSquadImport() {
+  const state = squadImportState;
+  if (!state || !state.analysis || !state.analysis.canImport) return;
+
+  const button = document.getElementById('squad-import-btn');
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = t('squadImporting');
+  setSquadError('');
+
+  try {
+    const result = await dbAddPlayers(state.teamId, state.analysis.toAdd);
+    const added = typeof result === 'number' ? result : state.analysis.toAdd.length;
+    closeModal('modal-squad');
+    await refreshData();
+    renderApp();
+    showToast(t('squadImported').replace('{n}', new Intl.NumberFormat(currentLang).format(added)));
+  } catch (err) {
+    console.error('Squad import failed', err);
+    setSquadError(t(err && err.code === 'SQUAD_IMPORT_MIGRATION_REQUIRED'
+      ? 'squadImportMigration'
+      : 'squadImportFailed'));
+    button.disabled = false;
+    button.textContent = label;
   }
 }
 
