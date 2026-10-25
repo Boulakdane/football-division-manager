@@ -41,6 +41,9 @@ jobs:
       - name: Test SQL integrity and RLS
         run: npm run test:sql
 
+      - name: Test anonymous grants are read-only
+        run: npm run test:grants
+
       - name: Test the security drift monitor (offline mock)
         run: npm run test:drift
 

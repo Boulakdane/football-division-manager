@@ -8,6 +8,7 @@
     "build:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --minify",
     "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch",
     "test:sql": "node tools/test-sql-integrity.js",
+    "test:grants": "node tools/test-anon-grants.js",
     "test:drift": "node tools/test-security-drift.js",
     "test:e2e": "playwright test",
     "check:secrets": "node tools/check-secrets.js",

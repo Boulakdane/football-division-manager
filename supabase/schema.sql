@@ -355,6 +355,13 @@ revoke insert, update, delete on public.match_events from authenticated;
 revoke insert, update, delete on public.match_events from anon;
 grant select on public.profiles to authenticated;
 
+-- Supabase grants every role full privileges on new public tables by default.
+-- Anonymous visitors only ever read, so drop every write-type privilege for them on
+-- existing tables and on tables created later. RLS stays the second layer.
+revoke insert, update, delete, truncate, references, trigger on all tables in schema public from anon;
+alter default privileges in schema public
+  revoke insert, update, delete, truncate, references, trigger on tables from anon;
+
 -- ------------------------------------------------------------
 -- 5. ROW LEVEL SECURITY
 -- ------------------------------------------------------------
