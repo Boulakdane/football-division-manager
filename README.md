@@ -45,9 +45,11 @@ accounts live in a free [Supabase](https://supabase.com) project.
 - **Recently deleted** — teams, matches and seasons go to a trash instead of being
   destroyed; admins can restore them with their squad, events and totals intact.
 - **JSON backup** — export/import the full dataset from the admin settings menu.
-- **CSV tools** — export the current season's standings, fixtures and squads,
+- **CSV tools** - export the current season's standings, fixtures and squads,
   bulk-build a league from five CSV files, or turn a JSON backup back into
   editable CSV files.
+- **Squad import** - each team can fill a bilingual Excel/CSV template; the admin
+  previews every row and adds the whole squad in one atomic step.
 - **Live score shortcuts** — matches in `LIVE` state get `+` buttons on the fixture card.
 - **Read-only demo mode** — until Supabase is configured, the site shows the sample
   league with all write controls hidden and a banner explaining how to connect it.
@@ -121,12 +123,13 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── audit-log-migration.sql      # Trigger-fed, admin-only audit log + Activity log panel
     ├── soft-delete-migration.sql    # Trash + restore for teams, matches and seasons
     ├── mfa-migration.sql            # Database-enforced admin two-factor requirement
-    └── check-constraints-migration.sql # Reject malformed names, colours, scores and dates
+    ├── check-constraints-migration.sql # Reject malformed names, colours, scores and dates
+    └── add-players-migration.sql    # Install add_players() for Excel/CSV squad import
 ```
 
 Scripts are loaded in dependency order in `index.html`:
-`i18n.js` → `store.js` → `config.js` → `backend.js` → `auth.js` → `app.js`
-(all `defer`red). Keep that order if you add modules.
+`i18n.js` → `store.js` → `config.js` → `backend.js` → `auth.js` → `mfa.js` →
+`squad-import.js` → `app.js` (all `defer`red). Keep that order if you add modules.
 
 The Supabase client is served from `vendor/supabase-js-2.118.0.js` (same
 origin, pinned version, MIT license included) rather than a CDN, so a
@@ -185,6 +188,11 @@ plus Supabase.
 >    non-negative player numbers/totals, valid rounds/scores, distinct home and away
 >    teams, and season date order. It fails and rolls back if existing rows violate a
 >    rule, so export a backup first and fix the reported rows.
+> 9. [`supabase/add-players-migration.sql`](supabase/add-players-migration.sql) —
+>    installs the admin-only, atomic `add_players(team_id, players)` RPC used by
+>    **Import squad from Excel**. It validates every row, rejects duplicates and adds
+>    at most 100 players per call. Without it, the import screen shows a
+>    “migration required” message and saves nothing.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. It does **not** add the new `CHECK`
@@ -520,6 +528,30 @@ node tools/backup-to-csv.js backups/kickoff-backup-YYYY-MM-DD.json data --force
 
 The tool refuses to overwrite existing CSV files unless `--force` is supplied, so it
 cannot silently replace real league data by accident.
+
+## Import a squad from Excel (one team at a time)
+
+This is the fastest way to collect squads from many clubs: send each club one file, then
+import it into the matching team.
+
+1. Open **Teams & Players**, find the team and press the spreadsheet button
+   (**Import squad from Excel**). Press **Download template (CSV)** to get a blank file
+   in the current language. French templates use `;` so Excel in French locales opens
+   them correctly; English and Arabic use `,`.
+2. Columns are **Name**, **Position** (GK/DEF/MID/FWD, or `Goalkeeper`, `Défenseur`,
+   `حارس`…), **Number** (1–99), and optional **Goals**, **Yellow**, **Red**. The header
+   row can sit below a title row, and both `.xlsx` and CSV work (legacy `.xls` must be
+   saved as `.xlsx`).
+3. Pick the file. The preview lists every row with a status: *ready*, *ready (noted)*,
+   *skipped* (already in the squad) or *error*. Import stays disabled while any row has
+   an error; numbers already used by a teammate are only a warning.
+4. Press **Add players**. All rows are inserted in one transaction by
+   `add_players()`, at most 100 per import, and one `IMPORT` summary appears in the
+   Activity log. Nothing else in the league is changed.
+
+The database re-checks every row, so a hand-edited file cannot bypass validation. If
+the app says the migration is missing, run
+[`supabase/add-players-migration.sql`](supabase/add-players-migration.sql) first.
 
 ## Deploy to GitHub Pages (free)
 

@@ -402,6 +402,34 @@ async function dbRestorePlayer(playerId) {
   if (error) throw integrityMigrationError(error);
 }
 
+/**
+ * Add a whole squad to one team in a single transaction. The database validates
+ * every row again; the browser preview is only a convenience.
+ */
+async function dbAddPlayers(teamId, players) {
+  assertBackend();
+  const { data, error } = await db.rpc('add_players', {
+    p_team_id: teamId,
+    p_players: players.map(player => ({
+      name: player.name,
+      pos: player.pos,
+      num: player.num,
+      goals: player.goals,
+      yellow: player.yellow,
+      red: player.red
+    }))
+  });
+  if (error) {
+    if (isMissingFunction(error)) {
+      const migrationError = new Error('Run supabase/add-players-migration.sql');
+      migrationError.code = 'SQUAD_IMPORT_MIGRATION_REQUIRED';
+      throw migrationError;
+    }
+    throw error;
+  }
+  return data;
+}
+
 /** Mark a missing integrity-migration function so the UI can explain it. */
 function integrityMigrationError(error) {
   if (isMissingFunction(error)) {
