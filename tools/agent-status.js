@@ -7,6 +7,7 @@
  *   npm run agents:status                 # fetch, then report
  *   node tools/agent-status.js --no-fetch # use what is already fetched
  *   node tools/agent-status.js --strict   # exit 1 if two branches touch the same hot file
+ *   node tools/agent-status.js --include-bots  # count Dependabot branches in the overlap check
  *   node tools/agent-status.js --base=origin/main
  *
  * Read-only: it only runs `git fetch` (unless --no-fetch) and read commands.
@@ -59,7 +60,9 @@ function main() {
   }
 
   if (!flag('no-fetch')) {
-    if (tryGit('fetch', '--prune', 'origin') === null) {
+    // Explicit refspec: shallow or single-branch clones (common in AI sandboxes) would
+    // otherwise never download the other tools' branches.
+    if (tryGit('fetch', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*') === null) {
       console.warn('warning: could not fetch origin; showing what is already local.\n');
     }
   }
@@ -116,7 +119,9 @@ function main() {
 
   // Overlaps: any file touched by two or more branches, hot files first.
   const touched = new Map();
-  for (const branch of branches) {
+  // Bots rebase their own branches, so they are listed but not counted as overlaps by default.
+  const considered = branches.filter(branch => flag('include-bots') || branch.owner !== 'dependabot');
+  for (const branch of considered) {
     for (const file of branch.files) {
       if (!touched.has(file)) touched.set(file, []);
       touched.get(file).push(branch.name.replace(/^origin\//, ''));
