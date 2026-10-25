@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
-- **Last updated:** 2026-10-24
+- **Last updated:** 2026-10-25
 - **Working-tree version:** `v3.10.1`
-- **Deployed version:** `v3.10.1`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete, MFA and data-quality migrations applied in development and production
+- **Deployed version:** `v3.10.1`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete, MFA, data-quality, squad-import and scheduled-event migrations applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -20,6 +20,8 @@
 | JSON backup and restore | ✅ Done | Full replacement; development round-trip and production no-op import passed |
 | Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
+| Squad import from Excel/CSV | ✅ Deployed and live-tested in development | Bilingual template, row-by-row preview and one atomic `add_players()` call; migration applied in both projects |
+| Scheduled-fixture event counting | ✅ Applied in development and production | The repair migration counts events already saved on upcoming fixtures; UI round trip verified in development |
 | Security hardening pass | ✅ Done in `v3.6.2` | Every asset self-hosted, strict CSP (`script-src 'self'`), zero inline handlers, secret scanning, dependency updates |
 | Audit log | ✅ Applied in development and production; verified in development | Admin-only activity panel over trigger-fed `audit_log`; graceful message until the migration is applied |
 | Recently deleted (soft delete) | ✅ Applied in development and production; dev round trip verified | Teams, matches and seasons go to a trash; `restore_*` reinstates rows and totals; graceful message until the migration is applied |
@@ -30,7 +32,7 @@
 | Realistic-scale import rehearsal | ✅ Done in development (2026-10-24) | 20 teams / 500 players / 200 matches / 2,043 events imported through the UI, exported, validated and restored to the exact original hash; production untouched |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.10.1` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Production now requires two-factor for admin writes (`admin_mfa_required()` returns `true`) and the real admin is enrolled; the development demo account remains password-only for disposable tests. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. A realistic-scale rehearsal (20 teams / 500 players / 200 matches / 2,043 events) imported through the admin UI, passed pagination, UI, export, audit and restore checks, and the original development data was restored with the identical SHA-256; production was verified unchanged. The remaining operational work is loading the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.10.1` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Production now requires two-factor for admin writes (`admin_mfa_required()` returns `true`) and the real admin is enrolled; the development demo account remains password-only for disposable tests. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. A realistic-scale rehearsal (20 teams / 500 players / 200 matches / 2,043 events) imported through the admin UI, passed pagination, UI, export, audit and restore checks, and the original development data was restored with the identical SHA-256; production was verified unchanged. Post-`v3.10.1`, admins can import a whole squad from Excel/CSV with a row-by-row preview and one atomic `add_players()` call, and the scheduled-fixture repair migration means goals/cards added to upcoming matches now reach player totals in both projects. Both migrations are applied in development and production, and production MFA is required again (`admin_mfa_required()` returns `true`). The remaining operational work is loading the real league data.
 
 ## 2. Architecture
 
@@ -790,3 +792,24 @@ Development-only rehearsal before real league data. No production writes, schema
 
 ### Result
 The import path is safe at the busy-league scale: validation, atomic replacement, pagination, rendering, JSON/CSV exports, the audit log and automatic pre-import backups all behave. The 554 KB scale JSON and the temporary generator were not committed; any future rehearsal can use the same validated-backup path.
+
+## 22. Squad import and scheduled-fixture event repair (2026-10-25)
+
+Two feature branches merged after `v3.10.1`; no version bump.
+
+### Import a squad from Excel/CSV (#10)
+- Each team card has a spreadsheet button that opens **Import squad from Excel**. The admin picks an `.xlsx` or CSV file, sees every row checked against the current squad, and adds only the valid rows.
+- A header-only CSV template can be downloaded in the active language (`,` for English/Arabic, `;` for French, UTF-8 BOM). The parser accepts English, French and Arabic headers plus common position aliases, skips title rows, handles semicolon CSVs and Windows-1252 accents, and reports stable issue codes (`nameMissing`, `posInvalid`, `numTaken`, `alreadyInSquad`, …).
+- `supabase/add-players-migration.sql` installs `public.add_players(team_id, players)`: admin-only, one transaction, at most 100 rows, validates every field, rejects duplicates in the file and in the squad, and writes one `IMPORT` summary to the activity log. It is re-runnable and is also in `schema.sql`.
+- The UI is MFA-gated like the other admin writes and shows a clear “migration required” message instead of silently failing.
+- Verification: `npm run test:squad-import` (30 parser/template checks), `npm run test:add-players` (PGlite happy path, every rejection, atomicity, permissions, audit entry, re-run), plus SQL, secret, syntax and Playwright checks. In hosted development the real admin imported `squad-en.xlsx` into Atlas Warriors: 4 players appeared with the expected numbers, positions and totals, the toast said “4 players added.”, and a second preview showed all 4 rows as **Skipped**. The 4 temporary players were then deleted and development returned to its 9 original players. Production was checked read-only.
+
+### Scheduled-fixture event repair (#11)
+- Legacy fixtures were marked `events_counted = false`, so goals/cards added to an upcoming match were stored but never reached player totals. `supabase/scheduled-match-events-migration.sql` counts every visible event on active-season `SCHEDULED` fixtures whose flag is false, then sets the flag; finished/live and archived fixtures are untouched.
+- Applied in development and production. In development, adding a goal and a card to `m8` moved the player totals, and removing them moved the totals back. Production `m8`’s stray sample goal was removed through the match editor first, so `m8` is 0-0 with no events and `p3` is back to 4 goals. `m7`-`m9` are `events_counted = true`; `m1`-`m6` stay `false`.
+
+### State after both merges
+- `main` is `b48e0cb`; both migrations are live in the hosted projects (`add_players` is present and refuses anonymous callers).
+- Production and development both export as **1 season / 6 teams / 9 players / 9 matches / 0 events**. Export SHA-256: production `577831c9…bdac`, development `cf9216f5…7a90`.
+- Production MFA was temporarily disabled for the maintenance session and has been restored: `admin_mfa_required()` returns `true` in production and `false` in development, where the disposable demo account stays password-only.
+
