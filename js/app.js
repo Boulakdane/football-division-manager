@@ -1647,6 +1647,48 @@ async function deleteTeam(teamId) {
 /* ---------------------------------------------------------------
  * 9. PLAYER MODAL (add / edit / delete)
  * --------------------------------------------------------------- */
+
+/**
+ * Goals and cards a player already has in match events. Mirrors
+ * v_player_stats in the database: only events on visible fixtures whose
+ * events_counted flag is true are part of the total.
+ */
+function playerEventTotals(playerId) {
+  const totals = { goals: 0, yellow: 0, red: 0 };
+  if (!playerId || !appState.eventsReady) return totals;
+
+  const counted = new Set(
+    (appState.matches || [])
+      .filter(match => match.eventsCounted !== false)
+      .map(match => match.id)
+  );
+
+  (appState.matchEvents || []).forEach(event => {
+    if (event.playerId !== playerId || !counted.has(event.matchId)) return;
+    if (event.type === 'goal') totals.goals += 1;
+    else if (event.type === 'yellow') totals.yellow += 1;
+    else if (event.type === 'red') totals.red += 1;
+  });
+
+  return totals;
+}
+
+/** Localized "cannot go below the events" message, including the counts. */
+function totalsBelowEventsMessage(counts) {
+  const format = value => new Intl.NumberFormat(currentLang).format(value);
+  return t('alertPlayerTotalsBelowEvents')
+    .replace('{goals}', format(counts.goals))
+    .replace('{yellow}', format(counts.yellow))
+    .replace('{red}', format(counts.red));
+}
+
+/** The hint only makes sense once the database derives totals from events. */
+function syncPlayerTotalsHint() {
+  const hint = document.getElementById('player-totals-hint');
+  if (!hint) return;
+  hint.classList.toggle('hidden', !appState.playerStatsReady);
+}
+
 function openPlayerModal(teamId) {
   document.getElementById('form-player').reset();
   document.getElementById('player-id').value = '';
@@ -1656,6 +1698,7 @@ function openPlayerModal(teamId) {
   document.getElementById('player-yellows').value = 0;
   document.getElementById('player-reds').value = 0;
   document.getElementById('player-modal-title').textContent = t('modalPlayerTitle');
+  syncPlayerTotalsHint();
   openModal('modal-player');
 }
 
@@ -1673,6 +1716,7 @@ function editPlayer(playerId) {
   document.getElementById('player-yellows').value = toInt(p.yellow);
   document.getElementById('player-reds').value = toInt(p.red);
   document.getElementById('player-modal-title').textContent = t('modalPlayerEditTitle');
+  syncPlayerTotalsHint();
   openModal('modal-player');
 }
 
@@ -1703,12 +1747,28 @@ async function savePlayer(e) {
   }
   playerData.isActive = existing ? existing.isActive !== false : true;
 
+  // With derived totals a manual edit cannot drop below what the events
+  // already record. The database enforces the same rule; this is the friendly
+  // version, with the counts the admin needs.
+  const eventCounts = playerEventTotals(playerData.id);
+  if (appState.playerStatsReady &&
+      (playerData.goals < eventCounts.goals ||
+       playerData.yellow < eventCounts.yellow ||
+       playerData.red < eventCounts.red)) {
+    alert(totalsBelowEventsMessage(eventCounts));
+    return;
+  }
+
   try {
     await dbSavePlayer(playerData);
     closeModal('modal-player');
     await refreshData();
     renderApp();
   } catch (err) {
+    if (err && err.code === 'PLAYER_TOTALS_BELOW_EVENTS') {
+      alert(totalsBelowEventsMessage(playerEventTotals(playerData.id)));
+      return;
+    }
     alert(t('alertSaveFailed'));
   }
 }
