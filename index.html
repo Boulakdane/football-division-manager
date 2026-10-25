@@ -136,6 +136,9 @@
               <button data-action="audit-log" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
                 <i data-lucide="history" class="w-3.5 h-3.5"></i> <span data-i18n="auditTitle">Activity log</span>
               </button>
+              <button data-action="users-open" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
+                <i data-lucide="users" class="w-3.5 h-3.5"></i> <span data-i18n="usersMenu">Users &amp; roles</span>
+              </button>
               <button data-action="trash-open" class="w-full text-left rtl:text-right px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center gap-2">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> <span data-i18n="trashTitle">Recently deleted</span>
               </button>
@@ -783,6 +786,38 @@
           <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span data-i18n="auditRefresh">Refresh</span>
         </button>
         <button data-action="close-modal" data-modal="modal-trash" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold" data-i18n="btnGotIt">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: LIVE MATCH ENTRY (SCORER / ADMIN) -->
+  <div id="modal-live" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="activity" class="w-4 h-4 text-rose-400"></i>
+          <span data-i18n="modalLiveEntryTitle">Live match entry</span>
+        </h3>
+        <button data-action="close-modal" data-modal="modal-live" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div id="live-entry-body" class="space-y-4"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: USERS & ROLES (ADMIN, ROADMAP B) -->
+  <div id="modal-users" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="users" class="w-5 h-5 text-amber-300"></i>
+          <span data-i18n="modalUsersTitle">Users &amp; roles</span>
+        </h3>
+        <button data-action="close-modal" data-modal="modal-users" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <p class="text-[11px] text-slate-500 leading-relaxed" data-i18n="usersHint">Choose who can score matches. Only admins can see this dialog.</p>
+      <div id="users-body" class="flex-1 overflow-y-auto space-y-4 text-xs min-h-[6rem]"></div>
+      <div class="flex justify-end pt-2 border-t border-slate-800">
+        <button data-action="close-modal" data-modal="modal-users" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold" data-i18n="btnGotIt">Got it</button>
       </div>
     </div>
   </div>

@@ -109,7 +109,27 @@ function mapMatchEvent(row) {
     teamId: row.team_id,
     playerId: row.player_id,
     type: row.event_type,
-    minute: row.minute
+    minute: row.minute,
+    createdAt: row.created_at || null
+  };
+}
+
+/** Roadmap B: which scorer may record events for a fixture. */
+function mapMatchOfficial(row) {
+  return {
+    matchId: row.match_id,
+    userId: row.user_id,
+    createdAt: row.created_at || null
+  };
+}
+
+/** An account in the admin Users & roles dialog. */
+function mapUser(row) {
+  return {
+    id: row.id,
+    email: row.email || '',
+    role: row.role,
+    createdAt: row.created_at || null
   };
 }
 
@@ -286,13 +306,22 @@ async function refreshData() {
     return;
   }
 
-  const [teamsResult, playersResult, statsResult, matchesResult, seasonsResult, eventsResult] = await Promise.all([
+  // Roadmap B: only staff need the match assignments, and the table does not
+  // exist until the scorer-role migration is run. Querying it for anonymous
+  // visitors would log a 404 on every page load of an un-migrated project.
+  const wantsOfficials = (typeof isAdmin === 'function' && isAdmin()) ||
+    (typeof isScorer === 'function' && isScorer());
+
+  const [teamsResult, playersResult, statsResult, matchesResult, seasonsResult, eventsResult, officialsResult] = await Promise.all([
     selectAllRows('teams', 'name', true),
     selectAllRows('players', 'num', true),
     selectAllRows('v_player_stats', 'player_id', true, null),
     selectAllRows('matches', 'round', true),
     selectAllRows('seasons', 'created_at', false),
-    selectAllRows('match_events', 'minute', true)
+    selectAllRows('match_events', 'minute', true),
+    wantsOfficials
+      ? selectAllRows('match_officials', 'match_id', true, 'user_id')
+      : Promise.resolve({ data: [], error: null })
   ]);
 
   const baseError = teamsResult.error || playersResult.error || statsResult.error || matchesResult.error;
@@ -317,6 +346,18 @@ async function refreshData() {
   } else {
     matchEvents = (eventsResult.data || []).map(mapMatchEvent);
     eventsReady = true;
+  }
+
+  // Match officials are optional until the scorer-role migration is run. RLS
+  // returns only the signed-in scorer's rows (every row for an admin) and
+  // nothing for anonymous visitors, so this read is safe for everyone.
+  let matchOfficials = [];
+  let officialsReady = false;
+  if (officialsResult.error) {
+    if (!isMissingTable(officialsResult.error)) throw officialsResult.error;
+  } else {
+    matchOfficials = (officialsResult.data || []).map(mapMatchOfficial);
+    officialsReady = true;
   }
 
   // The integrity migration adds players.is_active. Detect it from the
@@ -367,11 +408,41 @@ async function refreshData() {
     matches: (matchesResult.data || []).map(mapMatch),
     seasons,
     matchEvents,
+    matchOfficials,
     seasonsReady,
     eventsReady,
+    officialsReady,
     activeSeasonId,
     viewSeasonId
   };
+}
+
+/**
+ * Roadmap B: load the signed-in scorer's assignments (every row for an admin)
+ * after a session is restored. Called from applySession() so a stored session
+ * gets the live-entry buttons without a second full data refresh.
+ */
+async function refreshOfficials() {
+  if (!BACKEND_READY) return;
+  const staff = (typeof isAdmin === 'function' && isAdmin()) ||
+    (typeof isScorer === 'function' && isScorer());
+  if (!staff) {
+    appState.matchOfficials = [];
+    appState.officialsReady = false;
+    return;
+  }
+
+  const { data, error } = await selectAllRows('match_officials', 'match_id', true, 'user_id');
+  if (error) {
+    if (!isMissingTable(error)) throw error;
+    appState.matchOfficials = [];
+    appState.officialsReady = false;
+  } else {
+    appState.matchOfficials = (data || []).map(mapMatchOfficial);
+    appState.officialsReady = true;
+  }
+
+  if (typeof renderApp === 'function') renderApp();
 }
 
 /* ---------- writes (guarded by RLS: admins only) ---------- */
@@ -550,6 +621,58 @@ async function dbReplaceMatchEvents(matchId, events) {
   }
 
   throw error;
+}
+
+/* ---------- roadmap B: scorer live entry + admin role management ---------- */
+
+/** Add one goal/card through the narrow scorer RPC. Returns the event id. */
+async function dbRecordLiveEvent(matchId, teamId, playerId, type, minute) {
+  assertBackend();
+  const { data, error } = await db.rpc('record_live_event', {
+    p_match_id: matchId,
+    p_team_id: teamId,
+    p_player_id: playerId,
+    p_event_type: type,
+    p_minute: minute
+  });
+  if (error) throw error;
+  return data;
+}
+
+/** Undo one event through the narrow scorer RPC (15-minute window). */
+async function dbRemoveLiveEvent(eventId) {
+  assertBackend();
+  const { error } = await db.rpc('remove_live_event', { p_event_id: eventId });
+  if (error) throw error;
+}
+
+/** Admin-only account list. Returns null when the migration is missing. */
+async function dbListUsers() {
+  assertBackend();
+  const { data, error } = await db.rpc('list_users');
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  return (data || []).map(mapUser);
+}
+
+async function dbSetUserRole(userId, role) {
+  assertBackend();
+  const { error } = await db.rpc('set_user_role', {
+    p_user_id: userId,
+    p_role: role
+  });
+  if (error) throw error;
+}
+
+async function dbSetMatchOfficials(matchId, userIds) {
+  assertBackend();
+  const { error } = await db.rpc('set_match_officials', {
+    p_match_id: matchId,
+    p_user_ids: userIds
+  });
+  if (error) throw error;
 }
 
 async function dbDeleteMatch(matchId) {

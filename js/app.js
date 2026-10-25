@@ -67,7 +67,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad', 'modal-live', 'modal-users'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -280,6 +280,8 @@ const CLICK_ACTIONS = {
   'audit-refresh': () => renderAuditLog(),
   'trash-open': () => openTrashModal(),
   'trash-refresh': () => renderTrash(),
+  'users-open': () => openUsersModal(),
+  'save-officials': () => saveOfficials(),
   'mfa-open': () => openMfaModal(),
   'mfa-enroll': () => startMfaEnrollment(),
   'mfa-disable': () => disableMfa(),
@@ -294,6 +296,8 @@ const CLICK_ACTIONS = {
   'edit-match': el => editMatch(el.dataset.id),
   'delete-match': el => deleteMatch(el.dataset.id),
   'bump-score': el => bumpScore(el.dataset.id, el.dataset.side, Number(el.dataset.delta)),
+  'live-entry': el => openLiveEntry(el.dataset.id),
+  'remove-live-event': el => removeLiveEvent(el.dataset.id),
 
   'new-team': () => openTeamModal(),
   'edit-team': el => editTeam(el.dataset.id),
@@ -335,7 +339,18 @@ const CHANGE_ACTIONS = {
   'update-event': el => updateMatchEvent(el.dataset.id, el.dataset.field, el.value),
   'import-file': (el, event) => importData(event),
   'squad-file': (el, event) => handleSquadFile(event),
-  'mfa-require': el => toggleRequireMfa(el)
+  'mfa-require': el => toggleRequireMfa(el),
+  'live-team': el => { liveEntrySide = el.value === 'away' ? 'away' : 'home'; renderLiveEntry(); },
+  'user-role': el => changeUserRole(el.dataset.id, el.value),
+  'officials-match': el => {
+    usersModalState.matchId = el.value;
+    syncOfficialsDraft();
+    renderUsersModal();
+  },
+  'toggle-official': el => {
+    if (el.checked) usersModalState.draft.add(el.dataset.id);
+    else usersModalState.draft.delete(el.dataset.id);
+  }
 };
 
 const INPUT_ACTIONS = {
@@ -355,7 +370,8 @@ const SUBMIT_ACTIONS = {
   'request-password-reset': (el, event) => requestPasswordReset(event),
   'reset-password': (el, event) => saveRecoveredPassword(event),
   'mfa-verify': (el, event) => handleMfaVerifySubmit(event),
-  'mfa-enroll-verify': (el, event) => handleMfaEnrollSubmit(event)
+  'mfa-enroll-verify': (el, event) => handleMfaEnrollSubmit(event),
+  'save-live-event': (el, event) => saveLiveEvent(event)
 };
 
 /** Walk up from the event target to the nearest element declaring `attr`. */
@@ -375,6 +391,7 @@ function runDelegated(attr, handlers, event) {
 /** Actions that mutate league data (they need an aal2 session when MFA is required). */
 const MFA_GATED_ACTIONS = new Set([
   'new-match', 'edit-match', 'delete-match', 'bump-score',
+  'live-entry', 'remove-live-event', 'users-open', 'save-officials',
   'new-team', 'edit-team', 'delete-team',
   'new-player', 'edit-player', 'delete-player', 'restore-player',
   'squad-import-confirm',
@@ -384,6 +401,9 @@ const MFA_GATED_ACTIONS = new Set([
   'audit-log', 'trash-open',
   'reset-data'
 ]);
+
+/** Changes that write through an RPC when MFA is required. */
+const MFA_GATED_CHANGES = new Set(['user-role']);
 
 document.addEventListener('click', function (event) {
   const actionEl = closestAction(event.target, 'data-action');
@@ -402,6 +422,15 @@ document.addEventListener('change', function (event) {
       typeof isMfaLocked === 'function' && isMfaLocked()) {
     changeEl.value = '';
     openMfaModal();
+    return;
+  }
+  if (changeEl && MFA_GATED_CHANGES.has(changeEl.dataset.change) &&
+      typeof isMfaLocked === 'function' && isMfaLocked()) {
+    openMfaModal();
+    if (changeEl.dataset.id) {
+      const user = usersModalState.users.find(item => item.id === changeEl.dataset.id);
+      if (user) changeEl.value = user.role;
+    }
     return;
   }
   runDelegated('data-change', CHANGE_ACTIONS, event);
@@ -456,6 +485,56 @@ function canEditMatches() {
   if (typeof isAdmin !== 'function' || !isAdmin()) return false;
   if (!appState.seasonsReady) return true;
   return Boolean(appState.activeSeasonId && appState.viewSeasonId === appState.activeSeasonId);
+}
+
+/* ---------- roadmap B: scorer live entry ---------- */
+
+const LIVE_UNDO_WINDOW_MS = 15 * 60 * 1000;
+
+/** YYYY-MM-DD in the browser's timezone, matching the stored local datetime. */
+function localDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (isNaN(date.getTime())) return String(value || '').slice(0, 10);
+  const pad = part => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function matchIsToday(match) {
+  if (!match || !match.datetime) return false;
+  return localDateKey(match.datetime) === localDateKey(new Date());
+}
+
+/** True when the scorer may act on this fixture at all. */
+function liveEntryWindowOpen(match) {
+  if (!match || !appState.eventsReady) return false;
+  if (match.eventsCounted === false) return false;
+  if (appState.seasonsReady && match.seasonId !== appState.activeSeasonId) return false;
+  if (match.status === 'LIVE') return true;
+  return match.status === 'SCHEDULED' && matchIsToday(match);
+}
+
+function isAssignedScorer(matchId) {
+  if (typeof isScorer !== 'function' || !isScorer()) return false;
+  if (typeof currentUser === 'undefined' || !currentUser) return false;
+  return (appState.matchOfficials || [])
+    .some(row => row.matchId === matchId && row.userId === currentUser.id);
+}
+
+/** Admins may score any live/today fixture; scorers only their assignments. */
+function canEnterLive(match) {
+  if (!liveEntryWindowOpen(match)) return false;
+  if (typeof isAdmin === 'function' && isAdmin()) return true;
+  return isAssignedScorer(match.id);
+}
+
+function canUndoLiveEvent(event) {
+  if (!event || !event.createdAt) return false;
+  const match = appState.matches.find(m => m.id === event.matchId);
+  if (!liveEntryWindowOpen(match)) return false;
+  if (typeof isAdmin === 'function' && isAdmin()) return true;
+  if (!isAssignedScorer(event.matchId)) return false;
+  const created = new Date(event.createdAt).getTime();
+  return !isNaN(created) && Date.now() - created <= LIVE_UNDO_WINDOW_MS;
 }
 
 /* ---------- loading / error banners ---------- */
@@ -778,6 +857,14 @@ function renderStandings() {
  * --------------------------------------------------------------- */
 let matchEventDraft = [];
 
+/** Roadmap B live-entry dialog state. */
+let liveEntryMatchId = null;
+let liveEntrySide = 'home';
+let liveEntrySaving = false;
+
+/** Roadmap B Users & roles dialog state. */
+let usersModalState = { loading: false, users: [], error: '', matchId: '', draft: new Set() };
+
 function getMatchEvents(matchId) {
   return (appState.matchEvents || []).filter(event => event.matchId === matchId);
 }
@@ -1009,6 +1096,14 @@ function renderFixtures() {
 
     const scorers = renderMatchEventSummary(m);
 
+    // Roadmap B: scorers get the narrow live-entry dialog on assigned
+    // fixtures; admins get the same button on every live/today fixture.
+    const liveEntryButton = canEnterLive(m)
+      ? `<button data-action="live-entry" data-id="${esc(m.id)}" class="px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded text-xs font-semibold flex items-center gap-1 transition">
+           <i data-lucide="activity" class="w-3 h-3"></i> ${esc(t('btnLiveEntry'))}
+         </button>`
+      : '';
+
     return `
       <div class="bg-slate-800/60 border ${isNext ? 'border-pitch-500/40' : 'border-slate-700/70'} rounded-xl p-4 shadow-sm hover:border-slate-600 transition flex flex-col justify-between">
         <div class="flex justify-between items-center text-xs text-slate-400 mb-3 pb-2 border-b border-slate-700/50 gap-2">
@@ -1037,13 +1132,16 @@ function renderFixtures() {
 
         ${scorers}
 
-        <div class="admin-only season-write mt-3 pt-2 border-t border-slate-700/50 flex justify-end gap-2">
-          <button data-action="edit-match" data-id="${esc(m.id)}" class="px-2.5 py-1 text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded text-xs flex items-center gap-1 transition">
-            <i data-lucide="edit-3" class="w-3 h-3"></i> ${esc(t('editAction'))}
-          </button>
-          <button data-action="delete-match" data-id="${esc(m.id)}" class="px-2 py-1 text-rose-400 hover:bg-rose-500/20 rounded text-xs transition" aria-label="${esc(t('ariaDeleteMatch'))}" title="${esc(t('ariaDeleteMatch'))}">
-            <i data-lucide="trash-2" class="w-3 h-3"></i>
-          </button>
+        <div class="mt-3 pt-2 border-t border-slate-700/50 flex flex-wrap justify-end items-center gap-2">
+          ${liveEntryButton}
+          <div class="admin-only season-write flex items-center gap-2">
+            <button data-action="edit-match" data-id="${esc(m.id)}" class="px-2.5 py-1 text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded text-xs flex items-center gap-1 transition">
+              <i data-lucide="edit-3" class="w-3 h-3"></i> ${esc(t('editAction'))}
+            </button>
+            <button data-action="delete-match" data-id="${esc(m.id)}" class="px-2 py-1 text-rose-400 hover:bg-rose-500/20 rounded text-xs transition" aria-label="${esc(t('ariaDeleteMatch'))}" title="${esc(t('ariaDeleteMatch'))}">
+              <i data-lucide="trash-2" class="w-3 h-3"></i>
+            </button>
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -1087,6 +1185,194 @@ async function bumpScore(matchId, side, delta) {
     match[key] = previous;
     renderApp();
     alert(t('alertSaveFailed'));
+  }
+}
+
+/* ---------------------------------------------------------------
+ * 4b. LIVE MATCH ENTRY (roadmap B)
+ *     A scorer records one goal/card at a time through a narrow RPC.
+ *     The server enforces assignment, the live/today window and the
+ *     undo limit; this dialog only mirrors those rules.
+ * --------------------------------------------------------------- */
+
+function openLiveEntry(matchId) {
+  const match = appState.matches.find(m => m.id === matchId);
+  if (!match) return;
+  if (!canEnterLive(match)) {
+    alert(t('liveEntryClosed'));
+    return;
+  }
+  liveEntryMatchId = matchId;
+  liveEntrySide = 'home';
+  openModal('modal-live');
+  renderLiveEntry();
+}
+
+function refreshLiveEntryIfOpen() {
+  const modal = document.getElementById('modal-live');
+  if (modal && !modal.classList.contains('hidden')) renderLiveEntry();
+}
+
+function renderLiveEntry() {
+  const body = document.getElementById('live-entry-body');
+  if (!body) return;
+
+  const match = appState.matches.find(m => m.id === liveEntryMatchId);
+  if (!match) {
+    body.innerHTML = `<p class="text-xs text-slate-400">${esc(t('liveEntryClosed'))}</p>`;
+    return;
+  }
+
+  const home = getTeam(match.homeId) || { name: '?', code: '??' };
+  const away = getTeam(match.awayId) || { name: '?', code: '??' };
+  const allowed = canEnterLive(match);
+  const events = getMatchEvents(match.id).slice()
+    .sort((a, b) => toInt(a.minute) - toInt(b.minute));
+
+  const eventRows = events.length
+    ? events.map(event => {
+        const player = appState.players.find(item => item.id === event.playerId);
+        const typeKey = event.type === 'red' ? 'eventRed' : event.type === 'yellow' ? 'eventYellow' : 'eventGoal';
+        const undoButton = canUndoLiveEvent(event)
+          ? `<button type="button" data-action="remove-live-event" data-id="${esc(event.id)}"
+                     class="w-6 h-6 rounded text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 flex items-center justify-center transition"
+                     title="${esc(t('liveEntryUndo'))}" aria-label="${esc(t('liveEntryUndo'))}">
+               <i data-lucide="undo-2" class="w-3 h-3"></i>
+             </button>`
+          : (allowed && event.createdAt
+              ? `<span class="w-6 h-6 flex items-center justify-center text-slate-600" title="${esc(t('liveEntryUndoClosed'))}">
+                   <i data-lucide="lock" class="w-3 h-3"></i>
+                 </span>`
+              : '');
+        return `<li class="flex items-center gap-2 text-[11px] leading-5">
+          <span class="w-8 shrink-0 text-end font-mono text-[10px] tabular-nums text-slate-500">${esc(formatEventMinute(event.minute))}</span>
+          <span class="w-3 shrink-0 flex items-center justify-center">${matchEventMarker(event)}</span>
+          <span class="min-w-0 flex-1 truncate text-slate-200">${esc(player ? player.name : t('unknownPlayer'))}</span>
+          <span class="shrink-0 text-[10px] text-slate-500">${esc(t(typeKey))}</span>
+          ${undoButton}
+        </li>`;
+      }).join('')
+    : `<li class="py-3 text-center text-[11px] text-slate-500">${esc(t('liveEntryEmpty'))}</li>`;
+
+  const teamId = liveEntrySide === 'away' ? match.awayId : match.homeId;
+  const players = playersForTeam(teamId);
+  const lastMinute = events.reduce((max, event) => Math.max(max, toInt(event.minute)), 0);
+  const nextMinute = Math.min(130, Math.max(1, lastMinute + 1));
+  const score = match.status === 'SCHEDULED'
+    ? t('lblVs')
+    : `${toInt(match.homeScore)} - ${toInt(match.awayScore)}`;
+
+  const playerOptions = players
+    .map(player => `<option value="${esc(player.id)}">${esc(`#${toInt(player.num)} ${player.name}`)}</option>`)
+    .join('');
+
+  const form = allowed ? `
+    <form data-submit="save-live-event" class="space-y-3 border-t border-slate-800 pt-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-[11px] font-medium text-slate-400 block mb-1" for="live-entry-team">${esc(t('liveEntryTeam'))}</label>
+          <select id="live-entry-team" data-change="live-team" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-pitch-500">
+            <option value="home" ${liveEntrySide === 'home' ? 'selected' : ''}>${esc(home.name)}</option>
+            <option value="away" ${liveEntrySide === 'away' ? 'selected' : ''}>${esc(away.name)}</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-[11px] font-medium text-slate-400 block mb-1" for="live-entry-player">${esc(t('liveEntryPlayer'))}</label>
+          <select id="live-entry-player" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-pitch-500">
+            ${playerOptions}
+          </select>
+        </div>
+        <div>
+          <label class="text-[11px] font-medium text-slate-400 block mb-1" for="live-entry-type">${esc(t('liveEntryType'))}</label>
+          <select id="live-entry-type" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-pitch-500">
+            <option value="goal">${esc(t('eventGoal'))}</option>
+            <option value="yellow">${esc(t('eventYellow'))}</option>
+            <option value="red">${esc(t('eventRed'))}</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-[11px] font-medium text-slate-400 block mb-1" for="live-entry-minute">${esc(t('liveEntryMinute'))}</label>
+          <input id="live-entry-minute" type="number" min="1" max="130" value="${nextMinute}" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white text-center focus:border-pitch-500">
+        </div>
+      </div>
+      ${players.length ? '' : `<p class="text-[11px] text-amber-300">${esc(t('liveEntryNoPlayers'))}</p>`}
+      <button type="submit" ${players.length ? '' : 'disabled'} class="w-full px-3 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 transition">
+        <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('liveEntryAdd'))}
+      </button>
+    </form>` : `<p class="text-[11px] text-slate-500 border-t border-slate-800 pt-3">${esc(t('liveEntryClosed'))}</p>`;
+
+  body.innerHTML = `
+    <div class="flex items-center justify-between gap-3 rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2">
+      <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white">${esc(home.name)}</span>
+      <span class="shrink-0 text-lg font-extrabold tracking-wider text-white">${esc(score)}</span>
+      <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white text-end">${esc(away.name)}</span>
+    </div>
+    <p class="text-[11px] text-slate-500 leading-relaxed">${esc(t('liveEntryHint'))}</p>
+    <ol class="space-y-0.5 rounded-xl bg-slate-950/40 border border-slate-800 px-3 py-2">${eventRows}</ol>
+    ${form}`;
+
+  refreshIcons();
+}
+
+async function saveLiveEvent(event) {
+  event.preventDefault();
+  if (liveEntrySaving) return;
+
+  const match = appState.matches.find(m => m.id === liveEntryMatchId);
+  if (!match || !canEnterLive(match)) {
+    alert(t('liveEntryClosed'));
+    return;
+  }
+
+  const button = event.target.querySelector('button[type="submit"]');
+  const side = document.getElementById('live-entry-team').value === 'away' ? 'away' : 'home';
+  const teamId = side === 'away' ? match.awayId : match.homeId;
+  const playerId = document.getElementById('live-entry-player').value;
+  const type = document.getElementById('live-entry-type').value;
+  const minute = toInt(document.getElementById('live-entry-minute').value);
+
+  if (!playerId) {
+    alert(t('liveEntryNoPlayers'));
+    return;
+  }
+  if (!['goal', 'yellow', 'red'].includes(type) || minute < 1 || minute > 130) {
+    alert(t('alertInvalidMatchEvent'));
+    return;
+  }
+
+  liveEntrySaving = true;
+  if (button) button.disabled = true;
+  try {
+    await dbRecordLiveEvent(match.id, teamId, playerId, type, minute);
+    await refreshData();
+    renderApp();
+    renderLiveEntry();
+    showToast(t('liveEntrySaved'));
+  } catch (err) {
+    alert(t('alertLiveEntryFailed'));
+  } finally {
+    liveEntrySaving = false;
+    if (button && button.isConnected) button.disabled = false;
+  }
+}
+
+async function removeLiveEvent(eventId) {
+  const stored = (appState.matchEvents || []).find(event => event.id === eventId);
+  if (!stored) return;
+  if (!canUndoLiveEvent(stored)) {
+    alert(t('alertLiveEntryUndoFailed'));
+    return;
+  }
+  if (!confirm(t('confirmRemoveLiveEvent'))) return;
+
+  try {
+    await dbRemoveLiveEvent(eventId);
+    await refreshData();
+    renderApp();
+    renderLiveEntry();
+    showToast(t('liveEntryRemoved'));
+  } catch (err) {
+    alert(t('alertLiveEntryUndoFailed'));
   }
 }
 
@@ -2170,6 +2456,8 @@ const AUDIT_ENTITY_KEYS = {
   players: 'auditEntityPlayers',
   matches: 'auditEntityMatches',
   match_events: 'auditEntityEvents',
+  profiles: 'auditEntityUsers',
+  match_officials: 'auditEntityOfficials',
   security: 'auditEntitySecurity',
   all: 'auditEntityAll'
 };
@@ -2300,6 +2588,197 @@ function renderAuditLog() {
 function refreshAuditLogIfOpen() {
   const modal = document.getElementById('modal-audit');
   if (modal && !modal.classList.contains('hidden')) renderAuditLog();
+}
+
+/* ---------- users & roles (admin, roadmap B) ---------- */
+
+function usersMatchLabel(match) {
+  const home = getTeam(match.homeId);
+  const away = getTeam(match.awayId);
+  const date = match.datetime
+    ? new Date(match.datetime).toLocaleDateString(currentLang, { month: 'short', day: 'numeric' })
+    : '';
+  const name = `${home ? home.name : '?'} – ${away ? away.name : '?'}`;
+  return date ? `${name} · ${date}` : name;
+}
+
+function syncOfficialsDraft() {
+  const scorerIds = new Set(
+    usersModalState.users.filter(user => user.role === 'scorer').map(user => user.id)
+  );
+  usersModalState.draft = new Set(
+    (appState.matchOfficials || [])
+      .filter(row => row.matchId === usersModalState.matchId && scorerIds.has(row.userId))
+      .map(row => row.userId)
+  );
+}
+
+function openUsersModal() {
+  if (typeof isAdmin !== 'function' || !isAdmin()) return;
+  closeDataMenu();
+  usersModalState = { loading: true, users: [], error: '', matchId: '', draft: new Set() };
+  openModal('modal-users');
+  renderUsersModal();
+
+  dbListUsers()
+    .then(users => {
+      if (users === null) {
+        usersModalState = { loading: false, users: [], error: 'usersMigration', matchId: '', draft: new Set() };
+        renderUsersModal();
+        return;
+      }
+      const matches = activeMatches().slice().sort((a, b) =>
+        (toInt(a.round) - toInt(b.round)) ||
+        (a.datetime || '').localeCompare(b.datetime || '')
+      );
+      const preferred = matches.find(match => match.status === 'LIVE') ||
+        matches.find(match => match.status === 'SCHEDULED' && matchIsToday(match)) ||
+        matches[0] || null;
+      usersModalState = {
+        loading: false,
+        users,
+        error: '',
+        matchId: preferred ? preferred.id : '',
+        draft: new Set()
+      };
+      syncOfficialsDraft();
+      renderUsersModal();
+    })
+    .catch(err => {
+      console.error('KickOff Division: could not load users.', err);
+      usersModalState = { loading: false, users: [], error: 'usersLoadFailed', matchId: '', draft: new Set() };
+      renderUsersModal();
+    });
+}
+
+function renderUsersModal() {
+  const body = document.getElementById('users-body');
+  if (!body) return;
+
+  if (usersModalState.loading) {
+    body.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('usersLoading'))}</p>`;
+    return;
+  }
+  if (usersModalState.error) {
+    body.innerHTML = `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed text-xs">${esc(t(usersModalState.error))}</div>`;
+    return;
+  }
+  if (!usersModalState.users.length) {
+    body.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('usersEmpty'))}</p>`;
+    return;
+  }
+
+  const selfId = typeof currentUser !== 'undefined' && currentUser ? currentUser.id : null;
+  const roleLabel = role => t(role === 'admin' ? 'adminBadge' : role === 'scorer' ? 'scorerBadge' : 'viewerBadge');
+
+  const userRows = usersModalState.users.map(user => {
+    const options = ['viewer', 'scorer', 'admin'].map(role =>
+      `<option value="${role}" ${user.role === role ? 'selected' : ''}>${esc(roleLabel(role))}</option>`
+    ).join('');
+    const self = user.id === selfId;
+    return `
+      <div class="flex items-center gap-3 px-3 py-2 bg-slate-800/40 border border-slate-800 rounded-lg">
+        <div class="min-w-0 flex-1">
+          <p class="text-xs text-slate-200 font-medium truncate">${esc(user.email || user.id)}</p>
+          ${self ? `<p class="text-[10px] text-slate-500">${esc(t('usersSelf'))}</p>` : ''}
+        </div>
+        <select data-change="user-role" data-id="${esc(user.id)}" ${self ? 'disabled' : ''}
+                class="shrink-0 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-white focus:border-pitch-500 disabled:opacity-60 disabled:cursor-not-allowed">
+          ${options}
+        </select>
+      </div>`;
+  }).join('');
+
+  const matches = activeMatches().slice().sort((a, b) =>
+    (toInt(a.round) - toInt(b.round)) ||
+    (a.datetime || '').localeCompare(b.datetime || '')
+  );
+
+  const matchSelect = matches.length
+    ? `<select data-change="officials-match" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-pitch-500">
+         ${matches.map(match => `<option value="${esc(match.id)}" ${match.id === usersModalState.matchId ? 'selected' : ''}>${esc(usersMatchLabel(match))}</option>`).join('')}
+       </select>`
+    : `<p class="text-[11px] text-slate-500">${esc(t('usersNoMatches'))}</p>`;
+
+  const scorers = usersModalState.users.filter(user => user.role === 'scorer');
+  const scorerBoxes = scorers.length
+    ? scorers.map(user => `
+        <label class="flex items-center gap-2 px-3 py-2 bg-slate-800/40 border border-slate-800 rounded-lg cursor-pointer hover:border-slate-700">
+          <input type="checkbox" data-change="toggle-official" data-id="${esc(user.id)}"
+                 ${usersModalState.draft.has(user.id) ? 'checked' : ''}
+                 class="rounded border-slate-600 bg-slate-900 text-pitch-500 focus:ring-pitch-500">
+          <span class="min-w-0 flex-1 truncate text-xs text-slate-200">${esc(user.email || user.id)}</span>
+        </label>`).join('')
+    : `<p class="text-[11px] text-slate-500 leading-relaxed">${esc(t('usersNoScorers'))}</p>`;
+
+  body.innerHTML = `
+    <section class="space-y-2">
+      <div class="flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-slate-500">
+        <span>${esc(t('usersEmail'))}</span><span>${esc(t('usersRole'))}</span>
+      </div>
+      <div class="space-y-2 max-h-56 overflow-y-auto pe-1">${userRows}</div>
+    </section>
+
+    <section class="space-y-2 border-t border-slate-800 pt-4">
+      <h4 class="text-[11px] uppercase tracking-wide font-semibold text-slate-400">${esc(t('usersMatchHeading'))}</h4>
+      <p class="text-[10px] uppercase tracking-wide text-slate-500">${esc(t('usersMatch'))}</p>
+      ${matchSelect}
+      <p class="text-[11px] uppercase tracking-wide font-semibold text-slate-500 pt-1">${esc(t('usersScorersHeading'))}</p>
+      <div class="space-y-1.5 max-h-48 overflow-y-auto pe-1">${scorerBoxes}</div>
+      <button data-action="save-officials" ${matches.length ? '' : 'disabled'}
+              class="w-full px-3 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 transition">
+        <i data-lucide="save" class="w-3.5 h-3.5"></i> ${esc(t('usersSaveOfficials'))}
+      </button>
+    </section>`;
+
+  refreshIcons();
+}
+
+async function changeUserRole(userId, role) {
+  if (typeof isAdmin !== 'function' || !isAdmin()) return;
+  if (typeof currentUser !== 'undefined' && currentUser && userId === currentUser.id && role !== 'admin') {
+    alert(t('alertRoleFailed'));
+    renderUsersModal();
+    return;
+  }
+
+  try {
+    await dbSetUserRole(userId, role);
+    const user = usersModalState.users.find(item => item.id === userId);
+    if (user) user.role = role;
+    syncOfficialsDraft();
+    renderUsersModal();
+    showToast(t('usersRoleSaved'));
+  } catch (err) {
+    console.error('KickOff Division: could not change the role.', err);
+    alert(t('alertRoleFailed'));
+    renderUsersModal();
+  }
+}
+
+async function saveOfficials() {
+  if (typeof isAdmin !== 'function' || !isAdmin() || !usersModalState.matchId) return;
+  const userIds = Array.from(usersModalState.draft);
+
+  try {
+    await dbSetMatchOfficials(usersModalState.matchId, userIds);
+    await refreshData();
+    syncOfficialsDraft();
+    renderApp();
+    renderUsersModal();
+    showToast(t('usersOfficialsSaved'));
+  } catch (err) {
+    console.error('KickOff Division: could not save the officials.', err);
+    alert(t('alertOfficialsFailed'));
+  }
+}
+
+/** Re-render the open Users & roles dialog after a language switch. */
+function refreshUsersIfOpen() {
+  const modal = document.getElementById('modal-users');
+  if (modal && !modal.classList.contains('hidden') && !usersModalState.loading && !usersModalState.error) {
+    renderUsersModal();
+  }
 }
 
 /* ---------- recently deleted (admin) ---------- */

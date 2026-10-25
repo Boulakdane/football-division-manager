@@ -295,6 +295,15 @@ async function handleMfaVerifySubmit(event) {
 
     document.getElementById('form-mfa-verify')?.reset();
     await refreshMfaState();
+    // A step-up can turn an aal1 admin into a writable one, which means their
+    // match assignments (roadmap B) were never read at page load.
+    if (typeof refreshOfficials === 'function' && (isAdmin() || isScorer())) {
+      try {
+        await refreshOfficials();
+      } catch (err) {
+        console.error('KickOff Division: could not load match officials.', err);
+      }
+    }
     showToast(t('mfaVerified'));
   } finally {
     if (button) button.disabled = false;
