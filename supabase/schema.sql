@@ -230,16 +230,43 @@ create table if not exists public.players (
   goals int not null default 0,
   yellow int not null default 0,
   red int not null default 0,
+  legacy_goals int not null default 0,
+  legacy_yellow int not null default 0,
+  legacy_red int not null default 0,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   constraint kickoff_players_id_not_blank check (length(btrim(id)) between 1 and 100),
   constraint kickoff_players_name_length check (length(btrim(name)) between 1 and 100),
   constraint kickoff_players_num_range check (num between 0 and 999),
-  constraint kickoff_players_totals_range check (goals >= 0 and yellow >= 0 and red >= 0)
+  constraint kickoff_players_totals_range check (goals >= 0 and yellow >= 0 and red >= 0),
+  constraint kickoff_players_legacy_totals_range check (legacy_goals >= 0 and legacy_yellow >= 0 and legacy_red >= 0)
 );
 
 alter table public.players
   add column if not exists is_active boolean not null default true;
+
+-- Totals entered before structured events existed. The derived views add the
+-- counted events on top; see supabase/derive-totals-migration.sql.
+alter table public.players
+  add column if not exists legacy_goals int not null default 0;
+alter table public.players
+  add column if not exists legacy_yellow int not null default 0;
+alter table public.players
+  add column if not exists legacy_red int not null default 0;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'kickoff_players_legacy_totals_range'
+      and conrelid = 'public.players'::regclass
+  ) then
+    alter table public.players
+      add constraint kickoff_players_legacy_totals_range
+      check (legacy_goals >= 0 and legacy_yellow >= 0 and legacy_red >= 0);
+  end if;
+end $$;
 
 create table if not exists public.matches (
   id text primary key,
@@ -342,10 +369,219 @@ create index if not exists matches_home_id_idx on public.matches (home_id);
 create index if not exists matches_away_id_idx on public.matches (away_id);
 
 -- ------------------------------------------------------------
+-- 3b. DERIVED VIEWS (roadmap item A, stage 1)
+-- ------------------------------------------------------------
+-- These recompute player and team totals from rows that exist. The stored
+-- players totals and matches.events_counted are still the write-side source
+-- of truth until the frontend switches to the views. security_invoker keeps
+-- RLS in force for clients; every view also filters trashed rows and trashed
+-- teams explicitly.
+
+create or replace view public.v_player_event_totals
+with (security_invoker = true) as
+select ev.player_id,
+       count(*) filter (where ev.event_type = 'goal')::int as goals,
+       count(*) filter (where ev.event_type = 'yellow')::int as yellow,
+       count(*) filter (where ev.event_type = 'red')::int as red
+from public.match_events ev
+join public.matches m
+  on m.id = ev.match_id
+ and m.events_counted
+ and m.deleted_at is null
+join public.teams home
+  on home.id = m.home_id
+ and home.deleted_at is null
+join public.teams away
+  on away.id = m.away_id
+ and away.deleted_at is null
+join public.seasons s
+  on s.id = m.season_id
+ and s.deleted_at is null
+group by ev.player_id;
+
+-- All-time totals, because the app treats player goals/cards as career totals
+-- (the top-scorer list is not per season).
+create or replace view public.v_player_stats
+with (security_invoker = true) as
+select p.id as player_id,
+       p.team_id,
+       p.name,
+       p.pos,
+       p.num,
+       p.is_active,
+       p.legacy_goals,
+       p.legacy_yellow,
+       p.legacy_red,
+       coalesce(e.goals, 0) as event_goals,
+       coalesce(e.yellow, 0) as event_yellow,
+       coalesce(e.red, 0) as event_red,
+       p.legacy_goals + coalesce(e.goals, 0) as goals,
+       p.legacy_yellow + coalesce(e.yellow, 0) as yellow,
+       p.legacy_red + coalesce(e.red, 0) as red
+from public.players p
+join public.teams t
+  on t.id = p.team_id
+ and t.deleted_at is null
+left join public.v_player_event_totals e on e.player_id = p.id;
+
+create or replace view public.v_match_results
+with (security_invoker = true) as
+select m.id as match_id,
+       m.season_id,
+       m.round,
+       m.home_id,
+       m.away_id,
+       m.home_score,
+       m.away_score,
+       m.datetime,
+       case
+         when m.home_score > m.away_score then 3
+         when m.home_score = m.away_score then 1
+         else 0
+       end::int as home_points,
+       case
+         when m.away_score > m.home_score then 3
+         when m.home_score = m.away_score then 1
+         else 0
+       end::int as away_points,
+       case
+         when m.home_score > m.away_score then 'W'
+         when m.home_score = m.away_score then 'D'
+         else 'L'
+       end as home_result,
+       case
+         when m.away_score > m.home_score then 'W'
+         when m.home_score = m.away_score then 'D'
+         else 'L'
+       end as away_result
+from public.matches m
+join public.seasons s
+  on s.id = m.season_id
+ and s.deleted_at is null
+join public.teams home
+  on home.id = m.home_id
+ and home.deleted_at is null
+join public.teams away
+  on away.id = m.away_id
+ and away.deleted_at is null
+where m.status = 'FINISHED'
+  and m.deleted_at is null;
+
+-- Mirrors calculateStandings() in js/app.js:
+--   * every visible club appears in the active season,
+--   * an archived season only lists clubs that played in it,
+--   * tie-breakers are points, goal difference, goals scored, wins, name.
+create or replace view public.v_standings
+with (security_invoker = true) as
+with results as (
+  select r.season_id,
+         r.home_id as team_id,
+         r.home_score as goals_for,
+         r.away_score as goals_against,
+         r.home_points as points,
+         r.home_result as result,
+         r.datetime,
+         r.match_id
+  from public.v_match_results r
+  union all
+  select r.season_id,
+         r.away_id,
+         r.away_score,
+         r.home_score,
+         r.away_points,
+         r.away_result,
+         r.datetime,
+         r.match_id
+  from public.v_match_results r
+),
+totals as (
+  select season_id,
+         team_id,
+         count(*)::int as played,
+         count(*) filter (where result = 'W')::int as won,
+         count(*) filter (where result = 'D')::int as drawn,
+         count(*) filter (where result = 'L')::int as lost,
+         coalesce(sum(goals_for), 0)::int as goals_for,
+         coalesce(sum(goals_against), 0)::int as goals_against,
+         coalesce(sum(points), 0)::int as points
+  from results
+  group by season_id, team_id
+),
+ordered as (
+  select season_id,
+         team_id,
+         result,
+         row_number() over (
+           partition by season_id, team_id
+           order by datetime nulls first, match_id
+         ) as rn,
+         count(*) over (partition by season_id, team_id) as total
+  from results
+),
+form as (
+  select season_id,
+         team_id,
+         array_agg(result order by rn) as form
+  from ordered
+  where rn > total - 5
+  group by season_id, team_id
+),
+scope as (
+  select s.id as season_id,
+         t.id as team_id
+  from public.seasons s
+  join public.teams t on true
+  where s.deleted_at is null
+    and t.deleted_at is null
+    and (
+      s.is_active
+      or exists (
+        select 1
+        from public.matches m
+        where m.season_id = s.id
+          and m.deleted_at is null
+          and t.id in (m.home_id, m.away_id)
+      )
+    )
+)
+select sc.season_id,
+       sc.team_id,
+       t.name as team_name,
+       t.code as team_code,
+       t.color as team_color,
+       coalesce(tt.played, 0) as played,
+       coalesce(tt.won, 0) as won,
+       coalesce(tt.drawn, 0) as drawn,
+       coalesce(tt.lost, 0) as lost,
+       coalesce(tt.goals_for, 0) as goals_for,
+       coalesce(tt.goals_against, 0) as goals_against,
+       coalesce(tt.goals_for, 0) - coalesce(tt.goals_against, 0) as goal_difference,
+       coalesce(tt.points, 0) as points,
+       coalesce(f.form, '{}'::text[]) as form,
+       row_number() over (
+         partition by sc.season_id
+         order by coalesce(tt.points, 0) desc,
+                  coalesce(tt.goals_for, 0) - coalesce(tt.goals_against, 0) desc,
+                  coalesce(tt.goals_for, 0) desc,
+                  coalesce(tt.won, 0) desc,
+                  t.name asc
+       )::int as position
+from scope sc
+join public.teams t on t.id = sc.team_id
+left join totals tt
+  on tt.season_id = sc.season_id
+ and tt.team_id = sc.team_id
+left join form f
+  on f.season_id = sc.season_id
+ and f.team_id = sc.team_id;
+
+-- ------------------------------------------------------------
 -- 4. GRANTS (RLS still decides what each role may do)
 -- ------------------------------------------------------------
 grant usage on schema public to anon, authenticated;
 grant select on public.seasons, public.teams, public.players, public.matches, public.match_events to anon, authenticated;
+revoke all on public.v_player_event_totals, public.v_player_stats, public.v_match_results, public.v_standings from public, anon, authenticated;
+grant select on public.v_player_event_totals, public.v_player_stats, public.v_match_results, public.v_standings to anon, authenticated;
 grant insert, update, delete on public.seasons, public.players to authenticated;
 grant insert, update on public.teams, public.matches to authenticated;
 -- Team/match deletion and match-event writes are RPC-only so aggregate
@@ -1341,10 +1577,18 @@ begin
     v_yellow := coalesce(nullif(btrim(v_item->>'yellow'), ''), '0')::int;
     v_red := coalesce(nullif(btrim(v_item->>'red'), ''), '0')::int;
 
-    insert into public.players (id, team_id, name, pos, num, goals, yellow, red, is_active)
+    insert into public.players (
+      id, team_id, name, pos, num,
+      goals, yellow, red,
+      legacy_goals, legacy_yellow, legacy_red,
+      is_active
+    )
     values (
       'p_' || replace(gen_random_uuid()::text, '-', ''),
-      p_team_id, v_name, v_pos, v_num, v_goals, v_yellow, v_red, true
+      p_team_id, v_name, v_pos, v_num,
+      v_goals, v_yellow, v_red,
+      v_goals, v_yellow, v_red,
+      true
     );
     v_count := v_count + 1;
   end loop;
@@ -1370,6 +1614,93 @@ $$;
 
 revoke execute on function public.add_players(text, jsonb) from public, anon;
 grant execute on function public.add_players(text, jsonb) to authenticated;
+
+-- ------------------------------------------------------------
+-- 6d-4. MANUAL PLAYER TOTALS (admin only)
+--    Moves the legacy offset so the derived view keeps showing the
+--    requested number. Totals cannot go below the recorded events.
+-- ------------------------------------------------------------
+create or replace function public.set_player_totals(
+  p_player_id text,
+  p_goals int,
+  p_yellow int,
+  p_red int
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_event_goals int;
+  v_event_yellow int;
+  v_event_red int;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can change player totals' using errcode = '42501';
+  end if;
+
+  if p_player_id is null
+     or p_goals is null
+     or p_yellow is null
+     or p_red is null
+     or least(p_goals, p_yellow, p_red) < 0 then
+    raise exception 'Player totals must be whole numbers, 0 or more';
+  end if;
+
+  if not exists (
+    select 1
+    from public.players p
+    join public.teams t on t.id = p.team_id
+    where p.id = p_player_id
+      and t.deleted_at is null
+  ) then
+    raise exception 'Player not found';
+  end if;
+
+  select count(*) filter (where ev.event_type = 'goal')::int,
+         count(*) filter (where ev.event_type = 'yellow')::int,
+         count(*) filter (where ev.event_type = 'red')::int
+    into v_event_goals, v_event_yellow, v_event_red
+  from public.match_events ev
+  join public.matches m
+    on m.id = ev.match_id
+   and m.events_counted
+   and m.deleted_at is null
+  join public.teams home
+    on home.id = m.home_id
+   and home.deleted_at is null
+  join public.teams away
+    on away.id = m.away_id
+   and away.deleted_at is null
+  join public.seasons s
+    on s.id = m.season_id
+   and s.deleted_at is null
+  where ev.player_id = p_player_id;
+
+  if p_goals < v_event_goals then
+    raise exception 'The player already has % goal events; the total cannot be lower', v_event_goals;
+  end if;
+  if p_yellow < v_event_yellow then
+    raise exception 'The player already has % yellow-card events; the total cannot be lower', v_event_yellow;
+  end if;
+  if p_red < v_event_red then
+    raise exception 'The player already has % red-card events; the total cannot be lower', v_event_red;
+  end if;
+
+  update public.players
+     set goals = p_goals,
+         yellow = p_yellow,
+         red = p_red,
+         legacy_goals = p_goals - v_event_goals,
+         legacy_yellow = p_yellow - v_event_yellow,
+         legacy_red = p_red - v_event_red
+   where id = p_player_id;
+end;
+$$;
+
+revoke execute on function public.set_player_totals(text, int, int, int) from public, anon;
+grant execute on function public.set_player_totals(text, int, int, int) to authenticated;
 
 -- ------------------------------------------------------------
 -- 6e. ATOMIC FULL-DATA IMPORT (admin only)
@@ -1566,6 +1897,38 @@ begin
     minute int
   );
 
+  -- The imported stored totals are authoritative. Keep only the part that has
+  -- no event row as the legacy offset, so the derived views match the import
+  -- exactly (including older backups with events_counted = false).
+  with counted as (
+    select ev.player_id,
+           count(*) filter (where ev.event_type = 'goal')::int as goals,
+           count(*) filter (where ev.event_type = 'yellow')::int as yellow,
+           count(*) filter (where ev.event_type = 'red')::int as red
+    from public.match_events ev
+    join public.matches m
+      on m.id = ev.match_id
+     and m.events_counted
+     and m.deleted_at is null
+    join public.teams home
+      on home.id = m.home_id
+     and home.deleted_at is null
+    join public.teams away
+      on away.id = m.away_id
+     and away.deleted_at is null
+    join public.seasons s
+      on s.id = m.season_id
+     and s.deleted_at is null
+    group by ev.player_id
+  )
+  update public.players p
+     set legacy_goals = greatest(0, p.goals - coalesce(c.goals, 0)),
+         legacy_yellow = greatest(0, p.yellow - coalesce(c.yellow, 0)),
+         legacy_red = greatest(0, p.red - coalesce(c.red, 0))
+  from public.players p2
+  left join counted c on c.player_id = p2.id
+  where p2.id = p.id;
+
   -- One readable entry instead of one row per imported record.
   insert into public.audit_log (
     actor_id, actor_email, action, entity, entity_id, summary
@@ -1650,6 +2013,45 @@ where exists (
     and v.team_id in (m.home_id, m.away_id)
 )
 on conflict (id) do nothing;
+
+-- Seed totals are career totals: the sample events are already included in
+-- the numbers above. Keep the remainder as the legacy offset so
+-- v_player_stats matches the stored totals on a fresh install.
+do $$
+begin
+  perform set_config('app.audit_skip', '1', true);
+
+  with counted as (
+    select ev.player_id,
+           count(*) filter (where ev.event_type = 'goal')::int as goals,
+           count(*) filter (where ev.event_type = 'yellow')::int as yellow,
+           count(*) filter (where ev.event_type = 'red')::int as red
+    from public.match_events ev
+    join public.matches m
+      on m.id = ev.match_id
+     and m.events_counted
+     and m.deleted_at is null
+    join public.teams home
+      on home.id = m.home_id
+     and home.deleted_at is null
+    join public.teams away
+      on away.id = m.away_id
+     and away.deleted_at is null
+    join public.seasons s
+      on s.id = m.season_id
+     and s.deleted_at is null
+    group by ev.player_id
+  )
+  update public.players p
+     set legacy_goals = greatest(0, p.goals - coalesce(c.goals, 0)),
+         legacy_yellow = greatest(0, p.yellow - coalesce(c.yellow, 0)),
+         legacy_red = greatest(0, p.red - coalesce(c.red, 0))
+  from public.players p2
+  left join counted c on c.player_id = p2.id
+  where p2.id = p.id;
+
+  perform set_config('app.audit_skip', '', true);
+end $$;
 
 -- ============================================================
 -- 8. MAKE YOURSELF ADMIN

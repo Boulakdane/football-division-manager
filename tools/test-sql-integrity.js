@@ -64,6 +64,18 @@ async function run() {
     assert(error, 'expected an error');
     if (pattern) assert(pattern.test(String(error.message || error)), `unexpected error: ${error.message || error}`);
   };
+  // Roadmap A stage 1: while both representations exist, every visible
+  // player's derived totals must equal the stored totals.
+  const derivedMismatch = async () => (await q(`
+    select count(*)::int n
+    from public.players p
+    join public.teams t on t.id = p.team_id and t.deleted_at is null
+    left join public.v_player_stats v on v.player_id = p.id
+    where v.player_id is null
+       or v.goals <> p.goals
+       or v.yellow <> p.yellow
+       or v.red <> p.red
+  `))[0].n;
 
   try {
     // Upgrading an existing project: integrity, audit, then soft delete.
@@ -79,6 +91,9 @@ async function run() {
     const constraintSql = fs.readFileSync(path.join(ROOT, 'supabase/check-constraints-migration.sql'), 'utf8');
     await exec(constraintSql);
     await exec(constraintSql);
+    const derivedSql = fs.readFileSync(path.join(ROOT, 'supabase/derive-totals-migration.sql'), 'utf8');
+    await exec(derivedSql);
+    await exec(derivedSql);
 
     // Data-quality constraints reject malformed rows even for a direct table
     // write, not just through the UI or an RPC.
@@ -154,6 +169,7 @@ async function run() {
     assert.strictEqual((await q("select goals from public.players where id = 'psched1'"))[0].goals, 1);
     assert.strictEqual((await q("select yellow from public.players where id = 'psched1'"))[0].yellow, 1);
     assert.strictEqual((await q("select red from public.players where id = 'psched2'"))[0].red, 1);
+    assert.strictEqual(await derivedMismatch(), 0, 'derived totals should follow the X4 repair');
     console.log('OK scheduled-fixture events counted once, historical totals untouched');
 
     // Archived season + isolated team-deletion fixtures.
@@ -175,6 +191,11 @@ async function run() {
       insert into public.matches (id, season_id, round, home_id, away_id, home_score, away_score, status, events_counted)
         values ('m_del', 's1', 9, 'tdel', 'tkeep', 2, 1, 'FINISHED', true);
     `);
+
+    // These fixture rows were written directly instead of through an RPC.
+    // Re-run the backfill, as an operator would after restoring old data, so
+    // the stored totals are treated as authoritative again.
+    await exec(derivedSql);
 
     // Archived seasons are read-only through direct table writes.
     const archivedUpdate = await asRole('authenticated', () =>
@@ -374,6 +395,7 @@ async function run() {
       await q("select public.restore_match('m_del2')");
     });
     assert.strictEqual((await q("select goals from public.players where id = 'pkeep'"))[0].goals, 1);
+    assert.strictEqual(await derivedMismatch(), 0, 'derived totals should follow delete/restore');
     console.log('OK safe team deletion + trash restore');
 
     // Seasons: only empty, inactive seasons can be trashed.
@@ -583,6 +605,7 @@ async function run() {
     });
     await exec(`update public.profiles set role = 'admin' where id = '${ADMIN_ID}'`);
     await exec(`set test.jwt = '{}'`);
+    assert.strictEqual(await derivedMismatch(), 0, 'derived totals should equal stored totals at the end');
     console.log('OK admin MFA gate (aal1 blocked, aal2 allowed, step-up required)');
 
     // ------------------------------------------------------------
