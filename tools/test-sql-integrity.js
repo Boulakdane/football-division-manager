@@ -78,6 +78,26 @@ async function run() {
   `))[0].n;
 
   try {
+    // Roadmap A stage 3 dropped players.goals / yellow / red, but the older
+    // migrations below still write those columns. Reconstruct the pre-drop
+    // shape (columns seeded from v_player_stats) before running the upgrade
+    // chain, then apply the drop migration at the end.
+    await exec(`
+      alter table public.players
+        add column goals int not null default 0,
+        add column yellow int not null default 0,
+        add column red int not null default 0;
+      update public.players p
+         set goals = coalesce(v.goals, 0),
+             yellow = coalesce(v.yellow, 0),
+             red = coalesce(v.red, 0)
+        from public.v_player_stats v
+       where v.player_id = p.id;
+      alter table public.players
+        add constraint kickoff_players_totals_range
+        check (goals >= 0 and yellow >= 0 and red >= 0);
+    `);
+
     // Upgrading an existing project: integrity, audit, then soft delete.
     // Every migration must be safe to re-run.
     await exec(fs.readFileSync(path.join(ROOT, 'supabase/integrity-migration.sql'), 'utf8'));
@@ -605,8 +625,48 @@ async function run() {
     });
     await exec(`update public.profiles set role = 'admin' where id = '${ADMIN_ID}'`);
     await exec(`set test.jwt = '{}'`);
-    assert.strictEqual(await derivedMismatch(), 0, 'derived totals should equal stored totals at the end');
     console.log('OK admin MFA gate (aal1 blocked, aal2 allowed, step-up required)');
+
+    // ------------------------------------------------------------
+    // Roadmap A stage 3: drop the stored player totals
+    // ------------------------------------------------------------
+    const totalsBeforeDrop = await q(
+      'select player_id, goals, yellow, red, legacy_goals, event_goals from public.v_player_stats order by player_id'
+    );
+    const legacyBeforeDrop = await q(
+      'select id, legacy_goals, legacy_yellow, legacy_red from public.players order by id'
+    );
+
+    const dropSql = fs.readFileSync(path.join(ROOT, 'supabase/drop-stored-totals-migration.sql'), 'utf8');
+    await exec(dropSql);
+    await exec(dropSql);  // safe to re-run
+
+    const storedColumns = await q(`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'players'
+        and column_name in ('goals', 'yellow', 'red')
+    `);
+    assert.strictEqual(storedColumns.length, 0, 'the stored totals should be gone');
+    assert.deepStrictEqual(
+      await q('select player_id, goals, yellow, red, legacy_goals, event_goals from public.v_player_stats order by player_id'),
+      totalsBeforeDrop,
+      'dropping the stored columns must not move any total'
+    );
+    assert.deepStrictEqual(
+      await q('select id, legacy_goals, legacy_yellow, legacy_red from public.players order by id'),
+      legacyBeforeDrop,
+      'dropping the stored columns must not move the legacy offset'
+    );
+
+    // The stage-1 file now refuses to run, because its functions write the
+    // dropped columns. Point the operator at schema.sql instead.
+    await expectError(
+      () => exec(derivedSql),
+      /players\.goals no longer exists.*drop-stored-totals-migration/
+    );
+    console.log('OK stage 3 drops the stored columns, keeps every total and is re-runnable');
 
     // ------------------------------------------------------------
     // Fresh install path: schema.sql alone must provide the audit log

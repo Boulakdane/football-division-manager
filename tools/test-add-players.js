@@ -4,8 +4,12 @@
  *
  * Runs in its own in-memory PGlite database so it cannot disturb
  * tools/test-sql-integrity.js. It loads supabase/schema.sql, checks the happy
- * path, every rejection, atomicity, permissions and the audit entry, then
- * applies supabase/add-players-migration.sql twice to prove it is re-runnable.
+ * path, every rejection, atomicity, permissions and the audit entry, and
+ * verifies that imported totals land in legacy_* (the only stored part after
+ * roadmap A stage 3) so v_player_stats shows them.
+ *
+ * The pre-drop re-run of supabase/add-players-migration.sql is covered by
+ * tools/test-drop-totals.js.
  *
  * Usage: npm run test:add-players
  */
@@ -67,7 +71,16 @@ async function run() {
     ]));
     assert.strictEqual(result[0].n, 4);
     assert.strictEqual(await count(team.id), base + 4);
-    const rows = await q("select id, name, pos, num, goals, yellow, red, is_active from public.players where team_id = $1 and id like 'p\\_%' order by name", [team.id]);
+    const rows = await q(`
+      select p.id, p.name, p.pos, p.num, p.is_active,
+             coalesce(v.goals, 0) as goals,
+             coalesce(v.yellow, 0) as yellow,
+             coalesce(v.red, 0) as red
+      from public.players p
+      left join public.v_player_stats v on v.player_id = p.id
+      where p.team_id = $1 and p.id like 'p\\_%'
+      order by p.name
+    `, [team.id]);
     const byName = Object.fromEntries(rows.map(r => [r.name, r]));
     assert.strictEqual(byName['Amine Belkacem'].pos, 'GK', 'name whitespace is collapsed and pos upper-cased');
     assert.strictEqual(byName['Amine Belkacem'].num, 1);
@@ -130,12 +143,26 @@ async function run() {
     assert.strictEqual((await q("select count(*)::int n from public.players where name in ('Anon', 'Viewer')"))[0].n, 0);
     console.log('OK anonymous and non-admin callers are refused');
 
-    // ---- the stand-alone migration is re-runnable ----
-    const migration = fs.readFileSync(path.join(ROOT, 'supabase/add-players-migration.sql'), 'utf8');
-    await exec(migration);
-    await exec(migration);
-    await asAdmin(() => add(team.id, [{ name: 'After Migration' }]));
-    console.log('OK add-players-migration.sql is re-runnable');
+    // ---- totals are written as the legacy offset, not to stored columns ----
+    const stored = await q(`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'players'
+        and column_name in ('goals', 'yellow', 'red')
+    `);
+    assert.strictEqual(stored.length, 0, 'players must not have stored totals after stage 3');
+    const yacine = (await q("select id from public.players where name = 'Yacine Mansouri'"))[0];
+    const yacineTotals = (await q(
+      'select goals, yellow, red, legacy_goals from public.v_player_stats where player_id = $1',
+      [yacine.id]
+    ))[0];
+    assert.deepStrictEqual(
+      [yacineTotals.goals, yacineTotals.yellow, yacineTotals.red, yacineTotals.legacy_goals],
+      [2, 1, 0, 2],
+      'imported totals land in legacy_* and show up in v_player_stats'
+    );
+    console.log('OK add_players writes the legacy offset that v_player_stats reads');
 
     console.log('All add_players tests passed.');
   } finally {

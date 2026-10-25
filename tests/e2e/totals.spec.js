@@ -1,31 +1,27 @@
 'use strict';
 
 /*
- * Roadmap A: player totals come from the database, not from the browser.
+ * Roadmap A stage 3: player totals come only from v_player_stats.
  *
  * Both tests answer the Supabase REST calls locally, so they prove the
  * frontend contract without depending on a hosted project:
- *   1. with supabase/derive-totals-migration.sql applied, the page shows the
- *      totals from v_player_stats, and the development-only dual-run check
- *      warns that they differ from the stored columns;
- *   2. on a project without the migration, the page never asks for the view
- *      and keeps showing the stored totals, with a clean console.
+ *   1. the page reads the totals from v_player_stats and renders them, with a
+ *      clean console and no stored-total fallback;
+ *   2. when the view is missing the page says the database is not installed
+ *      instead of silently showing zero goals for everybody.
  */
 
 const { test, expect } = require('@playwright/test');
 
-const PLAYERS_LEGACY = [
+// After stage 3 the players table no longer has goals / yellow / red.
+const PLAYERS = [
   {
     id: 'p1', team_id: 't1', name: 'David Silva', pos: 'MID', num: 10,
-    goals: 6, yellow: 1, red: 0, is_active: true,
-    // The columns added by derive-totals-migration.sql: the view adds the
-    // one counted goal event on top, so the stored total is the same.
-    legacy_goals: 5, legacy_yellow: 1, legacy_red: 0
+    legacy_goals: 5, legacy_yellow: 1, legacy_red: 0, is_active: true
   },
   {
     id: 'p2', team_id: 't1', name: 'Carlos Ramos', pos: 'FWD', num: 9,
-    goals: 0, yellow: 0, red: 0, is_active: true,
-    legacy_goals: 0, legacy_yellow: 0, legacy_red: 0
+    legacy_goals: 0, legacy_yellow: 0, legacy_red: 0, is_active: true
   }
 ];
 
@@ -144,8 +140,8 @@ function watchConsole(page) {
   return { messages, errors };
 }
 
-const table = (players, extra = {}) => ({
-  players,
+const table = (extra = {}) => ({
+  players: PLAYERS,
   teams: TEAMS,
   seasons: SEASONS,
   matches: MATCHES,
@@ -153,41 +149,37 @@ const table = (players, extra = {}) => ({
   ...extra
 });
 
-test('derived totals win when v_player_stats exists, and the dual-run check warns', async ({ page }) => {
+test('v_player_stats supplies every player total', async ({ page }) => {
   const requested = [];
   const { messages, errors } = watchConsole(page);
-  await mockData(page, table(PLAYERS_LEGACY, { v_player_stats: DERIVED }), requested);
+  await mockData(page, table({ v_player_stats: DERIVED }), requested);
 
   await page.goto('/?env=dev');
 
-  // The view says 7 (5 legacy + 2 events); the stored column still says 6.
   await expect(page.locator('#stat-top-scorer')).toHaveText('David Silva (7)');
   await expect(page.locator('#top-scorers-list')).toContainText('David Silva');
   await expect(page.locator('#data-error')).toBeHidden();
   expect(requested).toContain('v_player_stats');
-
-  // Development only: the stored column and the view disagree, so the page
-  // says so instead of hiding a migration bug.
-  const warnings = messages.filter(message => message.type === 'warning');
-  expect(warnings.map(message => message.text).join('\n')).toContain('disagree with v_player_stats');
-  expect(errors, 'uncaught page errors').toEqual([]);
-  expect(messages.filter(message => message.type === 'error'), 'console errors').toEqual([]);
-});
-
-test('stored totals are still used, and no view is requested, before the migration', async ({ page }) => {
-  const requested = [];
-  const { messages, errors } = watchConsole(page);
-
-  // No legacy_* columns and no v_player_stats: this is today's hosted project.
-  const legacyPlayers = PLAYERS_LEGACY.map(({ legacy_goals, legacy_yellow, legacy_red, ...row }) => row);
-  await mockData(page, table(legacyPlayers), requested);
-
-  await page.goto('/?env=dev');
-
-  await expect(page.locator('#stat-top-scorer')).toHaveText('David Silva (6)');
-  await expect(page.locator('#data-error')).toBeHidden();
-  expect(requested).not.toContain('v_player_stats');
   expect(errors, 'uncaught page errors').toEqual([]);
   expect(messages.filter(message => message.type === 'error'), 'console errors').toEqual([]);
   expect(messages.filter(message => message.type === 'warning'), 'console warnings').toEqual([]);
+});
+
+test('a missing v_player_stats shows the database error instead of zero totals', async ({ page }) => {
+  const requested = [];
+  const { messages, errors } = watchConsole(page);
+  await mockData(page, table(), requested);
+
+  await page.goto('/?env=dev');
+
+  await expect(page.locator('#data-error')).toBeVisible();
+  await expect(page.locator('#data-error-text')).toContainText('Database tables are missing');
+  expect(requested).toContain('v_player_stats');
+  expect(errors, 'uncaught page errors').toEqual([]);
+  // The browser logs the deliberate 404 network request; the app must not log
+  // anything else.
+  expect(
+    messages.filter(message => message.type === 'error' && !/Failed to load resource/.test(message.text)),
+    'console errors'
+  ).toEqual([]);
 });

@@ -227,9 +227,6 @@ create table if not exists public.players (
   name text not null,
   pos text not null default 'MID' check (pos in ('GK', 'DEF', 'MID', 'FWD')),
   num int not null default 10,
-  goals int not null default 0,
-  yellow int not null default 0,
-  red int not null default 0,
   legacy_goals int not null default 0,
   legacy_yellow int not null default 0,
   legacy_red int not null default 0,
@@ -238,7 +235,6 @@ create table if not exists public.players (
   constraint kickoff_players_id_not_blank check (length(btrim(id)) between 1 and 100),
   constraint kickoff_players_name_length check (length(btrim(name)) between 1 and 100),
   constraint kickoff_players_num_range check (num between 0 and 999),
-  constraint kickoff_players_totals_range check (goals >= 0 and yellow >= 0 and red >= 0),
   constraint kickoff_players_legacy_totals_range check (legacy_goals >= 0 and legacy_yellow >= 0 and legacy_red >= 0)
 );
 
@@ -246,7 +242,8 @@ alter table public.players
   add column if not exists is_active boolean not null default true;
 
 -- Totals entered before structured events existed. The derived views add the
--- counted events on top; see supabase/derive-totals-migration.sql.
+-- counted events on top, so v_player_stats is the only place a player total
+-- lives; see supabase/drop-stored-totals-migration.sql.
 alter table public.players
   add column if not exists legacy_goals int not null default 0;
 alter table public.players
@@ -371,11 +368,12 @@ create index if not exists matches_away_id_idx on public.matches (away_id);
 -- ------------------------------------------------------------
 -- 3b. DERIVED VIEWS (roadmap item A, stage 1)
 -- ------------------------------------------------------------
--- These recompute player and team totals from rows that exist. The stored
--- players totals and matches.events_counted are still the write-side source
--- of truth until the frontend switches to the views. security_invoker keeps
--- RLS in force for clients; every view also filters trashed rows and trashed
--- teams explicitly.
+-- These recompute player and team totals from rows that exist. Player totals
+-- have no stored column: legacy_* holds the part entered by hand and the
+-- counted events are added on top. matches.events_counted still marks the
+-- fixtures whose events are already inside the legacy offset. security_invoker
+-- keeps RLS in force for clients; every view also filters trashed rows and
+-- trashed teams explicitly.
 
 create or replace view public.v_player_event_totals
 with (security_invoker = true) as
@@ -830,13 +828,11 @@ set search_path = public
 as $$
 declare
   v_event jsonb;
-  v_old record;
   v_id text;
   v_team_id text;
   v_player_id text;
   v_type text;
   v_minute int;
-  v_counted boolean;
   v_season_id text;
 begin
   if not public.is_admin() then
@@ -845,8 +841,8 @@ begin
 
   perform pg_advisory_xact_lock(748291);
 
-  select events_counted, season_id
-    into v_counted, v_season_id
+  select season_id
+    into v_season_id
   from public.matches
   where id = p_match_id
     and deleted_at is null;
@@ -863,18 +859,6 @@ begin
   end if;
   if jsonb_typeof(p_events) <> 'array' then
     raise exception 'Events must be an array';
-  end if;
-
-  if v_counted then
-    for v_old in
-      select * from public.match_events where match_id = p_match_id
-    loop
-      update public.players
-         set goals = greatest(0, goals - case when v_old.event_type = 'goal' then 1 else 0 end),
-             yellow = greatest(0, yellow - case when v_old.event_type = 'yellow' then 1 else 0 end),
-             red = greatest(0, red - case when v_old.event_type = 'red' then 1 else 0 end)
-       where id = v_old.player_id;
-    end loop;
   end if;
 
   delete from public.match_events where match_id = p_match_id;
@@ -912,14 +896,6 @@ begin
 
     insert into public.match_events (id, match_id, team_id, player_id, event_type, minute)
     values (v_id, p_match_id, v_team_id, v_player_id, v_type, v_minute);
-
-    if v_counted then
-      update public.players
-         set goals = goals + case when v_type = 'goal' then 1 else 0 end,
-             yellow = yellow + case when v_type = 'yellow' then 1 else 0 end,
-             red = red + case when v_type = 'red' then 1 else 0 end
-       where id = v_player_id;
-    end if;
   end loop;
 end;
 $$;
@@ -931,8 +907,6 @@ security definer
 set search_path = public
 as $$
 declare
-  v_old record;
-  v_counted boolean;
   v_season_id text;
   v_deleted_at timestamptz;
 begin
@@ -942,8 +916,8 @@ begin
 
   perform pg_advisory_xact_lock(748291);
 
-  select events_counted, season_id, deleted_at
-    into v_counted, v_season_id, v_deleted_at
+  select season_id, deleted_at
+    into v_season_id, v_deleted_at
   from public.matches
   where id = p_match_id;
 
@@ -955,18 +929,6 @@ begin
   end if;
   if not public.is_active_season(v_season_id) then
     raise exception 'Only the active season can be edited' using errcode = '42501';
-  end if;
-
-  if v_counted then
-    for v_old in
-      select * from public.match_events where match_id = p_match_id
-    loop
-      update public.players
-         set goals = greatest(0, goals - case when v_old.event_type = 'goal' then 1 else 0 end),
-             yellow = greatest(0, yellow - case when v_old.event_type = 'yellow' then 1 else 0 end),
-             red = greatest(0, red - case when v_old.event_type = 'red' then 1 else 0 end)
-       where id = v_old.player_id;
-    end loop;
   end if;
 
   update public.matches set deleted_at = now() where id = p_match_id;
@@ -1145,8 +1107,6 @@ security definer
 set search_path = public
 as $$
 declare
-  v_match record;
-  v_event record;
   v_deleted_at timestamptz;
 begin
   if not public.is_admin() then
@@ -1163,31 +1123,9 @@ begin
 
   perform pg_advisory_xact_lock(748291);
 
-  -- Reverse totals for fixtures that are visible right now. Trashed
-  -- fixtures were already reversed when they were deleted.
-  for v_match in
-    select id, events_counted
-    from public.matches
-    where (home_id = p_team_id or away_id = p_team_id)
-      and deleted_at is null
-  loop
-    if v_match.events_counted then
-      for v_event in
-        select player_id, event_type
-        from public.match_events
-        where match_id = v_match.id
-      loop
-        update public.players
-           set goals = greatest(0, goals - case when v_event.event_type = 'goal' then 1 else 0 end),
-               yellow = greatest(0, yellow - case when v_event.event_type = 'yellow' then 1 else 0 end),
-               red = greatest(0, red - case when v_event.event_type = 'red' then 1 else 0 end)
-         where id = v_event.player_id;
-      end loop;
-    end if;
-  end loop;
-
   -- Events and players stay in place: the RLS policies above hide them
-  -- while the club is in the trash, and a restore brings them back.
+  -- while the club is in the trash, and a restore brings them back. The
+  -- derived views filter on teams.deleted_at, so the totals follow.
   update public.teams set deleted_at = now() where id = p_team_id;
 end;
 $$;
@@ -1245,8 +1183,6 @@ security definer
 set search_path = public
 as $$
 declare
-  v_event record;
-  v_counted boolean;
   v_season_id text;
   v_home_id text;
   v_away_id text;
@@ -1258,8 +1194,8 @@ begin
 
   perform pg_advisory_xact_lock(748291);
 
-  select events_counted, season_id, home_id, away_id, deleted_at
-    into v_counted, v_season_id, v_home_id, v_away_id, v_deleted_at
+  select season_id, home_id, away_id, deleted_at
+    into v_season_id, v_home_id, v_away_id, v_deleted_at
   from public.matches
   where id = p_match_id;
 
@@ -1280,21 +1216,8 @@ begin
     raise exception 'Restore the teams before this match';
   end if;
 
+  -- The events were never touched, so the views bring the totals back.
   update public.matches set deleted_at = null where id = p_match_id;
-
-  if v_counted then
-    for v_event in
-      select player_id, event_type
-      from public.match_events
-      where match_id = p_match_id
-    loop
-      update public.players
-         set goals = goals + case when v_event.event_type = 'goal' then 1 else 0 end,
-             yellow = yellow + case when v_event.event_type = 'yellow' then 1 else 0 end,
-             red = red + case when v_event.event_type = 'red' then 1 else 0 end
-       where id = v_event.player_id;
-    end loop;
-  end if;
 end;
 $$;
 
@@ -1305,8 +1228,6 @@ security definer
 set search_path = public
 as $$
 declare
-  v_match record;
-  v_event record;
   v_deleted_at timestamptz;
 begin
   if not public.is_admin() then
@@ -1323,29 +1244,8 @@ begin
     return;
   end if;
 
+  -- Players and events were left in place; the views see them again.
   update public.teams set deleted_at = null where id = p_team_id;
-
-  -- Re-apply totals only for fixtures this restore makes visible again.
-  for v_match in
-    select id, events_counted
-    from public.matches
-    where (home_id = p_team_id or away_id = p_team_id)
-      and deleted_at is null
-  loop
-    if v_match.events_counted then
-      for v_event in
-        select player_id, event_type
-        from public.match_events
-        where match_id = v_match.id
-      loop
-        update public.players
-           set goals = goals + case when v_event.event_type = 'goal' then 1 else 0 end,
-               yellow = yellow + case when v_event.event_type = 'yellow' then 1 else 0 end,
-               red = red + case when v_event.event_type = 'red' then 1 else 0 end
-         where id = v_event.player_id;
-      end loop;
-    end if;
-  end loop;
 end;
 $$;
 
@@ -1579,14 +1479,12 @@ begin
 
     insert into public.players (
       id, team_id, name, pos, num,
-      goals, yellow, red,
       legacy_goals, legacy_yellow, legacy_red,
       is_active
     )
     values (
       'p_' || replace(gen_random_uuid()::text, '-', ''),
       p_team_id, v_name, v_pos, v_num,
-      v_goals, v_yellow, v_red,
       v_goals, v_yellow, v_red,
       true
     );
@@ -1689,10 +1587,7 @@ begin
   end if;
 
   update public.players
-     set goals = p_goals,
-         yellow = p_yellow,
-         red = p_red,
-         legacy_goals = p_goals - v_event_goals,
+     set legacy_goals = p_goals - v_event_goals,
          legacy_yellow = p_yellow - v_event_yellow,
          legacy_red = p_red - v_event_red
    where id = p_player_id;
@@ -1796,7 +1691,7 @@ begin
     color text
   );
 
-  insert into public.players (id, team_id, name, pos, num, goals, yellow, red, is_active)
+  insert into public.players (id, team_id, name, pos, num, legacy_goals, legacy_yellow, legacy_red, is_active)
   select pl.id,
          pl.team_id,
          pl.name,
@@ -1897,9 +1792,9 @@ begin
     minute int
   );
 
-  -- The imported stored totals are authoritative. Keep only the part that has
-  -- no event row as the legacy offset, so the derived views match the import
-  -- exactly (including older backups with events_counted = false).
+  -- The imported totals are authoritative: they start as the legacy offset and
+  -- the counted events are taken back out, so the derived views match the
+  -- import exactly (including older backups with events_counted = false).
   with counted as (
     select ev.player_id,
            count(*) filter (where ev.event_type = 'goal')::int as goals,
@@ -1922,9 +1817,9 @@ begin
     group by ev.player_id
   )
   update public.players p
-     set legacy_goals = greatest(0, p.goals - coalesce(c.goals, 0)),
-         legacy_yellow = greatest(0, p.yellow - coalesce(c.yellow, 0)),
-         legacy_red = greatest(0, p.red - coalesce(c.red, 0))
+     set legacy_goals = greatest(0, p.legacy_goals - coalesce(c.goals, 0)),
+         legacy_yellow = greatest(0, p.legacy_yellow - coalesce(c.yellow, 0)),
+         legacy_red = greatest(0, p.legacy_red - coalesce(c.red, 0))
   from public.players p2
   left join counted c on c.player_id = p2.id
   where p2.id = p.id;
@@ -1966,7 +1861,7 @@ insert into public.teams (id, name, code, color) values
   ('t6', 'Coastal Sharks',    'CSH', '#06b6d4')
 on conflict (id) do nothing;
 
-insert into public.players (id, team_id, name, pos, num, goals, yellow, red) values
+insert into public.players (id, team_id, name, pos, num, legacy_goals, legacy_yellow, legacy_red) values
   ('p1', 't1', 'David Silva',  'MID', 10, 5, 1, 0),
   ('p2', 't1', 'Carlos Ramos', 'FWD',  9, 7, 0, 0),
   ('p3', 't2', 'Ethan Hunt',   'FWD', 11, 4, 2, 0),
@@ -2015,8 +1910,8 @@ where exists (
 on conflict (id) do nothing;
 
 -- Seed totals are career totals: the sample events are already included in
--- the numbers above. Keep the remainder as the legacy offset so
--- v_player_stats matches the stored totals on a fresh install.
+-- the numbers above. They start as the legacy offset and the counted events
+-- are taken back out, so v_player_stats shows the seeded totals.
 do $$
 begin
   perform set_config('app.audit_skip', '1', true);
@@ -2043,9 +1938,9 @@ begin
     group by ev.player_id
   )
   update public.players p
-     set legacy_goals = greatest(0, p.goals - coalesce(c.goals, 0)),
-         legacy_yellow = greatest(0, p.yellow - coalesce(c.yellow, 0)),
-         legacy_red = greatest(0, p.red - coalesce(c.red, 0))
+     set legacy_goals = greatest(0, p.legacy_goals - coalesce(c.goals, 0)),
+         legacy_yellow = greatest(0, p.legacy_yellow - coalesce(c.yellow, 0)),
+         legacy_red = greatest(0, p.legacy_red - coalesce(c.red, 0))
   from public.players p2
   left join counted c on c.player_id = p2.id
   where p2.id = p.id;

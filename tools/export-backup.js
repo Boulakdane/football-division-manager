@@ -33,7 +33,7 @@ const envArg = (args.find(a => a.startsWith('--env=')) || '--env=prod').split('=
 const outArg = (args.find(a => a.startsWith('--out=')) || '').slice('--out='.length);
 
 
-async function getRows(base, table, order) {
+async function getRows(base, table, order, { optional = false } = {}) {
   const pageSize = 1000;
   const rows = [];
   let from = 0;
@@ -49,6 +49,9 @@ async function getRows(base, table, order) {
       }
     });
     if (!response.ok) {
+      // A project that predates roadmap A has no v_player_stats; its totals
+      // are still on players.goals and the merge below leaves them alone.
+      if (optional && response.status === 404) return [];
       const body = await response.text();
       fail(`${table} request failed (${response.status}): ${body.slice(0, 300)}`);
     }
@@ -90,10 +93,11 @@ function eventRow(row) {
   console.log(`Reading ${envArg === 'dev' ? 'development' : 'production'} data from ${base.url}`);
   console.log(`Credentials: ${base.source}`);
 
-  const [seasons, teams, players, matches, events] = await Promise.all([
+  const [seasons, teams, players, stats, matches, events] = await Promise.all([
     getRows(base, 'seasons', 'created_at.desc,id.asc'),
     getRows(base, 'teams', 'name.asc,id.asc'),
     getRows(base, 'players', 'num.asc,id.asc'),
+    getRows(base, 'v_player_stats', 'player_id.asc', { optional: true }),
     getRows(base, 'matches', 'round.asc,id.asc'),
     getRows(base, 'match_events', 'minute.asc,id.asc')
   ]);
@@ -101,10 +105,19 @@ function eventRow(row) {
   if (!seasons.length) fail('The export contains no seasons; refusing to write an empty backup.');
   if (!teams.length) fail('The export contains no teams; refusing to write an empty backup.');
 
+  // After roadmap A stage 3 the totals only exist in v_player_stats, so merge
+  // them onto the player rows before mapping to the backup format.
+  const statsById = new Map(stats.map(row => [row.player_id, row]));
+  const playersWithTotals = players.map(row => {
+    const derived = statsById.get(row.id);
+    if (!derived) return row;
+    return { ...row, goals: derived.goals, yellow: derived.yellow, red: derived.red };
+  });
+
   const payload = {
     seasons: seasons.map(seasonRow),
     teams: teams.map(teamRow),
-    players: players.map(playerRow),
+    players: playersWithTotals.map(playerRow),
     matches: matches.map(matchRow),
     matchEvents: events.map(eventRow)
   };

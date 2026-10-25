@@ -26,14 +26,6 @@ let db = null;
 /** True once the players table has the is_active column (integrity migration). */
 let PLAYERS_ARCHIVE_READY = false;
 
-/**
- * True once the database has supabase/derive-totals-migration.sql: the
- * players.legacy_* columns, the v_player_stats view and set_player_totals().
- * Detected from the player rows themselves, so an older project keeps working
- * from the stored totals without an extra failing request on every page load.
- */
-let PLAYER_TOTALS_READY = false;
-
 /** Totals are always non-negative whole numbers, whatever the project answers. */
 function numberOrZero(value) {
   const n = Number(value);
@@ -165,13 +157,17 @@ function playerIdentityToRow(player, includeActive = true) {
   return row;
 }
 
-/** Full player row, including the stored totals used by older projects. */
-function playerToRow(player, includeActive = true) {
+/**
+ * Player row for a full backup/import. replace_all_data() treats these totals
+ * as the legacy offset and takes the counted events back out, so the derived
+ * view shows the imported number again.
+ */
+function playerImportRow(player, includeActive = true) {
   return {
     ...playerIdentityToRow(player, includeActive),
-    goals: player.goals,
-    yellow: player.yellow,
-    red: player.red
+    goals: numberOrZero(player.goals),
+    yellow: numberOrZero(player.yellow),
+    red: numberOrZero(player.red)
   };
 }
 
@@ -278,68 +274,28 @@ async function selectAllRows(table, orderColumn, ascending, tiebreaker = 'id') {
   return { data: rows, error: null };
 }
 
-/** True when the page is talking to the development project. */
-function isDevelopment() {
-  return Boolean(window.KICKOFF_CONFIG && window.KICKOFF_CONFIG.ENVIRONMENT === 'development');
-}
-
-/**
- * Dual-run check for roadmap A. Until the stored totals are dropped, compare
- * them with v_player_stats and warn about any difference. Development only, so
- * a public production visitor never pays for it.
- */
-function comparePlayerTotals(playerRows, statsRows) {
-  const hasStoredColumns = playerRows.some(row =>
-    Object.prototype.hasOwnProperty.call(row, 'goals')
-  );
-  if (!hasStoredColumns) return;
-
-  const storedById = new Map(playerRows.map(row => [row.id, row]));
-  const fields = ['goals', 'yellow', 'red'];
-  const differences = [];
-
-  statsRows.forEach(stat => {
-    const stored = storedById.get(stat.player_id);
-    if (!stored) return;
-    if (!fields.some(field => numberOrZero(stored[field]) !== numberOrZero(stat[field]))) return;
-    differences.push({
-      player: stat.name || stat.player_id,
-      stored: fields.map(field => numberOrZero(stored[field])).join('/'),
-      derived: fields.map(field => numberOrZero(stat[field])).join('/')
-    });
-  });
-
-  if (differences.length) {
-    console.warn(
-      `KickOff Division: ${differences.length} player(s) disagree with v_player_stats (stored vs derived goals/yellow/red).`,
-      differences
-    );
-  }
-}
-
 /** Replace the in-memory state with data from Supabase (or demo data). */
 async function refreshData() {
   if (!BACKEND_READY) {
     PLAYERS_ARCHIVE_READY = true;
-    PLAYER_TOTALS_READY = false;
     appState = normalizeState(DEFAULT_DATA);
     appState.seasonsReady = true;
     appState.eventsReady = true;
-    appState.playerStatsReady = false;
     appState.activeSeasonId = appState.seasons.find(season => season.isActive).id;
     appState.viewSeasonId = appState.activeSeasonId;
     return;
   }
 
-  const [teamsResult, playersResult, matchesResult, seasonsResult, eventsResult] = await Promise.all([
+  const [teamsResult, playersResult, statsResult, matchesResult, seasonsResult, eventsResult] = await Promise.all([
     selectAllRows('teams', 'name', true),
     selectAllRows('players', 'num', true),
+    selectAllRows('v_player_stats', 'player_id', true, null),
     selectAllRows('matches', 'round', true),
     selectAllRows('seasons', 'created_at', false),
     selectAllRows('match_events', 'minute', true)
   ]);
 
-  const baseError = teamsResult.error || playersResult.error || matchesResult.error;
+  const baseError = teamsResult.error || playersResult.error || statsResult.error || matchesResult.error;
   if (baseError) throw baseError;
 
   // The app remains usable (without season switching) until the season
@@ -375,36 +331,10 @@ async function refreshData() {
     PLAYERS_ARCHIVE_READY = !probe.error;
   }
 
-  // Roadmap A, stage 2: once supabase/derive-totals-migration.sql has run, the
-  // totals come from events (plus the legacy offset) through v_player_stats.
-  // The stored columns stay authoritative on projects that were not migrated
-  // yet, so a static deployment never depends on the order of the SQL run.
-  PLAYER_TOTALS_READY = playerRows.some(row =>
-    Object.prototype.hasOwnProperty.call(row, 'legacy_goals')
-  );
-  if (!PLAYER_TOTALS_READY && playerRows.length === 0 && PLAYERS_ARCHIVE_READY) {
-    // Empty squad list: ask for the legacy column instead of guessing.
-    const probe = await db.from('players').select('legacy_goals').limit(1);
-    PLAYER_TOTALS_READY = !probe.error;
-  }
-
-  let statsRows = null;
-  if (PLAYER_TOTALS_READY) {
-    const statsResult = await selectAllRows('v_player_stats', 'player_id', true, null);
-    if (statsResult.error) {
-      // Keep the league usable: fall back to the stored totals rather than
-      // showing no players at all.
-      console.warn(
-        'KickOff Division: v_player_stats could not be read, showing stored player totals.',
-        statsResult.error.message || statsResult.error
-      );
-    } else {
-      statsRows = statsResult.data || [];
-    }
-  }
-
-  const derivedById = new Map((statsRows || []).map(row => [row.player_id, row]));
-  if (statsRows && isDevelopment()) comparePlayerTotals(playerRows, statsRows);
+  // Totals only live in v_player_stats (roadmap A): legacy_* plus the counted
+  // events. A missing view means the database was not migrated, and the read
+  // above fails loudly rather than showing every player on zero.
+  const derivedById = new Map((statsResult.data || []).map(row => [row.player_id, row]));
 
   const players = playerRows.map(row => {
     const player = mapPlayer(row);
@@ -439,7 +369,6 @@ async function refreshData() {
     matchEvents,
     seasonsReady,
     eventsReady,
-    playerStatsReady: Boolean(statsRows),
     activeSeasonId,
     viewSeasonId
   };
@@ -483,16 +412,9 @@ async function dbDeleteTeam(teamId) {
 async function dbSavePlayer(player) {
   assertBackend();
 
-  // Older projects store the totals on the player row itself.
-  if (!PLAYER_TOTALS_READY) {
-    const { error } = await db.from('players').upsert(playerToRow(player, PLAYERS_ARCHIVE_READY));
-    if (error) throw error;
-    return;
-  }
-
-  // Once totals are derived, the row carries identity only and the totals go
-  // through set_player_totals(), which moves the legacy offset so that
-  // v_player_stats keeps showing the number the admin typed.
+  // The row carries identity only. Totals go through set_player_totals(),
+  // which moves the legacy offset so v_player_stats keeps showing the number
+  // the admin typed.
   const { error } = await db
     .from('players')
     .upsert(playerIdentityToRow(player, PLAYERS_ARCHIVE_READY));
@@ -504,24 +426,14 @@ async function dbSavePlayer(player) {
     p_yellow: numberOrZero(player.yellow),
     p_red: numberOrZero(player.red)
   });
-  if (!totals.error) return;
-
-  if (isMissingFunction(totals.error)) {
-    // Half-applied migration: keep the edit instead of losing it.
-    const { error: storedError } = await db
-      .from('players')
-      .upsert(playerToRow(player, PLAYERS_ARCHIVE_READY));
-    if (storedError) throw storedError;
-    return;
+  if (totals.error) {
+    if (/total cannot be lower/i.test(totals.error.message || '')) {
+      const limitError = new Error(totals.error.message);
+      limitError.code = 'PLAYER_TOTALS_BELOW_EVENTS';
+      throw limitError;
+    }
+    throw totals.error;
   }
-
-  if (/total cannot be lower/i.test(totals.error.message || '')) {
-    const limitError = new Error(totals.error.message);
-    limitError.code = 'PLAYER_TOTALS_BELOW_EVENTS';
-    throw limitError;
-  }
-
-  throw totals.error;
 }
 
 async function dbDeletePlayer(playerId) {
@@ -772,7 +684,7 @@ function buildAtomicImportPayload(data) {
   return {
     seasons: seasons.map(seasonToRow),
     teams: (Array.isArray(data.teams) ? data.teams : []).map(teamToRow),
-    players: (Array.isArray(data.players) ? data.players : []).map(playerToRow),
+    players: (Array.isArray(data.players) ? data.players : []).map(player => playerImportRow(player)),
     matches: (Array.isArray(data.matches) ? data.matches : []).map(match => matchToRow({
       ...match,
       seasonId: match.seasonId || (fallbackSeason && fallbackSeason.id)

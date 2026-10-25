@@ -18,17 +18,37 @@
 --   * add_players() and replace_all_data() now seed legacy offsets.
 --
 -- events_counted still decides which event rows count, exactly as the RPCs
--- do today. A follow-up frontend PR switches reads to these views; only after
--- that can the stored columns and events_counted be dropped.
+-- do today. A later stage switched the app to read these views and then
+-- dropped the stored columns. events_counted stays on purpose: the fixtures
+-- created before match_events keep their goals in the legacy offset, and the
+-- flag stops their event rows from being counted twice.
 --
--- Safe to re-run: the backfill recomputes legacy = stored totals - counted
--- events, so running it again leaves the views equal to the stored totals.
--- If you re-run an earlier migration that replaces add_players() or
--- replace_all_data(), run this file again afterwards.
+-- Safe to re-run while players.goals exists: the backfill recomputes
+-- legacy = stored totals - counted events, so running it again leaves the
+-- views equal to the stored totals. If you re-run an earlier migration that
+-- replaces add_players() or replace_all_data(), run this file again
+-- afterwards, but always before drop-stored-totals-migration.sql.
+--
+-- Once supabase/drop-stored-totals-migration.sql has run, the stored columns
+-- are gone and this stage-1 file no longer applies. Re-run schema.sql instead;
+-- this file stops with a clear message if you try.
 --
 -- Run in the Supabase SQL Editor for development, then production.
 -- Fresh installs already get the same objects from schema.sql.
 -- ------------------------------------------------------------
+
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'players'
+      and column_name = 'goals'
+  ) then
+    raise exception 'players.goals no longer exists: this project has already run drop-stored-totals-migration.sql. Re-run schema.sql to restore the current functions.';
+  end if;
+end $$;
 
 -- ------------------------------------------------------------
 -- 1. LEGACY OFFSETS

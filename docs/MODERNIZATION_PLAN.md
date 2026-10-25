@@ -550,6 +550,26 @@ Suggested order: **C → A → B → E → H → D → F → G → I → J.** C 
 
 **Risk:** views over thousands of events are cheap, but index `match_events (match_id)` and `(player_id)` and confirm the read path stays well under the Lighthouse budget.
 
+**Delivered (2026-10-25):** three stages. #13 added the non-null `legacy_*`
+offsets, the four views and `set_player_totals()`; #14 switched the app to read
+`v_player_stats` and to save through the RPC. `drop-stored-totals-migration.sql`
+then backfills `legacy_* = stored total - counted events` and drops
+`players.goals / yellow / red`. Two deviations from the proposal above:
+
+- `legacy_*` is **not nullable**: a missing value means zero history, and that
+  keeps every arithmetic expression simple.
+- `matches.events_counted` **stays**. The pre-events fixtures have it `false`
+  and their goals live only in `legacy_*`; dropping the flag would count any
+  later event detail twice, and `set_player_totals()` would then refuse the
+  correction because a total cannot sit below its counted events. It is the
+  per-fixture "already inside the legacy offset" marker, not a second totals
+  store.
+
+The score-vs-events CHECK guard from the proposal is **not** included: the app
+validates the score while saving, and a hard database rule would reject
+legitimate corrections to historical fixtures whose timeline is incomplete. It
+remains a candidate follow-up.
+
 ### 22.3 B — A `scorer` role for live match entry
 
 **Today:** the only privileged role is `admin`, and an admin can replace the whole dataset. Match day needs several helpers entering goals and cards.

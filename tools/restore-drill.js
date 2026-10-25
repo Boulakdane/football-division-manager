@@ -150,7 +150,17 @@ async function run() {
     const actual = {
       seasons: (await q('select * from public.seasons order by id')).map(seasonFromRow),
       teams: (await q('select * from public.teams order by id')).map(teamFromRow),
-      players: (await q('select * from public.players order by id')).map(playerFromRow),
+      players: (await q(`
+        select p.*, v.goals, v.yellow, v.red
+        from public.players p
+        left join public.v_player_stats v on v.player_id = p.id
+        order by p.id
+      `)).map(row => playerFromRow({
+        ...row,
+        goals: row.goals ?? 0,
+        yellow: row.yellow ?? 0,
+        red: row.red ?? 0
+      })),
       matches: (await q('select * from public.matches order by id')).map(matchFromRow),
       matchEvents: (await q('select * from public.match_events order by id')).map(eventFromRow)
     };

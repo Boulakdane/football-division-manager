@@ -126,7 +126,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── check-constraints-migration.sql # Reject malformed names, colours, scores and dates
     ├── add-players-migration.sql    # Install add_players() for Excel/CSV squad import
     ├── scheduled-match-events-migration.sql # Count events already saved on upcoming fixtures
-    └── derive-totals-migration.sql # Legacy offsets + event-derived player/standings views (roadmap A)
+    ├── derive-totals-migration.sql # Legacy offsets + event-derived player/standings views (roadmap A)
+    └── drop-stored-totals-migration.sql # Drop players.goals / yellow / red; v_player_stats is the only total
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -204,13 +205,23 @@ plus Supabase.
 >    adds the legacy goal/card offsets and the `v_player_stats`, `v_standings`,
 >    `v_match_results` and `v_player_event_totals` views that recompute totals from
 >    events. It also installs `set_player_totals()` and teaches `add_players()` /
->    `replace_all_data()` to seed the offset. The stored totals and
->    `events_counted` keep working, so the app is unchanged on a project that has
->    not run this file. Once it is applied, the next page load reads
->    `v_player_stats` and the player form saves totals through
->    `set_player_totals()`, with no redeploy needed. If you re-run an earlier
->    migration that replaces `add_players()` or `replace_all_data()`, run this
->    file again afterwards.
+>    `replace_all_data()` to seed the offset. Run this file first, then step 12.
+>    Once it is applied, the next page load reads `v_player_stats` and the player
+>    form saves totals through `set_player_totals()`, with no redeploy needed. If
+>    you re-run an earlier migration that replaces `add_players()` or
+>    `replace_all_data()`, run this file again before step 12.
+> 12. [`supabase/drop-stored-totals-migration.sql`](supabase/drop-stored-totals-migration.sql)
+>    — roadmap A stage 3. Backfills `legacy_* = stored total - counted events`, then
+>    drops `players.goals / yellow / red`; from then on `v_player_stats` (+
+>    `legacy_*` and the counted events) is the only player total. Every displayed
+>    number is preserved. `matches.events_counted` stays on purpose: it marks the
+>    old fixtures whose events are already inside the legacy offset. Run it
+>    development first, then production. **After this file, the older migrations
+>    that insert `players.goals` cannot be re-run as-is** (for example
+>    `integrity-migration.sql`, `add-players-migration.sql` or
+>    `scheduled-match-events-migration.sql`). Recreate the columns first, or start
+>    from `schema.sql` plus steps 11 and 12; `derive-totals-migration.sql` stops
+>    with a clear message if you try it after the drop.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. It does **not** add the new `CHECK`
@@ -221,7 +232,8 @@ plus Supabase.
 > intentionally RPC-only. The app uses `delete_team`, `delete_match`, `save_match` and
 > `replace_match_events`; direct REST deletes/writes are denied so player totals cannot
 > drift from the event history. After the soft-delete migration, deletes only stamp
-> `deleted_at`; restoring re-applies the same event totals.
+> `deleted_at`; the views automatically stop and resume counting the events of the
+> trashed rows.
 
 ### 2. Add your keys
 
@@ -590,8 +602,8 @@ to camelCase by `js/backend.js`.
 seasons      (id text pk, name, start_date, end_date, is_active, created_at,
               deleted_at)
 teams        (id text pk, name, code, color, deleted_at)
-players      (id text pk, team_id → teams.id, name, pos, num, goals, yellow, red,
-              is_active)
+players      (id text pk, team_id → teams.id, name, pos, num,
+              legacy_goals, legacy_yellow, legacy_red, is_active)
 matches      (id text pk, season_id → seasons.id, round, home_id → teams.id,
               away_id → teams.id, home_score, away_score, status, datetime, venue,
               scorers_text, events_counted, deleted_at)
@@ -603,10 +615,14 @@ audit_log    (id bigint pk, occurred_at, actor_id, actor_email, action, entity,
 security_settings (id boolean pk, require_admin_mfa, updated_at)
 ```
 
+Player and club totals are **views**, never stored counters:
+`v_player_event_totals` (counted events), `v_player_stats` (`legacy_*` + those
+events), `v_match_results` (scores) and `v_standings` (the league table).
+
 `status` is one of `SCHEDULED`, `LIVE`, `FINISHED`. Only `FINISHED` matches count
 towards the league table. Deleting a team hides it and its squad/fixtures from every
-client without destroying the rows; the `delete_team` RPC first reverses that team's
-event contributions to opponent player totals. A unique partial index guarantees that at
+client without destroying the rows; the views stop counting that club's events, and a
+restore brings the same totals back. A unique partial index guarantees that at
 most one season is active. The `create_season` and `activate_season` database functions
 are admin-only and run in a single transaction, so the active season always switches
 cleanly.
@@ -616,30 +632,32 @@ cleanly.
 `seasons`, `teams` and `matches` carry a nullable `deleted_at`. A delete stamps it and
 RLS immediately hides the row, its squad and its events from anonymous and signed-in
 readers alike. Admins see the trash through `list_deleted()` and bring items back with
-`restore_team`, `restore_match` or `restore_season`; restoring clears `deleted_at` and
-re-applies the event totals that were reversed on delete, so standings, squads and
-timelines return exactly as they were. A match can only be restored after its season and
+`restore_team`, `restore_match` or `restore_season`; restoring clears `deleted_at`, so
+the views count the same events again and standings, squads and timelines return exactly
+as they were. A match can only be restored after its season and
 both teams are visible again, and a season can only be trashed when it is inactive and
 has no visible fixtures. `deleted_at` changes are labelled `DELETE` / `RESTORE` in the
 activity log.
 
-`players.is_active` is `false` for archived players. Archived players keep their goals,
-cards and match history, are hidden from public squads and new event dropdowns, and can
+`players.is_active` is `false` for archived players. Archived players keep their legacy
+totals and match history, are hidden from public squads and new event dropdowns, and can
 be restored by an admin. A player with match events cannot be hard-deleted; the app
 archives them instead.
 
 `match_events` powers the scorer/card timeline. `save_match` saves a fixture and its
-event list in one transaction, while `replace_match_events` and `delete_match` adjust
-the cumulative `players.goals`, `players.yellow` and `players.red` counters by the
-difference in one transaction. Match and event writes are rejected for archived
-seasons in the database, not just in the UI. Imported backups treat the player totals
-as authoritative, so events are inserted without being counted twice.
+event list in one transaction; replacing or deleting events needs no counter
+arithmetic because `v_player_stats` recomputes the total from the rows that exist. Match
+and event writes are rejected for archived seasons in the database, not just in the UI.
+An imported backup treats its player totals as authoritative: they seed `legacy_*` and
+the counted events are taken back out, so the view shows the imported number again.
 
-`matches.events_counted` prevents double-counting historical data. Existing fixtures
-are marked `false` during the migration because their goals/cards were already entered
-manually; their event timeline is saved without touching player totals. New fixtures
-default to `true`, so events keep the totals in sync. Imported backups preserve the
-flag. See [`data/README.md`](data/README.md#eventscsv) for the CSV column.
+`matches.events_counted` marks the fixtures whose event timeline is already inside the
+legacy offset. Existing fixtures are marked `false` during the match-events migration
+because their goals/cards were already entered manually; events saved on them stay in
+the timeline without being added to the derived total. New fixtures default to `true`.
+Imported backups preserve the flag. It stays after roadmap A stage 3 on purpose:
+dropping it would count those historical events twice. See
+[`data/README.md`](data/README.md#eventscsv) for the CSV column.
 
 `audit_log` is written by AFTER triggers on the five league tables and by
 `replace_all_data` (one `IMPORT` row per import). Soft deletes and restores are labelled
@@ -728,8 +746,9 @@ before seasons existed are upgraded automatically into a single default season:
 - An archived season with no fixtures shows **Delete season** in the season bar.
   The active season and any season that still has fixtures cannot be deleted.
 - Player goals and cards remain cumulative totals, so the top-scorer card is all-time
-  rather than per-season. For fixtures with `events_counted = true`, adding or removing
-  a match event adjusts those totals by one in the same database transaction.
+  rather than per-season. They are read from `v_player_stats`; for fixtures with
+  `events_counted = true`, adding or removing a match event moves that view immediately,
+  and the next refresh shows the new total.
 - To remove a player who already has match events, use **Delete** and confirm the
   archive prompt: the player disappears from the active squad but their history stays
   intact. Archived players appear in a small **Archived players** section under the
