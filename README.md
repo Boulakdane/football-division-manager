@@ -126,7 +126,7 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── check-constraints-migration.sql # Reject malformed names, colours, scores and dates
     ├── add-players-migration.sql    # Install add_players() for Excel/CSV squad import
     ├── scheduled-match-events-migration.sql # Count events already saved on upcoming fixtures
-    └── derive-totals-migration.sql # Legacy offsets + event-derived player/standings views (roadmap A, stage 1)
+    └── derive-totals-migration.sql # Legacy offsets + event-derived player/standings views (roadmap A)
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -205,9 +205,12 @@ plus Supabase.
 >    `v_match_results` and `v_player_event_totals` views that recompute totals from
 >    events. It also installs `set_player_totals()` and teaches `add_players()` /
 >    `replace_all_data()` to seed the offset. The stored totals and
->    `events_counted` keep working, so the app is unchanged until the frontend starts
->    reading the views. If you re-run an earlier migration that replaces
->    `add_players()` or `replace_all_data()`, run this file again afterwards.
+>    `events_counted` keep working, so the app is unchanged on a project that has
+>    not run this file. Once it is applied, the next page load reads
+>    `v_player_stats` and the player form saves totals through
+>    `set_player_totals()`, with no redeploy needed. If you re-run an earlier
+>    migration that replaces `add_players()` or `replace_all_data()`, run this
+>    file again afterwards.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. It does **not** add the new `CHECK`

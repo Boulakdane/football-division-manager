@@ -26,6 +26,20 @@ let db = null;
 /** True once the players table has the is_active column (integrity migration). */
 let PLAYERS_ARCHIVE_READY = false;
 
+/**
+ * True once the database has supabase/derive-totals-migration.sql: the
+ * players.legacy_* columns, the v_player_stats view and set_player_totals().
+ * Detected from the player rows themselves, so an older project keeps working
+ * from the stored totals without an extra failing request on every page load.
+ */
+let PLAYER_TOTALS_READY = false;
+
+/** Totals are always non-negative whole numbers, whatever the project answers. */
+function numberOrZero(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+}
+
 function initBackend() {
   if (!BACKEND_READY) return;
   try {
@@ -72,9 +86,9 @@ function mapPlayer(row) {
     name: row.name,
     pos: row.pos,
     num: row.num,
-    goals: row.goals,
-    yellow: row.yellow,
-    red: row.red,
+    goals: numberOrZero(row.goals),
+    yellow: numberOrZero(row.yellow),
+    red: numberOrZero(row.red),
     isActive: row.is_active !== false
   };
 }
@@ -138,19 +152,27 @@ function teamToRow(team) {
   return { id: team.id, name: team.name, code: team.code, color: team.color };
 }
 
-function playerToRow(player, includeActive = true) {
+/** Player columns that exist in every schema version. */
+function playerIdentityToRow(player, includeActive = true) {
   const row = {
     id: player.id,
     team_id: player.teamId,
     name: player.name,
     pos: player.pos,
-    num: player.num,
+    num: player.num
+  };
+  if (includeActive) row.is_active = player.isActive !== false;
+  return row;
+}
+
+/** Full player row, including the stored totals used by older projects. */
+function playerToRow(player, includeActive = true) {
+  return {
+    ...playerIdentityToRow(player, includeActive),
     goals: player.goals,
     yellow: player.yellow,
     red: player.red
   };
-  if (includeActive) row.is_active = player.isActive !== false;
-  return row;
 }
 
 function matchToRow(match) {
@@ -221,20 +243,24 @@ function isMissingFunction(error) {
 /**
  * Fetch every visible row, not just PostgREST's first page (default 1000).
  * Without this, a busy season with >1000 events would silently lose rows.
+ * `tiebreaker` is the unique column that keeps pages stable. Pass null when
+ * the primary order column is already unique.
  */
-async function selectAllRows(table, orderColumn, ascending) {
+async function selectAllRows(table, orderColumn, ascending, tiebreaker = 'id') {
   const pageSize = 1000;
   const rows = [];
   let from = 0;
   let total = null;
 
   while (true) {
-    const { data, error, count } = await db
+    let query = db
       .from(table)
       .select('*', { count: 'exact' })
-      .order(orderColumn, { ascending })
-      .order('id', { ascending: true })
-      .range(from, from + pageSize - 1);
+      .order(orderColumn, { ascending });
+    if (tiebreaker && tiebreaker !== orderColumn) {
+      query = query.order(tiebreaker, { ascending: true });
+    }
+    const { data, error, count } = await query.range(from, from + pageSize - 1);
 
     if (error) return { data: null, error };
     if (typeof count === 'number') total = count;
@@ -252,13 +278,54 @@ async function selectAllRows(table, orderColumn, ascending) {
   return { data: rows, error: null };
 }
 
+/** True when the page is talking to the development project. */
+function isDevelopment() {
+  return Boolean(window.KICKOFF_CONFIG && window.KICKOFF_CONFIG.ENVIRONMENT === 'development');
+}
+
+/**
+ * Dual-run check for roadmap A. Until the stored totals are dropped, compare
+ * them with v_player_stats and warn about any difference. Development only, so
+ * a public production visitor never pays for it.
+ */
+function comparePlayerTotals(playerRows, statsRows) {
+  const hasStoredColumns = playerRows.some(row =>
+    Object.prototype.hasOwnProperty.call(row, 'goals')
+  );
+  if (!hasStoredColumns) return;
+
+  const storedById = new Map(playerRows.map(row => [row.id, row]));
+  const fields = ['goals', 'yellow', 'red'];
+  const differences = [];
+
+  statsRows.forEach(stat => {
+    const stored = storedById.get(stat.player_id);
+    if (!stored) return;
+    if (!fields.some(field => numberOrZero(stored[field]) !== numberOrZero(stat[field]))) return;
+    differences.push({
+      player: stat.name || stat.player_id,
+      stored: fields.map(field => numberOrZero(stored[field])).join('/'),
+      derived: fields.map(field => numberOrZero(stat[field])).join('/')
+    });
+  });
+
+  if (differences.length) {
+    console.warn(
+      `KickOff Division: ${differences.length} player(s) disagree with v_player_stats (stored vs derived goals/yellow/red).`,
+      differences
+    );
+  }
+}
+
 /** Replace the in-memory state with data from Supabase (or demo data). */
 async function refreshData() {
   if (!BACKEND_READY) {
     PLAYERS_ARCHIVE_READY = true;
+    PLAYER_TOTALS_READY = false;
     appState = normalizeState(DEFAULT_DATA);
     appState.seasonsReady = true;
     appState.eventsReady = true;
+    appState.playerStatsReady = false;
     appState.activeSeasonId = appState.seasons.find(season => season.isActive).id;
     appState.viewSeasonId = appState.activeSeasonId;
     return;
@@ -308,6 +375,48 @@ async function refreshData() {
     PLAYERS_ARCHIVE_READY = !probe.error;
   }
 
+  // Roadmap A, stage 2: once supabase/derive-totals-migration.sql has run, the
+  // totals come from events (plus the legacy offset) through v_player_stats.
+  // The stored columns stay authoritative on projects that were not migrated
+  // yet, so a static deployment never depends on the order of the SQL run.
+  PLAYER_TOTALS_READY = playerRows.some(row =>
+    Object.prototype.hasOwnProperty.call(row, 'legacy_goals')
+  );
+  if (!PLAYER_TOTALS_READY && playerRows.length === 0 && PLAYERS_ARCHIVE_READY) {
+    // Empty squad list: ask for the legacy column instead of guessing.
+    const probe = await db.from('players').select('legacy_goals').limit(1);
+    PLAYER_TOTALS_READY = !probe.error;
+  }
+
+  let statsRows = null;
+  if (PLAYER_TOTALS_READY) {
+    const statsResult = await selectAllRows('v_player_stats', 'player_id', true, null);
+    if (statsResult.error) {
+      // Keep the league usable: fall back to the stored totals rather than
+      // showing no players at all.
+      console.warn(
+        'KickOff Division: v_player_stats could not be read, showing stored player totals.',
+        statsResult.error.message || statsResult.error
+      );
+    } else {
+      statsRows = statsResult.data || [];
+    }
+  }
+
+  const derivedById = new Map((statsRows || []).map(row => [row.player_id, row]));
+  if (statsRows && isDevelopment()) comparePlayerTotals(playerRows, statsRows);
+
+  const players = playerRows.map(row => {
+    const player = mapPlayer(row);
+    const derived = derivedById.get(player.id);
+    if (derived) {
+      player.goals = numberOrZero(derived.goals);
+      player.yellow = numberOrZero(derived.yellow);
+      player.red = numberOrZero(derived.red);
+    }
+    return player;
+  });
+
   const previousView = appState ? appState.viewSeasonId : null;
   const dbActive = seasons.find(season => season.isActive) || null;
   const activeSeasonId = dbActive ? dbActive.id : null;
@@ -324,12 +433,13 @@ async function refreshData() {
 
   appState = {
     teams: (teamsResult.data || []).map(mapTeam),
-    players: (playersResult.data || []).map(mapPlayer),
+    players,
     matches: (matchesResult.data || []).map(mapMatch),
     seasons,
     matchEvents,
     seasonsReady,
     eventsReady,
+    playerStatsReady: Boolean(statsRows),
     activeSeasonId,
     viewSeasonId
   };
@@ -372,9 +482,46 @@ async function dbDeleteTeam(teamId) {
 
 async function dbSavePlayer(player) {
   assertBackend();
-  // Older projects do not have players.is_active yet.
-  const { error } = await db.from('players').upsert(playerToRow(player, PLAYERS_ARCHIVE_READY));
+
+  // Older projects store the totals on the player row itself.
+  if (!PLAYER_TOTALS_READY) {
+    const { error } = await db.from('players').upsert(playerToRow(player, PLAYERS_ARCHIVE_READY));
+    if (error) throw error;
+    return;
+  }
+
+  // Once totals are derived, the row carries identity only and the totals go
+  // through set_player_totals(), which moves the legacy offset so that
+  // v_player_stats keeps showing the number the admin typed.
+  const { error } = await db
+    .from('players')
+    .upsert(playerIdentityToRow(player, PLAYERS_ARCHIVE_READY));
   if (error) throw error;
+
+  const totals = await db.rpc('set_player_totals', {
+    p_player_id: player.id,
+    p_goals: numberOrZero(player.goals),
+    p_yellow: numberOrZero(player.yellow),
+    p_red: numberOrZero(player.red)
+  });
+  if (!totals.error) return;
+
+  if (isMissingFunction(totals.error)) {
+    // Half-applied migration: keep the edit instead of losing it.
+    const { error: storedError } = await db
+      .from('players')
+      .upsert(playerToRow(player, PLAYERS_ARCHIVE_READY));
+    if (storedError) throw storedError;
+    return;
+  }
+
+  if (/total cannot be lower/i.test(totals.error.message || '')) {
+    const limitError = new Error(totals.error.message);
+    limitError.code = 'PLAYER_TOTALS_BELOW_EVENTS';
+    throw limitError;
+  }
+
+  throw totals.error;
 }
 
 async function dbDeletePlayer(playerId) {
