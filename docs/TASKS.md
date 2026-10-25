@@ -21,6 +21,7 @@ Lanes: `DB` database/security · `FE` frontend · `DOC` docs/process (see COORDI
 | 10 | J | Privacy and retention policy | DOC | Open | — | — | Maintainer input | Plan 22.11. Needs answers to the open questions |
 | — | X3 | Import a squad from Excel/CSV into a team (preview, validation, one atomic add) | DB then FE | In review | claude | `claude/X3-squad-excel-import` | — | Requested by the maintainer: ~15 teams each send a filled Excel. Template in EN/FR/AR, row-by-row preview, `add_players()` is admin-only and atomic. Run `add-players-migration.sql` on existing projects |
 | — | X1 | Pin GitHub Actions to commit SHAs | DB | Open | — | — | — | Security audit item; Dependabot keeps them current |
+| 11 | X4 | Count events saved on upcoming fixtures (`events_counted = false`) | DB | In review | opencode | `opencode/X4-scheduled-match-events` | - | Data repair + PGlite test; applied to development and production and verified in the UI. Re-run after importing an older backup |
 
 ## How to add a task
 

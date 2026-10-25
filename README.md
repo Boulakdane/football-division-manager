@@ -124,7 +124,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── soft-delete-migration.sql    # Trash + restore for teams, matches and seasons
     ├── mfa-migration.sql            # Database-enforced admin two-factor requirement
     ├── check-constraints-migration.sql # Reject malformed names, colours, scores and dates
-    └── add-players-migration.sql    # Install add_players() for Excel/CSV squad import
+    ├── add-players-migration.sql    # Install add_players() for Excel/CSV squad import
+    └── scheduled-match-events-migration.sql # Count events already saved on upcoming fixtures
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -161,8 +162,8 @@ plus Supabase.
 > 3. [`supabase/atomic-import-migration.sql`](supabase/atomic-import-migration.sql) —
 >    installs the admin-only `replace_all_data(jsonb)` RPC so a full JSON import
 >    either commits completely or leaves every table unchanged. The frontend uses
->    it automatically and keeps the older client-side path as a fallback for projects
->    where the migration has not been applied.
+>    only this RPC; if the migration is missing the import fails closed instead of
+>    falling back to a non-atomic table-by-table write.
 > 4. [`supabase/integrity-migration.sql`](supabase/integrity-migration.sql) —
 >    adds player archiving, makes archived seasons read-only in the database, installs
 >    the atomic `save_match` and safe `delete_team` RPCs, and protects players with
@@ -193,6 +194,11 @@ plus Supabase.
 >    **Import squad from Excel**. It validates every row, rejects duplicates and adds
 >    at most 100 players per call. Without it, the import screen shows a
 >    “migration required” message and saves nothing.
+> 10. [`supabase/scheduled-match-events-migration.sql`](supabase/scheduled-match-events-migration.sql)
+>    — counts goals and cards that were already saved on upcoming fixtures while
+>    `events_counted` was false, then marks those fixtures as counted. It is safe to
+>    re-run, leaves finished/live and archived fixtures untouched, and should also be
+>    run after importing an older backup that still marks upcoming fixtures as false.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. It does **not** add the new `CHECK`

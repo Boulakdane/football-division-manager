@@ -112,6 +112,50 @@ async function run() {
     );
     console.log('OK data-quality constraints reject malformed rows');
 
+    // Upcoming fixtures that predate structured events were left with
+    // events_counted = false, so goals/cards saved on them never reached the
+    // player totals. The repair must count each event exactly once, only for
+    // scheduled fixtures in an active season, and stay idempotent.
+    await exec(`
+      insert into public.teams (id, name, code, color) values
+        ('tsched', 'Scheduled FC', 'SCH', '#123456'),
+        ('tsched2', 'Upcoming FC', 'UPC', '#654321');
+      insert into public.players (id, team_id, name, pos, num, goals, yellow, red) values
+        ('psched1', 'tsched', 'Scheduled Player', 'FWD', 9, 0, 0, 0),
+        ('psched2', 'tsched2', 'Upcoming Player', 'MID', 8, 0, 0, 0);
+      insert into public.seasons (id, name, is_active) values ('s_sched_arch', 'Old Scheduled Season', false);
+      insert into public.matches (id, season_id, round, home_id, away_id, status, events_counted) values
+        ('m_sched', 's1', 81, 'tsched', 'tsched2', 'SCHEDULED', false),
+        ('m_sched_old', 's1', 82, 'tsched', 'tsched2', 'FINISHED', false),
+        ('m_sched_arch', 's_sched_arch', 83, 'tsched', 'tsched2', 'SCHEDULED', false);
+      insert into public.match_events (id, match_id, team_id, player_id, event_type, minute) values
+        ('e_sched_goal', 'm_sched', 'tsched', 'psched1', 'goal', 10),
+        ('e_sched_yellow', 'm_sched', 'tsched', 'psched1', 'yellow', 20),
+        ('e_sched_red', 'm_sched', 'tsched2', 'psched2', 'red', 30),
+        ('e_sched_old', 'm_sched_old', 'tsched', 'psched1', 'goal', 40),
+        ('e_sched_arch', 'm_sched_arch', 'tsched', 'psched1', 'goal', 50);
+    `);
+
+    const scheduledEventsSql = fs.readFileSync(
+      path.join(ROOT, 'supabase/scheduled-match-events-migration.sql'),
+      'utf8'
+    );
+    await exec(scheduledEventsSql);
+
+    assert.strictEqual((await q("select events_counted from public.matches where id = 'm_sched'"))[0].events_counted, true);
+    assert.strictEqual((await q("select events_counted from public.matches where id = 'm_sched_old'"))[0].events_counted, false);
+    assert.strictEqual((await q("select events_counted from public.matches where id = 'm_sched_arch'"))[0].events_counted, false);
+    assert.strictEqual((await q("select goals from public.players where id = 'psched1'"))[0].goals, 1);
+    assert.strictEqual((await q("select yellow from public.players where id = 'psched1'"))[0].yellow, 1);
+    assert.strictEqual((await q("select red from public.players where id = 'psched2'"))[0].red, 1);
+
+    // A second run must not add the same events again.
+    await exec(scheduledEventsSql);
+    assert.strictEqual((await q("select goals from public.players where id = 'psched1'"))[0].goals, 1);
+    assert.strictEqual((await q("select yellow from public.players where id = 'psched1'"))[0].yellow, 1);
+    assert.strictEqual((await q("select red from public.players where id = 'psched2'"))[0].red, 1);
+    console.log('OK scheduled-fixture events counted once, historical totals untouched');
+
     // Archived season + isolated team-deletion fixtures.
     await exec(`
       insert into public.seasons (id, name, is_active) values ('s0', 'Archived', false);
