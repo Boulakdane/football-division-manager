@@ -640,6 +640,69 @@
     </div>
   </div>
 
+  <!-- MODAL: IMPORT SQUAD FROM EXCEL / CSV -->
+  <div id="modal-squad" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[88vh] flex flex-col p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="file-spreadsheet" class="w-5 h-5 text-pitch-400"></i>
+          <span data-i18n="modalSquadTitle">Import squad from Excel</span>
+        </h3>
+        <button data-action="close-modal" data-modal="modal-squad" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <p class="text-xs text-slate-400 leading-relaxed" data-i18n="squadIntro">Choose the team's .xlsx or CSV file. Every row is checked first; nothing is saved until you press Add players.</p>
+
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="text-slate-500" data-i18n="squadTeamLabel">Team:</span>
+        <span id="squad-team-name" class="font-semibold text-white"></span>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="inline-flex items-center gap-1.5 px-3 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium cursor-pointer transition">
+          <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+          <span data-i18n="squadChooseFile">Choose file</span>
+          <input type="file" id="squad-file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hidden" data-change="squad-file">
+        </label>
+        <button type="button" data-action="squad-template" class="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span data-i18n="squadTemplate">Download template (CSV)</span>
+        </button>
+        <span id="squad-file-name" class="text-xs text-slate-500 truncate max-w-[16rem]"></span>
+      </div>
+
+      <div id="squad-progress" class="hidden text-xs text-slate-400 flex items-center gap-2">
+        <i data-lucide="loader-circle" class="w-3.5 h-3.5 animate-spin"></i>
+        <span data-i18n="squadReading">Reading the file…</span>
+      </div>
+
+      <p id="squad-error" class="hidden text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2"></p>
+
+      <div id="squad-preview" class="hidden flex-1 min-h-0 flex flex-col gap-2">
+        <p id="squad-summary" class="text-xs text-slate-300"></p>
+        <div class="overflow-auto rounded-lg border border-slate-800">
+          <table class="w-full text-xs">
+            <thead class="bg-slate-800/60 text-[10px] uppercase tracking-wide text-slate-400">
+              <tr>
+                <th class="text-start font-semibold px-2 py-1.5" data-i18n="squadThLine">Row</th>
+                <th class="text-start font-semibold px-2 py-1.5" data-i18n="squadThName">Name</th>
+                <th class="text-center font-semibold px-2 py-1.5" data-i18n="thPos">Pos</th>
+                <th class="text-center font-semibold px-2 py-1.5" data-i18n="squadThNum">No.</th>
+                <th class="text-start font-semibold px-2 py-1.5" data-i18n="squadThStatus">Check</th>
+              </tr>
+            </thead>
+            <tbody id="squad-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
+        <button type="button" data-action="close-modal" data-modal="modal-squad" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
+        <button type="button" id="squad-import-btn" data-action="squad-import-confirm" disabled class="px-4 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="squadImport">Add players</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: FREE HOSTING & DEPLOYMENT GUIDE -->
   <div id="modal-guide" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 shadow-2xl space-y-5">
@@ -1000,6 +1063,7 @@
   <script src="js/backend.js?v=3.10.1" defer></script>
   <script src="js/auth.js?v=3.10.1" defer></script>
   <script src="js/mfa.js?v=3.10.1" defer></script>
+  <script src="js/squad-import.js?v=3.10.1" defer></script>
   <script src="js/app.js?v=3.10.1" defer></script>
 </body>
 </html>

@@ -41,6 +41,29 @@ const existing = [{ name: 'David Silva', num: 8, isActive: true }, { name: 'Old 
   r = SI.analyze(await SI.readFile(load('squad-semicolon.csv')), []);
   check('csv: semicolon + cp1252 + quoted delimiter', r.toAdd.length === 2 && r.toAdd[0].name === 'Amine Gouiri' && r.toAdd[1].name === 'Zinedine; Jr' && r.toAdd[1].pos === 'MID', r.toAdd);
 
+  // The template must be usable as-is: its own header row has to be recognised
+  // in every language, and it must contain no data rows.
+  for (const lang of ['en', 'fr', 'ar']) {
+    const tpl = SI.template(lang);
+    const rows = SI._internal.parseDelimited(SI._internal.decodeText(new TextEncoder().encode(tpl.text)));
+    const parsed = SI.analyze([{ name: 'CSV', rows }], []);
+    check('template ' + lang + ': header-only and valid', tpl.text.charCodeAt(0) === 0xfeff &&
+      parsed.headerFound && parsed.counts.total === 0 && !parsed.canImport, { rows, counts: parsed.counts });
+  }
+  const frTemplate = SI.template('fr');
+  check('template fr: semicolon + fr filename', frTemplate.text.includes(';') &&
+    frTemplate.filename === 'kickoff_squad_template_fr.csv', frTemplate);
+  check('template: unknown language falls back to EN', SI.template('de').lang === 'en');
+
+  // Arabic card headers and positions, as produced by the Arabic template.
+  r = SI.analyze([{ name: 'CSV', rows: [
+    ['الاسم', 'المركز', 'الرقم', 'الأهداف', 'بطاقات صفراء', 'بطاقات حمراء'],
+    ['أحمد بن علي', 'حارس مرمى', '1', '0', '1', '0'],
+    ['ياسين', 'مهاجم', '9', '3', '0', '0']
+  ] }], []);
+  check('ar: card headers and positions', r.headerFound && r.canImport && r.toAdd.length === 2 &&
+    r.toAdd[0].pos === 'GK' && r.toAdd[1].pos === 'FWD' && r.toAdd[1].goals === 3, r.toAdd);
+
   r = SI.analyze([{ name: 'x', rows: [['foo', 'bar'], ['a', 'b']] }], []);
   check('no header -> headerFound false', r.headerFound === false && !r.canImport);
 

@@ -41,7 +41,7 @@
     return String(value == null ? '' : value)
       .normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[آأإ]/g, 'ا')       // alef variants
-      .replace(/[ً-ْـ]/g, '')            // Arabic diacritics, tatweel
+      .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g, '') // Arabic marks, tatweel
       .toLowerCase()
       .replace(/[^a-z0-9؀-ۿ]+/g, '');
   }
@@ -343,8 +343,10 @@
       'numero', 'nmaillot', 'ndemaillot', 'nodemaillot', 'nonumero', 'numeromaillot', 'numerodemaillot', 'dossard', 'maillot', 'الرقم',
       'رقم', 'رقمالقميص'],
     goals: ['goals', 'goal', 'buts', 'but', 'الاهداف', 'اهداف'],
-    yellow: ['yellow', 'yellows', 'yellowcards', 'yellowcard', 'jaune', 'jaunes', 'cartonjaune', 'cartonsjaunes'],
-    red: ['red', 'reds', 'redcards', 'redcard', 'rouge', 'rouges', 'cartonrouge', 'cartonsrouges']
+    yellow: ['yellow', 'yellows', 'yellowcards', 'yellowcard', 'jaune', 'jaunes', 'cartonjaune', 'cartonsjaunes',
+      'بطاقةصفراء', 'بطاقاتصفراء', 'انذار', 'إنذار'],
+    red: ['red', 'reds', 'redcards', 'redcard', 'rouge', 'rouges', 'cartonrouge', 'cartonsrouges',
+      'بطاقةحمراء', 'بطاقاتحمراء', 'طرد', 'احمر', 'أحمر']
   };
 
   /** Find the header row (within the first rows) and map field -> column index. */
@@ -520,6 +522,28 @@
     return { headerFound: false, rows: [], counts: { total: 0, ok: 0, warn: 0, skip: 0, error: 0 }, toAdd: [], canImport: false, sheetName: '' };
   }
 
+  /**
+   * A blank, header-only CSV template for the current language.
+   * French Excel splits comma-separated files badly, so French uses ';'.
+   * The BOM keeps accents and Arabic readable when Excel opens the file.
+   */
+  const TEMPLATE_HEADERS = {
+    en: ['Name', 'Position', 'Number', 'Goals', 'Yellow', 'Red'],
+    fr: ['Nom', 'Poste', 'Numéro', 'Buts', 'Jaunes', 'Rouges'],
+    ar: ['الاسم', 'المركز', 'الرقم', 'الأهداف', 'بطاقات صفراء', 'بطاقات حمراء']
+  };
+
+  function template(lang) {
+    const code = TEMPLATE_HEADERS[lang] ? lang : 'en';
+    const delimiter = code === 'fr' ? ';' : ',';
+    return {
+      lang: code,
+      filename: 'kickoff_squad_template_' + code + '.csv',
+      mime: 'text/csv;charset=utf-8',
+      text: '\ufeff' + TEMPLATE_HEADERS[code].join(delimiter) + '\r\n'
+    };
+  }
+
   return {
     LIMITS: LIMITS,
     readFile: readFile,
@@ -528,6 +552,7 @@
     detectTable: detectTable,
     normalizePosition: normalizePosition,
     parseWhole: parseWhole,
+    template: template,
     _internal: { readWorkbook: readWorkbook, parseDelimited: parseDelimited, parseSheet: parseSheet, parseSharedStrings: parseSharedStrings, decodeText: decodeText, norm: norm }
   };
 });
