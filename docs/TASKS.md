@@ -19,7 +19,7 @@ Lanes: `DB` database/security · `FE` frontend · `DOC` docs/process (see COORDI
 | 9 | I | Team crests and photos with safe upload | DB then FE | Open | — | — | J first for photos | Plan 22.10 |
 | 10 | J | Privacy and retention policy | DOC | Open | — | — | Maintainer input | Plan 22.11. Needs answers to the open questions |
 | — | X1 | Pin GitHub Actions to commit SHAs | DB | Open | — | — | — | Security audit item; Dependabot keeps them current |
-| 11 | X4 | Count events saved on upcoming fixtures (`events_counted = false`) | DB | Claimed | opencode | `opencode/X4-scheduled-match-events` | — | Data repair + PGlite test; README migration list updated |
+| 11 | X4 | Count events saved on upcoming fixtures (`events_counted = false`) | DB | In review | opencode | `opencode/X4-scheduled-match-events` | — | Data repair + PGlite test; applied to development and verified in the UI |
 
 ## How to add a task
 
