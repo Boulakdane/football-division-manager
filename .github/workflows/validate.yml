@@ -41,6 +41,9 @@ jobs:
       - name: Test SQL integrity and RLS
         run: npm run test:sql
 
+      - name: Test the security drift monitor (offline mock)
+        run: npm run test:drift
+
       - name: Test CSV round trip
         shell: bash
         run: |
