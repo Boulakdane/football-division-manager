@@ -8,7 +8,8 @@ Lanes: `DB` database/security · `FE` frontend · `DOC` docs/process (see COORDI
 
 | Order | ID | Task | Lane | Status | Owner | Branch / PR | Depends on | Notes |
 |---|---|---|---|---|---|---|---|---|
-| 1 | C | Security drift monitor (daily check of dashboard-only settings and anon permissions) | DB | Claimed | claude | `claude/C-security-drift-monitor` | — | Plan section 22.4 |
+| 1 | C | Security drift monitor (daily check of dashboard-only settings and anon permissions) | DB | Done | claude | merged in #5 | — | Plan section 22.4. First live run found X2 |
+| 1 | X2 | Revoke anonymous write privileges (grant layer) | DB | In review | claude | `claude/X2-revoke-anon-write-grants` | — | Found by C: anon holds UPDATE/DELETE grants, RLS blocks them. Maintainer applies the migration |
 | 2 | A | Derive player/team totals from events | DB then FE | Open | — | — | — | Plan 22.2. Split: DB PR first, then UI PR |
 | 3 | B | `scorer` role for live match entry | DB then FE | Open | — | — | A recommended first | Plan 22.3 |
 | 4 | E | Extract pure domain code into ES modules with Node tests | FE | Open | — | — | — | Plan 22.6. Touches `js/app.js` (hot) |
