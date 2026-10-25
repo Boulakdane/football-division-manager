@@ -14,7 +14,9 @@
     "drill:backup": "node tools/restore-drill.js",
     "backup:prod": "node tools/export-backup.js --env=prod",
     "backup:dev": "node tools/export-backup.js --env=dev",
-    "keepalive:prod": "node tools/keepalive.js --env=prod"
+    "keepalive:prod": "node tools/keepalive.js --env=prod",
+    "check:drift": "node tools/check-security-drift.js --env=prod",
+    "test:drift": "node tools/test-security-drift.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.6",

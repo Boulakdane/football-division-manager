@@ -1,0 +1,63 @@
+name: Security drift check
+
+on:
+  schedule:
+    # Daily, offset from the backup (06:15) and keepalive jobs. GitHub may delay it a few minutes.
+    - cron: '40 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: kickoff-security-drift
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Anonymous, read-mostly probes with the public key only; see tools/check-security-drift.js.
+      # The script exits 0 (no drift), 1 (drift) or 2 (project unreachable: inconclusive).
+      - name: Check production
+        id: drift
+        shell: bash
+        run: |
+          set +e
+          node tools/check-security-drift.js --env=prod --markdown=drift-report.md
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Open or update an issue when drift is found
+        if: steps.drift.outputs.code == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          gh label create security-drift --color B60205 \
+            --description "Automated security drift alert" 2>/dev/null || true
+          existing=$(gh issue list --label security-drift --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file drift-report.md
+          else
+            gh issue create --title "Security drift detected in production" \
+              --label security-drift --body-file drift-report.md
+          fi
+
+      - name: Fail the run on drift or an unreachable project
+        if: steps.drift.outputs.code != '0'
+        shell: bash
+        run: |
+          echo "Drift check exit code: ${{ steps.drift.outputs.code }} (1 = drift, 2 = inconclusive)"
+          exit 1
