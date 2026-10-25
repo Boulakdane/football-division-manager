@@ -6,6 +6,8 @@
 | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Threat model, findings, remediation plan and verification steps |
 | [MODERNIZATION_PLAN.md](MODERNIZATION_PLAN.md) | Phased roadmap and sophisticated technical/product changes |
 | [DATABASE_REVIEW_BRIEF.md](DATABASE_REVIEW_BRIEF.md) | Self-contained prompt for an independent database/hosting review |
+| [COORDINATION.md](COORDINATION.md) | How Claude, opencode and the maintainer share the repository without conflicts |
+| [TASKS.md](TASKS.md) | Task board: who owns what, status and dependencies |
 
 ## Suggested reading order
 

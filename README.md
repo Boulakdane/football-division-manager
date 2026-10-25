@@ -62,6 +62,9 @@ accounts live in a free [Supabase](https://supabase.com) project.
   data, security, UX and platform improvements.
 - [Database review brief](docs/DATABASE_REVIEW_BRIEF.md) — self-contained prompt for an
   external review of the database/hosting choice, including current limits and scale.
+- [Coordination guide](docs/COORDINATION.md) and [task board](docs/TASKS.md) — how AI coding
+  tools (Claude Code, opencode) and the maintainer work in parallel; shared rules in
+  [AGENTS.md](AGENTS.md).
 - [Security policy](SECURITY.md) — how to report a vulnerability privately.
 
 ## Project structure
@@ -99,7 +102,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── restore-drill.js       # Restore a backup into in-memory Postgres and compare
 │   ├── backup-map.js          # Shared camelCase ⇄ database row mapping
 │   ├── keepalive.js           # One public read to prevent Free-tier pausing
-│   └── check-secrets.js       # Fail CI if a privileged secret is committed
+│   ├── check-secrets.js       # Fail CI if a privileged secret is committed
+│   └── agent-status.js        # Show in-flight branches and overlapping files
 ├── tests/
 │   └── e2e/
 │       └── public.spec.js     # Public read, FR/AR, RTL and login-dialog smoke test
