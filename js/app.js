@@ -1673,20 +1673,13 @@ function playerEventTotals(playerId) {
   return totals;
 }
 
-/** Localized "cannot go below the events" message, including the counts. */
+/** The localized "cannot go below the events" message, including the counts. */
 function totalsBelowEventsMessage(counts) {
   const format = value => new Intl.NumberFormat(currentLang).format(value);
   return t('alertPlayerTotalsBelowEvents')
     .replace('{goals}', format(counts.goals))
     .replace('{yellow}', format(counts.yellow))
     .replace('{red}', format(counts.red));
-}
-
-/** The hint only makes sense once the database derives totals from events. */
-function syncPlayerTotalsHint() {
-  const hint = document.getElementById('player-totals-hint');
-  if (!hint) return;
-  hint.classList.toggle('hidden', !appState.playerStatsReady);
 }
 
 function openPlayerModal(teamId) {
@@ -1698,7 +1691,6 @@ function openPlayerModal(teamId) {
   document.getElementById('player-yellows').value = 0;
   document.getElementById('player-reds').value = 0;
   document.getElementById('player-modal-title').textContent = t('modalPlayerTitle');
-  syncPlayerTotalsHint();
   openModal('modal-player');
 }
 
@@ -1716,7 +1708,6 @@ function editPlayer(playerId) {
   document.getElementById('player-yellows').value = toInt(p.yellow);
   document.getElementById('player-reds').value = toInt(p.red);
   document.getElementById('player-modal-title').textContent = t('modalPlayerEditTitle');
-  syncPlayerTotalsHint();
   openModal('modal-player');
 }
 
@@ -1747,14 +1738,13 @@ async function savePlayer(e) {
   }
   playerData.isActive = existing ? existing.isActive !== false : true;
 
-  // With derived totals a manual edit cannot drop below what the events
-  // already record. The database enforces the same rule; this is the friendly
-  // version, with the counts the admin needs.
+  // A manual edit cannot drop below what the events already record. The
+  // database enforces the same rule; this is the friendly version, with the
+  // counts the admin needs.
   const eventCounts = playerEventTotals(playerData.id);
-  if (appState.playerStatsReady &&
-      (playerData.goals < eventCounts.goals ||
-       playerData.yellow < eventCounts.yellow ||
-       playerData.red < eventCounts.red)) {
+  if (playerData.goals < eventCounts.goals ||
+      playerData.yellow < eventCounts.yellow ||
+      playerData.red < eventCounts.red) {
     alert(totalsBelowEventsMessage(eventCounts));
     return;
   }

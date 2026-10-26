@@ -1,18 +1,19 @@
 #!/usr/bin/env node
 /*
- * SQL tests for roadmap item A, stage 1: derived player and team totals.
+ * SQL tests for roadmap item A, stage 3: totals live only in the views.
  *
  * Runs in its own in-memory PGlite database. It proves that:
- *   * schema.sql alone installs the legacy offsets and the views;
- *   * the views equal the stored player totals on a fresh install;
- *   * v_standings mirrors calculateStandings() (points, GD, GF, wins, name);
+ *   * schema.sql installs legacy offsets, the views and no stored totals;
  *   * v_player_stats follows every total-changing RPC, and stays hidden for
  *     trashed teams;
  *   * add_players(), set_player_totals() and replace_all_data() seed the
  *     legacy offset correctly;
- *   * derive-totals-migration.sql upgrades an existing project and is
- *     re-runnable, including with events_counted = false rows;
- *   * anon can read the views but cannot call the new RPC.
+ *   * v_standings mirrors calculateStandings() (points, GD, GF, wins, name);
+ *   * the stage-1 migration refuses to run once the stored columns are gone;
+ *   * anon can read the views but cannot call the admin RPC.
+ *
+ * The upgrade path (pre-A project -> derive -> drop) lives in
+ * tools/test-drop-totals.js.
  *
  * Usage: npm run test:derived-stats
  */
@@ -75,19 +76,6 @@ async function run() {
     assert.strictEqual(rows.length, 1, `missing v_player_stats row for ${playerId}`);
     return rows[0];
   };
-  const stored = async playerId => (await q(
-    'select goals, yellow, red, legacy_goals, legacy_yellow, legacy_red from public.players where id = $1',
-    [playerId]
-  ))[0];
-  const assertSame = async (playerId, label) => {
-    const v = await totals(playerId);
-    const s = await stored(playerId);
-    assert.deepStrictEqual(
-      { goals: v.goals, yellow: v.yellow, red: v.red },
-      { goals: s.goals, yellow: s.yellow, red: s.red },
-      `${label || playerId}: views and stored totals disagree`
-    );
-  };
 
   try {
     await mockAuth(db);
@@ -96,15 +84,26 @@ async function run() {
     await exec(`set test.uid = '${ADMIN_ID}'`);
 
     // ------------------------------------------------------------
-    // Fresh install: the seed rows are consistent
+    // Fresh install: no stored totals, only the view
     // ------------------------------------------------------------
-    const seedMismatch = await q(`
-      select count(*)::int n
-      from public.players p
-      join public.v_player_stats v on v.player_id = p.id
-      where v.goals <> p.goals or v.yellow <> p.yellow or v.red <> p.red
+    const storedColumns = await q(`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'players'
+        and column_name in ('goals', 'yellow', 'red')
     `);
-    assert.strictEqual(seedMismatch[0].n, 0, 'fresh seed views should equal stored totals');
+    assert.strictEqual(storedColumns.length, 0, 'schema.sql must not create stored totals');
+
+    const inconsistent = await q(`
+      select count(*)::int n
+      from public.v_player_stats v
+      where v.goals <> v.legacy_goals + v.event_goals
+         or v.yellow <> v.legacy_yellow + v.event_yellow
+         or v.red <> v.legacy_red + v.event_red
+    `);
+    assert.strictEqual(inconsistent[0].n, 0, 'every total must be legacy + counted events');
+
     const seedCount = await q('select count(*)::int n from public.v_player_stats');
     assert.strictEqual(seedCount[0].n, 9, 'all nine visible seed players should have stats');
 
@@ -120,7 +119,7 @@ async function run() {
       () => q("insert into public.players (id, team_id, name, pos, num, legacy_goals) values ('pneglegacy', 't1', 'Negative Legacy', 'FWD', 10, -1)"),
       /kickoff_players_legacy_totals_range/
     );
-    console.log('OK fresh schema.sql seeds legacy offsets and v_player_stats equals stored totals');
+    console.log('OK fresh schema.sql has no stored totals and a consistent v_player_stats');
 
     // ------------------------------------------------------------
     // v_standings mirrors calculateStandings()
@@ -171,10 +170,10 @@ async function run() {
         '[{"id":"e_v1","teamId":"t1","playerId":"p1","type":"goal","minute":10},
           {"id":"e_v2","teamId":"t1","playerId":"p2","type":"goal","minute":20}]'::jsonb)`);
     });
-    await assertSame('p1');
-    await assertSame('p2');
-    assert.strictEqual((await totals('p2')).event_goals, 1, 'removing one goal event lowers event_goals');
-    assert.strictEqual((await stored('p2')).goals, 6, 'the stored total follows the removal too');
+    assert.strictEqual((await totals('p2')).event_goals, 1, 'replacing events removes the old goal');
+    assert.strictEqual((await totals('p2')).goals, 6, 'the view total follows the removal');
+    assert.strictEqual((await totals('p1')).event_goals, 1, 'the new goal is counted');
+    assert.strictEqual((await totals('p1')).goals, 5, 'p1 keeps its seeded total (one goal replaced another)');
 
     await asAdmin(async () => {
       await q(`select public.save_match(
@@ -182,26 +181,24 @@ async function run() {
         null
       )`);
     });
-    await assertSame('p1');
-    assert.strictEqual((await stored('p1')).goals, 5, 'a score-only save does not touch player totals');
+    assert.strictEqual((await totals('p1')).goals, 5, 'a score-only save does not touch player totals');
 
     await asAdmin(() => q("select public.delete_match('m1')"));
-    await assertSame('p1');
-    await assertSame('p2');
     assert.strictEqual((await totals('p1')).event_goals, 0, 'a trashed fixture stops contributing events');
+    assert.strictEqual((await totals('p1')).goals, 4, 'the trashed fixture no longer adds to the total');
+    assert.strictEqual((await totals('p2')).goals, 5);
 
     await asAdmin(() => q("select public.restore_match('m1')"));
-    await assertSame('p1');
-    await assertSame('p2');
     assert.strictEqual((await totals('p2')).event_goals, 1, 'restoring brings the event back');
+    assert.strictEqual((await totals('p2')).goals, 6);
+    assert.strictEqual((await totals('p1')).goals, 5);
 
     await asAdmin(() => q("select public.delete_team('t1')"));
     const p1Hidden = await q("select 1 from public.v_player_stats where player_id = 'p1'");
     assert.strictEqual(p1Hidden.length, 0, 'a trashed team hides its players from the view');
-    await assertSame('p3');
+    assert.strictEqual((await totals('p3')).goals, 3, 'other clubs keep their totals');
     await asAdmin(() => q("select public.restore_team('t1')"));
-    await assertSame('p1');
-    await assertSame('p2');
+    assert.strictEqual((await totals('p1')).goals, 5, 'restoring the team brings the totals back');
     console.log('OK v_player_stats follows event, match and team RPCs');
 
     // ------------------------------------------------------------
@@ -245,70 +242,11 @@ async function run() {
     console.log('OK add_players and set_player_totals keep the view consistent');
 
     // ------------------------------------------------------------
-    // Upgrade path: an existing project with legacy flags
+    // The stage-1 migration is closed once the columns are gone
     // ------------------------------------------------------------
-    const legacy = new PGlite();
-    try {
-      await mockAuth(legacy);
-      await legacy.exec(fs.readFileSync(path.join(ROOT, 'supabase/schema.sql'), 'utf8'));
-      await makeAdmin(legacy);
-      const lq = async (sql, params) => (await legacy.query(sql, params)).rows;
-      const lexec = sql => legacy.exec(sql);
-
-      // p8 already has three legacy goals and no events. Add two fixtures:
-      // one counted with two goals + a yellow, one uncounted with one goal.
-      await lexec(`
-        insert into public.players (id, team_id, name, pos, num, goals, yellow, red)
-          values ('plegacy', 't6', 'Legacy Player', 'FWD', 20, 10, 2, 1);
-        insert into public.matches (id, season_id, round, home_id, away_id, home_score, away_score, status, events_counted)
-          values ('m_legacy_counted', 's1', 70, 't6', 't1', 2, 0, 'FINISHED', true),
-                 ('m_legacy_uncounted', 's1', 71, 't6', 't1', 1, 0, 'FINISHED', false);
-        insert into public.match_events (id, match_id, team_id, player_id, event_type, minute) values
-          ('e_legacy_1', 'm_legacy_counted', 't6', 'plegacy', 'goal', 10),
-          ('e_legacy_2', 'm_legacy_counted', 't6', 'plegacy', 'goal', 20),
-          ('e_legacy_3', 'm_legacy_counted', 't6', 'plegacy', 'yellow', 30),
-          ('e_legacy_4', 'm_legacy_uncounted', 't6', 'plegacy', 'goal', 40);
-      `);
-
-      // A project that only ran the older migrations has no legacy columns.
-      await lexec('drop view public.v_standings, public.v_match_results, public.v_player_stats, public.v_player_event_totals');
-      await lexec('alter table public.players drop column legacy_goals, drop column legacy_yellow, drop column legacy_red');
-
-      const migration = fs.readFileSync(path.join(ROOT, 'supabase/derive-totals-migration.sql'), 'utf8');
-      await lexec(migration);
-      await lexec(migration);
-
-      const migrated = (await lq("select goals, legacy_goals, event_goals from public.v_player_stats where player_id = 'plegacy'"))[0];
-      assert.deepStrictEqual(
-        [migrated.goals, migrated.event_goals, migrated.legacy_goals],
-        [10, 2, 8],
-        'only counted events are taken out of the stored total'
-      );
-
-      // X4 repairs an upcoming fixture: it moves the event into the totals
-      // and flips events_counted. The view must move by exactly the same
-      // amount.
-      await lexec(`
-        update public.matches set status = 'SCHEDULED' where id = 'm_legacy_uncounted';
-      `);
-      await lexec(fs.readFileSync(path.join(ROOT, 'supabase/scheduled-match-events-migration.sql'), 'utf8'));
-      const afterRepair = (await lq("select goals, legacy_goals, event_goals from public.v_player_stats where player_id = 'plegacy'"))[0];
-      assert.deepStrictEqual(
-        [afterRepair.goals, afterRepair.event_goals, afterRepair.legacy_goals],
-        [11, 3, 8],
-        'the X4 repair must keep the view equal to the stored total'
-      );
-      const storedAfter = (await lq("select goals from public.players where id = 'plegacy'"))[0];
-      assert.strictEqual(storedAfter.goals, afterRepair.goals);
-
-      // The migration is still safe to re-run after the flag changed.
-      await lexec(migration);
-      const afterRerun = (await lq("select goals, legacy_goals from public.v_player_stats where player_id = 'plegacy'"))[0];
-      assert.deepStrictEqual([afterRerun.goals, afterRerun.legacy_goals], [11, 8]);
-      console.log('OK upgrade migration backfills legacy totals and survives X4 plus a re-run');
-    } finally {
-      await legacy.close();
-    }
+    const migration = fs.readFileSync(path.join(ROOT, 'supabase/derive-totals-migration.sql'), 'utf8');
+    await expectError(() => exec(migration), /already run drop-stored-totals-migration/);
+    console.log('OK derive-totals-migration.sql refuses to run after the drop');
 
     // ------------------------------------------------------------
     // Full import round trip
@@ -338,7 +276,7 @@ async function run() {
     assert.deepStrictEqual(
       [imported.goals, imported.yellow, imported.red, imported.event_goals, imported.legacy_goals],
       [5, 1, 0, 1, 4],
-      'an import with an uncounted fixture must keep the stored total while counting only the visible event'
+      'an import with an uncounted fixture must keep the imported total while counting only the visible event'
     );
     const importedP2 = await totals('p2');
     assert.deepStrictEqual([importedP2.goals, importedP2.legacy_goals], [0, 0]);
