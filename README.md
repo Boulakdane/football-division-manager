@@ -127,7 +127,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── add-players-migration.sql    # Install add_players() for Excel/CSV squad import
     ├── scheduled-match-events-migration.sql # Count events already saved on upcoming fixtures
     ├── derive-totals-migration.sql # Legacy offsets + event-derived player/standings views (roadmap A)
-    └── drop-stored-totals-migration.sql # Drop players.goals / yellow / red; v_player_stats is the only total
+    ├── drop-stored-totals-migration.sql # Drop players.goals / yellow / red; v_player_stats is the only total
+    └── scorer-role-migration.sql    # Scorer role, match officials and the narrow live-entry RPCs (roadmap B)
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -222,6 +223,17 @@ plus Supabase.
 >    `scheduled-match-events-migration.sql`). Recreate the columns first, or start
 >    from `schema.sql` plus steps 11 and 12; `derive-totals-migration.sql` stops
 >    with a clear message if you try it after the drop.
+> 13. [`supabase/scorer-role-migration.sql`](supabase/scorer-role-migration.sql) —
+>    roadmap B. Adds the `scorer` role, the `match_officials` table (a scorer reads
+>    only their own assignments, admins read every row), and the narrow
+>    `record_live_event()` / `remove_live_event()` RPCs. A scorer may add goals and
+>    cards only to an assigned fixture that is LIVE or scheduled today in the active
+>    season, and may undo an event for 15 minutes. Admins get the same live-entry
+>    dialog on any live/today fixture and are not limited by the undo window; older
+>    fixtures still use the full match editor. `list_users()`, `set_user_role()` and
+>    `set_match_officials()` are admin-only and write an audit entry for every
+>    change. `is_admin()` is unchanged, so a scorer never inherits admin writes. The
+>    migration is safe to re-run; run it development first, then production.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. It does **not** add the new `CHECK`
@@ -420,17 +432,22 @@ Logging into the dev admin does not log you into production.
 
 ## Roles and permissions
 
-| Action | Visitor (no account) | Viewer account | Admin account |
-|---|---|---|---|
-| View standings, fixtures, squads | ✅ | ✅ | ✅ |
-| Add / edit / delete teams, players, matches | ❌ | ❌ | ✅ |
-| Create seasons / switch the active season | ❌ | ❌ | ✅ |
-| Delete an empty archived season | ❌ | ❌ | ✅ |
-| View archived season tables and fixtures | ✅ | ✅ | ✅ |
-| Import / reset data, export backup | ❌ | ❌ | ✅ |
+| Action | Visitor (no account) | Viewer account | Scorer account | Admin account |
+|---|---|---|---|---|
+| View standings, fixtures, squads | ✅ | ✅ | ✅ | ✅ |
+| Add a goal/card to an assigned live/today fixture | ❌ | ❌ | ✅ | ✅ (any fixture) |
+| Undo that event (15 minutes) | ❌ | ❌ | ✅ | ✅ (no time limit) |
+| Add / edit / delete teams, players, matches | ❌ | ❌ | ❌ | ✅ |
+| Create seasons / switch the active season | ❌ | ❌ | ❌ | ✅ |
+| Delete an empty archived season | ❌ | ❌ | ❌ | ✅ |
+| Manage accounts, roles and match officials | ❌ | ❌ | ❌ | ✅ |
+| View archived season tables and fixtures | ✅ | ✅ | ✅ | ✅ |
+| Import / reset data, export backup | ❌ | ❌ | ❌ | ✅ |
 
-Visitors and viewers get a read-only UI. The real enforcement is in
-`supabase/schema.sql`:
+Visitors and viewers get a read-only UI. A scorer gets only the **Live entry**
+dialog, and only for fixtures an admin assigned to them through **Users & roles**
+(roadmap item B); the dialog stays open while the fixture is LIVE or scheduled today
+in the active season. The real enforcement is in `supabase/schema.sql`:
 
 ```sql
 create policy teams_insert_admin on public.teams
@@ -441,7 +458,11 @@ create policy teams_insert_admin on public.teams
 is applied to `update` on teams/players and to insert/update on matches/players. Match
 inserts and updates additionally require the parent season to be active. Team/match
 deletes and match-event writes are RPC-only, so the total-adjusting functions cannot be
-bypassed. Public `select` policies make the league readable without logging in.
+bypassed. A scorer never satisfies `is_admin()`: their only write path is
+`record_live_event()` / `remove_live_event()`, which re-check the role, the assignment
+in `match_officials`, the active season and the live/today window on the server. Public
+`select` policies make the league readable without logging in; `match_officials` exposes
+a scorer's own rows only and every row to an admin.
 
 ## Run locally
 
@@ -595,7 +616,7 @@ the app says the migration is missing, run
 
 ## Data model
 
-Seven tables in the `public` schema. Column names are snake_case in Postgres and mapped
+The tables in the `public` schema. Column names are snake_case in Postgres and mapped
 to camelCase by `js/backend.js`.
 
 ```
@@ -609,7 +630,9 @@ matches      (id text pk, season_id → seasons.id, round, home_id → teams.id,
               scorers_text, events_counted, deleted_at)
 match_events (id text pk, match_id → matches.id, team_id → teams.id,
               player_id → players.id, event_type: goal|yellow|red, minute, created_at)
-profiles     (id uuid pk → auth.users.id, email, role: admin|viewer)
+profiles     (id uuid pk → auth.users.id, email, role: admin|viewer|scorer)
+match_officials (match_id → matches.id, user_id → profiles.id, created_at,
+              created_by, pk (match_id, user_id))
 audit_log    (id bigint pk, occurred_at, actor_id, actor_email, action, entity,
               entity_id, season_id, summary, before jsonb, after jsonb)
 security_settings (id boolean pk, require_admin_mfa, updated_at)

@@ -11,7 +11,7 @@ Lanes: `DB` database/security · `FE` frontend · `DOC` docs/process (see COORDI
 | 1 | C | Security drift monitor (daily check of dashboard-only settings and anon permissions) | DB | Done | claude | merged in #5 | — | Plan section 22.4. First live run found X2 |
 | 1 | X2 | Revoke anonymous write privileges (grant layer) | DB | Done | claude | merged in #9 | — | Found by C: anon holds UPDATE/DELETE grants, RLS blocks them. Grant layer now refuses writes; SELECT unchanged |
 | 2 | A | Derive player/team totals from events | DB then FE | In review | opencode | `opencode/A-drop-stored-totals` | — | Plan 22.2. Stage 1 merged in #13, stage 2 in #14 (app reads `v_player_stats`, saves through `set_player_totals()`). This PR: stage 3 drops `players.goals / yellow / red` after backfilling `legacy_*`; `events_counted` stays as the historical-fixture marker |
-| 3 | B | `scorer` role for live match entry | DB then FE | Open | — | — | A recommended first | Plan 22.3 |
+| 3 | B | `scorer` role for live match entry | DB then FE | In review | opencode | `opencode/B-scorer-role` | A recommended first | Plan 22.3. Adds `scorer`, `match_officials`, narrow `record_live_event()` / `remove_live_event()` (assigned + LIVE/today + 15-minute undo), and admin `list_users()` / `set_user_role()` / `set_match_officials()` with audit. PGlite matrix in `tools/test-scorer-role.js`. Stacked on A (#15); migration pending maintainer run |
 | 4 | E | Extract pure domain code into ES modules with Node tests | FE | Open | — | — | — | Plan 22.6. Touches `js/app.js` (hot) |
 | 5 | H | Merge import with diff preview | DB then FE | Open | — | — | — | Plan 22.9 |
 | 6 | D | Tamper-evident audit log and off-site encrypted backup | DB | Open | — | — | — | Plan 22.5 |

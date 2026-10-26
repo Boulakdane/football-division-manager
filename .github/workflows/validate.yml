@@ -53,6 +53,9 @@ jobs:
       - name: Test dropping the stored player totals (roadmap A stage 3)
         run: npm run test:drop-totals
 
+      - name: Test the scorer role and live match entry (roadmap B)
+        run: npm run test:scorer-role
+
       - name: Test squad import parser (xlsx/csv)
         run: npm run test:squad-import
 

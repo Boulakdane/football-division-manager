@@ -125,6 +125,88 @@ test('public pages load, languages switch and the admin login opens', async ({ p
   expect(unexpectedConsoleErrors, 'unexpected console errors').toEqual([]);
 });
 
+test('a scorer sees the badge and only their live fixtures, and admins manage roles', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+
+  await page.goto('/?env=prod');
+  await expect(page.locator('#standings-table-body tr').first()).toBeVisible();
+  await page.waitForFunction(() => typeof idleWatcherInstalled !== 'undefined' && idleWatcherInstalled === true);
+
+  // Fake a signed-in scorer on a live fixture they are assigned to. No real
+  // session or write is created; every RPC below is stubbed.
+  await page.evaluate(() => {
+    window.__roleCalls = [];
+    window.__officialCalls = [];
+    currentUser = { id: 'e2e-scorer', email: 'scorer@example.com' };
+    currentRole = 'scorer';
+    const match = appState.matches.find(m => m.seasonId === appState.activeSeasonId) || appState.matches[0];
+    window.__liveMatchId = match.id;
+    // Keep the active season, the viewed season and the fixture in agreement.
+    appState.activeSeasonId = match.seasonId;
+    appState.viewSeasonId = match.seasonId;
+    appState.eventsReady = true;
+    match.status = 'LIVE';
+    match.eventsCounted = true;
+    appState.matchOfficials = [{ matchId: match.id, userId: 'e2e-scorer' }];
+    updateAuthUI();
+    switchTab('fixtures');
+    renderApp();
+  });
+
+  await expect(page.locator('#role-badge')).toHaveText('Scorer');
+  await expect(page.locator('#role-badge')).toBeVisible();
+  expect(await page.evaluate(() => isScorer())).toBe(true);
+  expect(await page.evaluate(() => isAdmin())).toBe(false);
+
+  // Only the assigned fixture gets the button.
+  const buttons = page.locator('[data-action="live-entry"]');
+  await expect(buttons.first()).toBeVisible();
+  expect(await buttons.count()).toBe(1);
+  // Admin-only controls stay in the DOM but are hidden for a scorer.
+  await expect(page.locator('#fixtures-container [data-action="edit-match"]').first()).toBeHidden();
+
+  await buttons.first().click();
+  const liveModal = page.locator('#modal-live');
+  await expect(liveModal).toBeVisible();
+  await expect(page.locator('#live-entry-player')).toBeVisible();
+  await expect(page.locator('#live-entry-type option')).toHaveCount(3);
+  await page.locator('#modal-live [data-action="close-modal"]').first().click();
+  await expect(liveModal).toBeHidden();
+
+  // The admin-only dialog is reachable and drives the two management RPCs.
+  await page.evaluate(() => {
+    currentUser = { id: 'e2e-admin', email: 'admin@example.com' };
+    currentRole = 'admin';
+    updateAuthUI();
+    dbListUsers = async () => ([
+      { id: 'e2e-admin', email: 'admin@example.com', role: 'admin' },
+      { id: 'e2e-scorer', email: 'scorer@example.com', role: 'scorer' }
+    ]);
+    dbSetUserRole = async (id, role) => { window.__roleCalls.push([id, role]); };
+    dbSetMatchOfficials = async (id, users) => { window.__officialCalls.push([id, users]); };
+    refreshData = async () => {};
+    openUsersModal();
+  });
+
+  const usersModal = page.locator('#modal-users');
+  await expect(usersModal).toBeVisible();
+  await expect(usersModal).toContainText('scorer@example.com');
+  await expect(page.locator('#users-body select[data-change="user-role"]')).toHaveCount(2);
+
+  await page.locator('#users-body [data-change="toggle-official"]').first().check();
+  await page.locator('#users-body [data-action="save-officials"]').click();
+  await expect.poll(() => page.evaluate(() => window.__officialCalls.length)).toBe(1);
+  expect(await page.evaluate(() => window.__officialCalls[0][0])).toBe(await page.evaluate(() => window.__liveMatchId));
+  expect(await page.evaluate(() => window.__officialCalls[0][1])).toEqual(['e2e-scorer']);
+
+  // The scorer is still listed, so the role select can demote them.
+  await page.locator('#users-body select[data-change="user-role"]').nth(1).selectOption('viewer');
+  expect(await page.evaluate(() => window.__roleCalls)).toEqual([['e2e-scorer', 'viewer']]);
+
+  expect(pageErrors, 'uncaught page errors').toEqual([]);
+});
+
 test('sign out everywhere confirms, uses the global scope and handles failure', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));

@@ -41,6 +41,11 @@ function isAdmin() {
   return currentRole === 'admin' && !passwordRecoveryMode;
 }
 
+/** Roadmap B: match-day entry only, never the admin write controls. */
+function isScorer() {
+  return currentRole === 'scorer' && !passwordRecoveryMode;
+}
+
 function isSignedIn() {
   return Boolean(currentUser);
 }
@@ -173,15 +178,27 @@ async function applySession(session) {
 
   updateAuthUI();
 
+  // Roadmap B: a restored scorer/admin session needs its match assignments
+  // before the fixtures can show the live-entry buttons.
+  if ((isAdmin() || isScorer()) && typeof refreshOfficials === 'function') {
+    try {
+      await refreshOfficials();
+    } catch (err) {
+      console.error('KickOff Division: could not load match officials.', err);
+    }
+  }
+
   // Load the two-factor requirement, assurance level and enrolled factors.
   if (typeof refreshMfaState === 'function') await refreshMfaState();
 }
 
 function updateAuthUI() {
   const admin = isAdmin();
+  const scorer = isScorer();
   const mfaLocked = typeof isMfaLocked === 'function' && isMfaLocked();
 
   document.body.classList.toggle('is-admin', admin);
+  document.body.classList.toggle('is-scorer', scorer);
   document.body.classList.toggle('is-authed', isSignedIn());
   document.body.classList.toggle('mfa-locked', mfaLocked);
 
@@ -196,12 +213,16 @@ function updateAuthUI() {
 
   if (badge) {
     badge.classList.toggle('hidden', !isSignedIn());
-    badge.textContent = admin ? t('adminBadge') : t('viewerBadge');
+    badge.textContent = admin
+      ? t('adminBadge')
+      : scorer ? t('scorerBadge') : t('viewerBadge');
     if (admin && mfaLocked) badge.textContent += ' · 2FA';
     badge.title = mfaLocked ? t('mfaStatusRequired') : '';
     badge.className = admin
       ? 'hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide bg-pitch-500/15 text-pitch-400 border border-pitch-500/30'
-      : 'hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide bg-slate-700/60 text-slate-300 border border-slate-600';
+      : scorer
+        ? 'hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide bg-amber-400/15 text-amber-300 border border-amber-400/30'
+        : 'hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide bg-slate-700/60 text-slate-300 border border-slate-600';
     badge.classList.toggle('hidden', !isSignedIn());
   }
 
@@ -361,7 +382,7 @@ async function handleLogin(e) {
       showDataError(err);
     }
 
-    if (!isAdmin()) {
+    if (!isAdmin() && !isScorer()) {
       setAuthError('login-error', 'authNotAdmin');
       return;
     }
