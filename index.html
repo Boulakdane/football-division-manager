@@ -551,6 +551,22 @@
           </div>
         </div>
 
+        <div class="flex items-center gap-3">
+          <div id="team-icon-preview" class="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0"></div>
+          <div class="min-w-0 flex-1">
+            <span class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblTeamIcon">Team icon (optional)</span>
+            <div class="flex items-center gap-2">
+              <button type="button" data-action="choose-team-icon" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-medium text-slate-200 inline-flex items-center gap-1.5 transition">
+                <i data-lucide="image-plus" class="w-3.5 h-3.5"></i>
+                <span data-i18n="btnChooseIcon">Choose image</span>
+              </button>
+              <button type="button" id="team-icon-remove" data-action="clear-team-icon" class="hidden px-2.5 py-1.5 text-slate-400 hover:text-rose-300 text-xs font-medium transition" data-i18n="btnRemoveIcon">Remove</button>
+              <input type="file" id="team-icon" accept="image/png,image/jpeg,image/webp" class="hidden" data-change="team-icon">
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1" data-i18n="hintTeamIcon">PNG, JPEG or WebP. The image is resized to 128px and stored with the league data.</p>
+          </div>
+        </div>
+
         <div id="team-division-wrap" class="hidden">
           <label for="team-division" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblDivision">Division</label>
           <select id="team-division" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-pitch-500"></select>

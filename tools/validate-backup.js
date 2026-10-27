@@ -96,6 +96,16 @@ function checkNameAr(row, label) {
   if (!value || value.length > 100) errors.push(`${label}: invalid nameAr "${row.nameAr}"`);
 }
 
+/** Optional team crest: a small PNG/JPEG/WebP data URL, never an external URL. */
+function checkIcon(row, label) {
+  if (row.icon === undefined || row.icon === null || row.icon === '') return;
+  if (typeof row.icon !== 'string' ||
+      row.icon.length > 100000 ||
+      !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(row.icon)) {
+    errors.push(`${label}: invalid icon`);
+  }
+}
+
 /** Optional licence number: absent, or 1..50 characters (unique per backup). */
 function checkLicense(row, label, seen) {
   if (row.licenseId === undefined || row.licenseId === null || row.licenseId === '') return;
@@ -156,7 +166,10 @@ for (const team of teams) {
   if (!team || typeof team.name !== 'string' || !team.name.trim()) {
     errors.push(`teams: ${team && team.id} has an empty name`);
   }
-  if (team) checkNameAr(team, `teams: ${team.id}`);
+  if (team) {
+    checkNameAr(team, `teams: ${team.id}`);
+    checkIcon(team, `teams: ${team.id}`);
+  }
 }
 const teamDivisionById = new Map(
   teams.filter(Boolean).map(team => [team.id, divisionIdOf(team, `teams: ${team.id}`)])

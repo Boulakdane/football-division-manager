@@ -256,6 +256,9 @@ create table if not exists public.teams (
   id text primary key,
   name text not null,
   name_ar text,
+  -- Task I: a small crest, re-encoded by the browser and stored inline as a
+  -- data URL so no external host is needed (the CSP stays img-src 'self' data:).
+  icon text,
   code text not null default 'TBD',
   color text not null default '#16a34a',
   division_id text not null default 'd1' references public.divisions (id) on delete restrict,
@@ -264,6 +267,12 @@ create table if not exists public.teams (
   constraint kickoff_teams_id_not_blank check (length(btrim(id)) between 1 and 100),
   constraint kickoff_teams_name_length check (length(btrim(name)) between 1 and 100),
   constraint kickoff_teams_name_ar_length check (name_ar is null or length(btrim(name_ar)) between 1 and 100),
+  constraint kickoff_teams_icon_data check (
+    icon is null or (
+      length(icon) <= 100000
+      and icon ~ '^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$'
+    )
+  ),
   constraint kickoff_teams_code_length check (length(btrim(code)) between 1 and 8),
   constraint kickoff_teams_color_hex check (color ~ '^#[0-9A-Fa-f]{6}$')
 );
@@ -365,6 +374,10 @@ end $$;
 alter table public.teams add column if not exists name_ar text;
 alter table public.players add column if not exists name_ar text;
 
+-- Team crest (task I). Optional, stored inline as a data URL: no bucket, no
+-- external origin, and a JSON/CSV backup carries the image with the league.
+alter table public.teams add column if not exists icon text;
+
 do $$
 begin
   if not exists (
@@ -385,6 +398,23 @@ begin
     alter table public.players
       add constraint kickoff_players_name_ar_length
       check (name_ar is null or length(btrim(name_ar)) between 1 and 100);
+  end if;
+
+  -- Task I: only the image types the browser produces, and only as a data URL,
+  -- so a backup cannot hotlink an external host or smuggle a script URI.
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'kickoff_teams_icon_data'
+      and conrelid = 'public.teams'::regclass
+  ) then
+    alter table public.teams
+      add constraint kickoff_teams_icon_data
+      check (
+        icon is null or (
+          length(icon) <= 100000
+          and icon ~ '^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$'
+        )
+      );
   end if;
 end $$;
 
@@ -2091,6 +2121,7 @@ begin
         'id', t.id,
         'name', t.name,
         'nameAr', t.name_ar,
+        'icon', t.icon,
         'code', t.code,
         'deletedAt', t.deleted_at,
         'playerCount', (select count(*) from public.players p where p.team_id = t.id),
@@ -2584,10 +2615,11 @@ begin
     is_active boolean
   );
 
-  insert into public.teams (id, name, name_ar, code, color, division_id)
+  insert into public.teams (id, name, name_ar, icon, code, color, division_id)
   select t.id,
          t.name,
          nullif(btrim(coalesce(t.name_ar, '')), ''),
+         nullif(btrim(coalesce(t.icon, '')), ''),
          coalesce(t.code, 'TBD'),
          coalesce(t.color, '#16a34a'),
          coalesce(t.division_id, 'd1')
@@ -2595,6 +2627,7 @@ begin
     id text,
     name text,
     name_ar text,
+    icon text,
     code text,
     color text,
     division_id text

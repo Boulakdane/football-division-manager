@@ -19,7 +19,7 @@ Lanes: `DB` database/security · `FE` frontend · `DOC` docs/process (see COORDI
 | 6 | D | Tamper-evident audit log and off-site encrypted backup | DB | Open | — | — | — | Plan 22.5 |
 | 7 | F | Fixture generator (round-robin) | FE (+DB RPC) | Open | — | — | E helpful | Plan 22.7 |
 | 8 | G | Calendar feeds and push notifications | FE | Open | — | — | — | Plan 22.8 |
-| 9 | I | Team crests and photos with safe upload | DB then FE | Open | — | — | J first for photos | Plan 22.10 |
+| 9 | I | Team crests and photos with safe upload | DB then FE | In review | opencode | opencode/I-team-icons + PR (stacked on L) | L (in review) | Plan 22.10, crest half only. Each club can carry an optional crest (`teams.icon`): the browser downscales it to 128px, strips EXIF and stores a PNG/JPEG/WebP **data URL** inline, so the strict CSP (`img-src 'self' data:`) is unchanged, no bucket or new origin is needed and a JSON/CSV backup carries the image. Check constraint refuses SVG, http(s) and script URIs. Player photos stay deferred to J (personal data). `supabase/team-icons-migration.sql` must be applied after the L migration, to development first |
 | 10 | J | Privacy and retention policy | DOC | Open | — | — | Maintainer input | Plan 22.11. Needs answers to the open questions |
 | — | X3 | Import a squad from Excel/CSV into a team (preview, validation, one atomic add) | DB then FE | Done | claude | merged in #10 | — | Shipped: EN/FR/AR template, row-by-row preview, admin-only atomic `add_players()`. Migration applied to development and production; import live-tested in development |
 | — | X1 | Pin GitHub Actions to commit SHAs | DB | Open | — | — | — | Security audit item; Dependabot keeps them current |

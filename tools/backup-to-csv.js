@@ -88,6 +88,8 @@ const teams = data.teams.map(team => {
     id: team.id,
     name: team.name,
     nameAr: team.nameAr || '',
+    // Task I: the crest travels as a data URL; blank when the club has none.
+    icon: typeof team.icon === 'string' ? team.icon : '',
     code: team.code || 'TBD',
     color: team.color || '#16a34a',
     divisionId: team.divisionId || 'd1'
@@ -209,7 +211,7 @@ const files = [
   },
   {
     name: 'teams.csv',
-    headers: ['id', 'name', 'nameAr', 'code', 'color', 'divisionId'],
+    headers: ['id', 'name', 'nameAr', 'icon', 'code', 'color', 'divisionId'],
     rows: teams
   },
   {

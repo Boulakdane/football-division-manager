@@ -130,6 +130,15 @@ async function run() {
       () => q("insert into public.teams (id, name, code, color) values ('tbadname', '   ', 'BAD', '#123456')"),
       /kickoff_teams_name_length/
     );
+    // Task I: a crest is only ever an inline PNG/JPEG/WebP data URL.
+    await expectError(
+      () => q("insert into public.teams (id, name, code, color, icon) values ('tbadicon', 'Hotlink FC', 'HOT', '#123456', 'https://example.com/crest.png')"),
+      /kickoff_teams_icon_data/
+    );
+    await expectError(
+      () => q("insert into public.teams (id, name, code, color, icon) values ('tbadsvg', 'Vector FC', 'VEC', '#123456', 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=')"),
+      /kickoff_teams_icon_data/
+    );
     await expectError(
       () => q("insert into public.players (id, team_id, name, pos, num, goals) values ('pbadgoals', 't1', 'Bad Goals', 'FWD', 10, -1)"),
       /kickoff_players_totals_range/

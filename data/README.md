@@ -47,6 +47,7 @@ used to link rows together.
 | `id` | yes | e.g. `t1` |
 | `name` | yes | Club name (Latin script) |
 | `nameAr` | no | Arabic name, shown alongside the Latin one |
+| `icon` | no | Club crest as a PNG/JPEG/WebP data URL (max 100000 characters). The app produces this itself; leave blank if you do not have one. Must be quoted in the CSV |
 | `code` | yes | Short code, e.g. `SFC` |
 | `color` | yes | Six-digit hex, e.g. `#3b82f6` |
 
