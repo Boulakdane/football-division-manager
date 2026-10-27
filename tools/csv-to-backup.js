@@ -187,6 +187,16 @@ function optionalBoolean(record, field, fileName, fallback) {
   fail(`${fileName}:${record.__line} - "${field}" must be true or false.`);
 }
 
+/** Optional division column: older CSVs default to Division 1. */
+function checkDivision(record, fileName, fallback) {
+  const raw = record.divisionId;
+  if (raw === undefined || raw === '') return fallback;
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(raw)) {
+    fail(`${fileName}:${record.__line} - "divisionId" must be a simple id such as d1.`);
+  }
+  return raw;
+}
+
 // ---------------------------------------------------------------------------
 
 const seasonRows = readTable(
@@ -240,8 +250,15 @@ const teams = teamRows.map(record => {
   if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
     fail(`teams.csv:${record.__line} — color must be a hex value such as #3b82f6.`);
   }
-  return { id, name, code, color: color.toLowerCase() };
+  return {
+    id,
+    name,
+    code,
+    color: color.toLowerCase(),
+    divisionId: checkDivision(record, 'teams.csv', 'd1')
+  };
 });
+const teamById = new Map(teams.map(team => [team.id, team]));
 
 const playerIds = new Set();
 const players = playerRows.map(record => {
@@ -289,6 +306,17 @@ const matches = matchRows.map(record => {
   if (homeId === awayId) {
     fail(`matches.csv:${record.__line} — homeId and awayId must be different.`);
   }
+  // A fixture keeps the division it was played in. Older CSVs omit it; those
+  // need the two clubs to still be registered together.
+  let divisionId = checkDivision(record, 'matches.csv', '');
+  if (!divisionId) {
+    const homeDivision = teamById.get(homeId).divisionId;
+    const awayDivision = teamById.get(awayId).divisionId;
+    if (homeDivision !== awayDivision) {
+      fail(`matches.csv:${record.__line} — divisionId is empty and the two clubs are now in different divisions (${homeDivision} vs ${awayDivision}).`);
+    }
+    divisionId = homeDivision;
+  }
   const status = required(record, 'status', 'matches.csv').toUpperCase();
   if (!['SCHEDULED', 'LIVE', 'FINISHED'].includes(status)) {
     fail(`matches.csv:${record.__line} — status must be SCHEDULED, LIVE or FINISHED.`);
@@ -296,6 +324,7 @@ const matches = matchRows.map(record => {
   return {
     id,
     seasonId,
+    divisionId,
     round: integer(record, 'round', 'matches.csv', 1),
     homeId,
     awayId,

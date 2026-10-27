@@ -88,9 +88,11 @@ const teams = data.teams.map(team => {
     id: team.id,
     name: team.name,
     code: team.code || 'TBD',
-    color: team.color || '#16a34a'
+    color: team.color || '#16a34a',
+    divisionId: team.divisionId || 'd1'
   };
 });
+const teamById = new Map(teams.map(team => [team.id, team]));
 
 const playerIds = new Set();
 const players = sourcePlayers.map(player => {
@@ -122,10 +124,24 @@ const matches = data.matches.map(match => {
   const seasonId = hadSeasons && match.seasonId ? match.seasonId : activeSeason.id;
   if (!seasonIds.has(seasonId)) fail(`Match "${match.id}" refers to missing season "${seasonId}".`);
 
+  // A fixture keeps the division it was played in, so it may differ from its
+  // clubs' current division after a between-season move. Only when the backup
+  // predates divisions do we need to infer it, and then both clubs must agree.
+  let divisionId = match.divisionId;
+  if (!divisionId) {
+    const homeDivision = teamById.get(match.homeId).divisionId;
+    const awayDivision = teamById.get(match.awayId).divisionId;
+    if (homeDivision !== awayDivision) {
+      fail(`Match "${match.id}" has no divisionId and its clubs are now in different divisions (${homeDivision} vs ${awayDivision}).`);
+    }
+    divisionId = homeDivision;
+  }
+
   matchIds.add(match.id);
   return {
     id: match.id,
     seasonId,
+    divisionId,
     round: match.round == null || match.round === '' ? 1 : match.round,
     homeId: match.homeId,
     awayId: match.awayId,
@@ -189,7 +205,7 @@ const files = [
   },
   {
     name: 'teams.csv',
-    headers: ['id', 'name', 'code', 'color'],
+    headers: ['id', 'name', 'code', 'color', 'divisionId'],
     rows: teams
   },
   {
@@ -199,7 +215,7 @@ const files = [
   },
   {
     name: 'matches.csv',
-    headers: ['id', 'seasonId', 'round', 'homeId', 'awayId', 'homeScore', 'awayScore', 'status', 'datetime', 'venue', 'scorersText', 'eventsCounted'],
+    headers: ['id', 'seasonId', 'divisionId', 'round', 'homeId', 'awayId', 'homeScore', 'awayScore', 'status', 'datetime', 'venue', 'scorersText', 'eventsCounted'],
     rows: matches
   },
   {

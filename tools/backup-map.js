@@ -22,7 +22,13 @@ function seasonFromRow(row) {
 }
 
 function teamFromRow(row) {
-  return { id: row.id, name: row.name, code: row.code, color: row.color };
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    color: row.color,
+    divisionId: row.division_id || 'd1'
+  };
 }
 
 function playerFromRow(row) {
@@ -43,6 +49,7 @@ function matchFromRow(row) {
   return {
     id: row.id,
     seasonId: row.season_id,
+    divisionId: row.division_id || 'd1',
     round: row.round,
     homeId: row.home_id,
     awayId: row.away_id,
@@ -71,6 +78,9 @@ function eventFromRow(row) {
 function toDbPayload(data) {
   const seasons = Array.isArray(data.seasons) ? data.seasons : [];
   const fallbackSeason = seasons.find(season => season.isActive) || seasons[0];
+  const teamDivisions = new Map(
+    (Array.isArray(data.teams) ? data.teams : []).map(team => [team.id, team.divisionId || 'd1'])
+  );
 
   return {
     seasons: seasons.map(season => ({
@@ -84,7 +94,8 @@ function toDbPayload(data) {
       id: team.id,
       name: team.name,
       code: team.code || 'TBD',
-      color: team.color || '#16a34a'
+      color: team.color || '#16a34a',
+      division_id: team.divisionId || 'd1'
     })),
     players: (Array.isArray(data.players) ? data.players : []).map(player => ({
       id: player.id,
@@ -100,6 +111,7 @@ function toDbPayload(data) {
     matches: (Array.isArray(data.matches) ? data.matches : []).map(match => ({
       id: match.id,
       season_id: match.seasonId || (fallbackSeason && fallbackSeason.id),
+      division_id: match.divisionId || teamDivisions.get(match.homeId) || 'd1',
       round: match.round == null ? 1 : match.round,
       home_id: match.homeId,
       away_id: match.awayId,

@@ -68,7 +68,22 @@ function mapSeason(row) {
 }
 
 function mapTeam(row) {
-  return { id: row.id, name: row.name, code: row.code, color: row.color };
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    color: row.color,
+    divisionId: row.division_id || 'd1'
+  };
+}
+
+/** Roadmap K: a fixed competition tier. */
+function mapDivision(row) {
+  return {
+    id: row.id,
+    name: row.name || row.id,
+    sortOrder: numberOrZero(row.sort_order)
+  };
 }
 
 function mapPlayer(row) {
@@ -89,6 +104,7 @@ function mapMatch(row) {
   return {
     id: row.id,
     seasonId: row.season_id || null,
+    divisionId: row.division_id || 'd1',
     round: row.round,
     homeId: row.home_id,
     awayId: row.away_id,
@@ -161,7 +177,10 @@ function seasonToRow(season) {
 }
 
 function teamToRow(team) {
-  return { id: team.id, name: team.name, code: team.code, color: team.color };
+  const row = { id: team.id, name: team.name, code: team.code, color: team.color };
+  // Omitted until the divisions migration has run in the project.
+  if (team.divisionId && appState && appState.divisionsReady) row.division_id = team.divisionId;
+  return row;
 }
 
 /** Player columns that exist in every schema version. */
@@ -206,6 +225,7 @@ function matchToRow(match) {
   };
   // Omitted while the database has not been migrated to seasons/events yet.
   if (match.seasonId) row.season_id = match.seasonId;
+  if (match.divisionId && appState && appState.divisionsReady) row.division_id = match.divisionId;
   if (appState && appState.eventsReady) row.events_counted = match.eventsCounted !== false;
   return row;
 }
@@ -301,8 +321,10 @@ async function refreshData() {
     appState = normalizeState(DEFAULT_DATA);
     appState.seasonsReady = true;
     appState.eventsReady = true;
+    appState.divisionsReady = true;
     appState.activeSeasonId = appState.seasons.find(season => season.isActive).id;
     appState.viewSeasonId = appState.activeSeasonId;
+    appState.viewDivisionId = appState.divisions[0].id;
     return;
   }
 
@@ -360,6 +382,28 @@ async function refreshData() {
     officialsReady = true;
   }
 
+  // Divisions are optional until the divisions migration is run. The column on
+  // teams is the marker: the same migration adds both, and an anonymous query
+  // for a missing table would log a 404 on every load of an old project.
+  let divisions = DEFAULT_DIVISIONS.map(division => ({ ...division }));
+  let divisionsReady = false;
+  const teamRows = teamsResult.data || [];
+  const hasDivisionColumn = teamRows.some(row =>
+    Object.prototype.hasOwnProperty.call(row, 'division_id')
+  );
+  if (hasDivisionColumn || teamRows.length === 0) {
+    const divisionsResult = await selectAllRows('divisions', 'sort_order', true);
+    if (divisionsResult.error) {
+      if (!isMissingTable(divisionsResult.error)) throw divisionsResult.error;
+    } else {
+      const rows = (divisionsResult.data || []).map(mapDivision);
+      if (rows.length) {
+        divisions = rows;
+        divisionsReady = true;
+      }
+    }
+  }
+
   // The integrity migration adds players.is_active. Detect it from the
   // selected rows so the frontend can stay compatible with older projects.
   const playerRows = playersResult.data || [];
@@ -402,7 +446,13 @@ async function refreshData() {
     ? previousView
     : defaultViewId;
 
+  const previousDivision = appState ? appState.viewDivisionId : null;
+  const viewDivisionId = previousDivision && divisions.some(division => division.id === previousDivision)
+    ? previousDivision
+    : (divisions[0] ? divisions[0].id : 'd1');
+
   appState = {
+    divisions,
     teams: (teamsResult.data || []).map(mapTeam),
     players,
     matches: (matchesResult.data || []).map(mapMatch),
@@ -410,10 +460,12 @@ async function refreshData() {
     matchEvents,
     matchOfficials,
     seasonsReady,
+    divisionsReady,
     eventsReady,
     officialsReady,
     activeSeasonId,
-    viewSeasonId
+    viewSeasonId,
+    viewDivisionId
   };
 }
 
@@ -450,6 +502,16 @@ async function refreshOfficials() {
 async function dbSaveTeam(team) {
   assertBackend();
   const { error } = await db.from('teams').upsert(teamToRow(team));
+  if (error) throw error;
+}
+
+/** Roadmap K: move a club only between seasons (the RPC enforces the lock). */
+async function dbSetTeamDivision(teamId, divisionId) {
+  assertBackend();
+  const { error } = await db.rpc('set_team_division', {
+    p_team_id: teamId,
+    p_division_id: divisionId
+  });
   if (error) throw error;
 }
 

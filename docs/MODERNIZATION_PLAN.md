@@ -673,3 +673,34 @@ This closes the open acceptance items in `SECURITY_AUDIT.md` SEC-03 (dry-run sum
 2. Are any leagues youth or school leagues? If yes, J and the photo policy in I come before any photo feature.
 3. Is a second competition expected within a year? If not, skip section 15 and spend that time on A, F and G.
 4. Is there a budget for a custom domain and Cloudflare in front of GitHub Pages? Real response headers (`frame-ancestors`, `Permissions-Policy`) remove the last CSP gaps listed in `SECURITY_AUDIT.md` SEC-02 and SEC-08.
+
+### 22.14 K - Two divisions (2026-10-27, requested by the maintainer)
+
+The league now runs Division 1 and Division 2 in the same season. The design is deliberately the
+smallest one that keeps history honest:
+
+- **One shared season.** A season contains both divisions. Activating a season activates both, and
+  the existing one-active-season index is unchanged.
+- **Seeded divisions.** `public.divisions` is seeded with `d1` and `d2` (`sort_order` 1 and 2).
+  The switcher is a fixed two-option control and labels live in EN/FR/AR (`division_d1`,
+  `division_d2`). A third division later is a row insert plus two i18n keys, not a CRUD feature.
+- **One division per team, movable between seasons.** `teams.division_id` stores the current
+  division. `set_team_division()` (admin-only) moves a club only when it has no fixture in the
+  active season; a trigger enforces the same rule for direct REST updates.
+- **Fixtures remember their division.** `matches.division_id` is derived from the home team when
+  the fixture is created and cannot change afterwards. `save_match()` rejects teams from
+  different divisions and a trigger blocks inconsistent direct writes. A move therefore leaves
+  every played fixture in the division it was played in, and `v_standings` groups by the match's
+  division. An archived table lists the clubs that actually played in that division and season;
+  the active table lists the clubs currently registered there.
+- **Scoping.** Standings, fixtures, teams, the top-scorer card and the fixture/team counts are
+  filtered to the selected division. Player totals remain career totals (`v_player_stats` now also
+  exposes `division_id` through the player's team, so the leaderboard can be scoped in the app).
+- **Backups.** JSON backups carry `divisionId` on teams and matches; older backups and CSV
+  imports default to `d1`. `replace_all_data()` never deletes the seeded division rows, validates
+  every imported division, and restores each fixture in the division it was played in — even when
+  its clubs have since moved apart — by suspending the creation guard inside its own transaction.
+  `backup-to-csv` / `csv-to-backup` / `validate-backup` accept the same historic split.
+- **Out of scope.** Automatic promotion/relegation, per-division seasons, division CRUD,
+  cross-division cups and a per-division player leaderboard stored in SQL. The `teams.division_id`
+  column is enough to add those later without another destructive migration.

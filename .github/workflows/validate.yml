@@ -56,6 +56,9 @@ jobs:
       - name: Test the scorer role and live match entry (roadmap B)
         run: npm run test:scorer-role
 
+      - name: Test the two divisions (roadmap K)
+        run: npm run test:divisions
+
       - name: Test squad import parser (xlsx/csv)
         run: npm run test:squad-import
 
