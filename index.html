@@ -536,6 +536,10 @@
           <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblTeamName">Club / Team Name</label>
           <input type="text" id="team-name" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-pitch-500">
         </div>
+        <div>
+          <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblTeamNameAr">Arabic Name (optional)</label>
+          <input type="text" id="team-name-ar" maxlength="100" dir="rtl" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-pitch-500">
+        </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblTeamCode">Short Code (3 Letters)</label>
@@ -618,6 +622,21 @@
         <div>
           <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblPlayerName">Full Name</label>
           <input type="text" id="player-name" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-pitch-500">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblPlayerNameAr">Arabic Name (optional)</label>
+            <input type="text" id="player-name-ar" maxlength="100" dir="rtl" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-pitch-500">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblLicense">Licence No. (optional)</label>
+            <input type="text" id="player-license" maxlength="50" autocomplete="off" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-pitch-500">
+          </div>
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblBirthDate">Date of Birth (optional)</label>
+          <input type="date" id="player-birth-date" min="1900-01-01" max="2100-12-31" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-pitch-500">
+          <p class="text-[10px] text-slate-500 mt-1" data-i18n="hintAdminOnlyFields">The licence number and date of birth are visible to admins only, and appear in backups and exports.</p>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>

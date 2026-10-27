@@ -338,6 +338,13 @@
     name: ['name', 'fullname', 'playername', 'player', 'nom', 'nomcomplet', 'nomdujoueur', 'joueur',
       'nometprenom', 'nomprenom', 'prenomnom', 'nometprenoms', 'الاسم', 'اسم',
       'اسماللاعب', 'اللاعب'],
+    nameAr: ['namear', 'arabicname', 'nameinarabic', 'arabic', 'nomarabe', 'nomarabecomplet',
+      'الاسمالعربي', 'اسمعربي', 'الاسمبالعربية', 'الاسمالعربية'],
+    license: ['license', 'licenseid', 'licence', 'licenceid', 'licensenumber', 'licencenumber',
+      'numerodelicence', 'nolicence', 'nrdelicence', 'رخصة', 'رقمالرخصة', 'الرخصة',
+      'رقمالترخيص', 'ترخيص'],
+    birthDate: ['birthdate', 'dateofbirth', 'dob', 'birthday', 'datenaissance', 'datedenaissance',
+      'ddn', 'تاريخالميلاد', 'الميلاد', 'تاريخميلاد'],
     pos: ['pos', 'position', 'poste', 'role', 'المركز', 'مركز'],
     num: ['num', 'number', 'no', 'nr', 'n', 'shirt', 'shirtnumber', 'shirtno', 'jersey', 'jerseynumber',
       'numero', 'nmaillot', 'ndemaillot', 'nodemaillot', 'nonumero', 'numeromaillot', 'numerodemaillot', 'dossard', 'maillot', 'الرقم',
@@ -405,6 +412,30 @@
   }
 
   /**
+   * ISO date from "YYYY-MM-DD", "D/M/YYYY" or "D-M-YYYY" — or null. The
+   * database stores dates only, so the time is irrelevant.
+   */
+  function parseBirthDate(value) {
+    const text = String(value == null ? '' : value).trim();
+    if (!text) return '';
+    let year, month, day;
+    let match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+    if (match) {
+      year = Number(match[1]); month = Number(match[2]); day = Number(match[3]);
+    } else {
+      match = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/.exec(text);
+      if (!match) return null;
+      day = Number(match[1]); month = Number(match[2]); year = Number(match[3]);
+    }
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+      return null;
+    }
+    const iso = date.toISOString().slice(0, 10);
+    return iso < '1900-01-01' || iso > new Date().toISOString().slice(0, 10) ? null : iso;
+  }
+
+  /**
    * Check the rows of one sheet against the team's current squad.
    * existing: [{ name, num, isActive }] of the team (archived players are ignored).
    * Returns { rows, counts, toAdd, canImport, headerFound }.
@@ -421,6 +452,7 @@
     squad.forEach(function (player) { if (player.num != null) takenNumbers.set(Number(player.num), player.name); });
 
     const seenInFile = new Map();
+    const seenLicences = new Map();
     const out = [];
     const cell = function (row, field) {
       const index = table.columns[field];
@@ -434,10 +466,29 @@
       const issues = [];
       const add = function (level, code, params) { issues.push({ level: level, code: code, params: params || {} }); };
       const name = cleanName(cell(row, 'name'));
-      const entry = { line: r + 1, name: name, pos: 'MID', num: 10, goals: 0, yellow: 0, red: 0, status: 'ok', issues: issues };
+      const nameAr = cleanName(cell(row, 'nameAr'));
+      const licenseId = cleanName(cell(row, 'license'));
+      const birthText = cell(row, 'birthDate');
+      const birthDate = parseBirthDate(birthText);
+      const entry = {
+        line: r + 1,
+        name: name,
+        nameAr: nameAr || null,
+        licenseId: licenseId || null,
+        birthDate: birthDate || null,
+        pos: 'MID', num: 10, goals: 0, yellow: 0, red: 0, status: 'ok', issues: issues
+      };
 
       if (!name) add('error', 'nameMissing');
       else if (name.length > 100) add('error', 'nameTooLong');
+      if (nameAr.length > 100) add('error', 'nameArTooLong');
+      if (licenseId.length > 50) add('error', 'licenseTooLong');
+      else if (licenseId) {
+        const licenseKey = licenseId.toUpperCase();
+        if (seenLicences.has(licenseKey)) add('error', 'licenseInFile', { line: seenLicences.get(licenseKey) });
+        else seenLicences.set(licenseKey, r + 1);
+      }
+      if (birthDate === null) add('error', 'birthDateInvalid', { value: birthText });
 
       const posText = cell(row, 'pos');
       if (!posText) {
@@ -504,7 +555,17 @@
       rows: out,
       counts: counts,
       toAdd: finalAdd.map(function (e) {
-        return { name: e.name, pos: e.pos, num: e.num, goals: e.goals, yellow: e.yellow, red: e.red };
+        return {
+          name: e.name,
+          nameAr: e.nameAr,
+          pos: e.pos,
+          num: e.num,
+          goals: e.goals,
+          yellow: e.yellow,
+          red: e.red,
+          licenseId: e.licenseId,
+          birthDate: e.birthDate
+        };
       }),
       canImport: counts.error === 0 && finalAdd.length > 0
     };
@@ -528,9 +589,9 @@
    * The BOM keeps accents and Arabic readable when Excel opens the file.
    */
   const TEMPLATE_HEADERS = {
-    en: ['Name', 'Position', 'Number', 'Goals', 'Yellow', 'Red'],
-    fr: ['Nom', 'Poste', 'Numéro', 'Buts', 'Jaunes', 'Rouges'],
-    ar: ['الاسم', 'المركز', 'الرقم', 'الأهداف', 'بطاقات صفراء', 'بطاقات حمراء']
+    en: ['Name', 'Arabic Name', 'Position', 'Number', 'Licence', 'Birth date', 'Goals', 'Yellow', 'Red'],
+    fr: ['Nom', 'Nom arabe', 'Poste', 'Numéro', 'Licence', 'Date de naissance', 'Buts', 'Jaunes', 'Rouges'],
+    ar: ['الاسم', 'الاسم العربي', 'المركز', 'الرقم', 'رخصة', 'تاريخ الميلاد', 'الأهداف', 'بطاقات صفراء', 'بطاقات حمراء']
   };
 
   function template(lang) {

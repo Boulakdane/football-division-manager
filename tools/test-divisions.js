@@ -439,6 +439,35 @@ async function run() {
     // ------------------------------------------------------------
     // 8. The migration is re-runnable
     // ------------------------------------------------------------
+    // divisions-migration.sql was written before task L, when v_player_stats had
+    // no name_ar column. Restore that shape first so this re-run reflects the
+    // real order (K, then L); the task L migration recreates the view afterwards.
+    await exec('drop view if exists public.v_player_stats');
+    await exec(`
+      create view public.v_player_stats
+      with (security_invoker = true) as
+      select p.id as player_id,
+             p.team_id,
+             p.name,
+             p.pos,
+             p.num,
+             p.is_active,
+             p.legacy_goals,
+             p.legacy_yellow,
+             p.legacy_red,
+             coalesce(e.goals, 0) as event_goals,
+             coalesce(e.yellow, 0) as event_yellow,
+             coalesce(e.red, 0) as event_red,
+             p.legacy_goals + coalesce(e.goals, 0) as goals,
+             p.legacy_yellow + coalesce(e.yellow, 0) as yellow,
+             p.legacy_red + coalesce(e.red, 0) as red,
+             t.division_id
+      from public.players p
+      join public.teams t
+        on t.id = p.team_id
+       and t.deleted_at is null
+      left join public.v_player_event_totals e on e.player_id = p.id;
+    `);
     const migration = fs.readFileSync(path.join(ROOT, 'supabase/divisions-migration.sql'), 'utf8');
     await exec(migration);
     await exec(migration);

@@ -26,6 +26,12 @@ let db = null;
 /** True once the players table has the is_active column (integrity migration). */
 let PLAYERS_ARCHIVE_READY = false;
 
+/** True once teams/players have the optional name_ar column (task L). */
+let NAMES_AR_READY = false;
+
+/** True once public.player_profiles exists and the signed-in user may read it. */
+let PROFILES_READY = false;
+
 /** Totals are always non-negative whole numbers, whatever the project answers. */
 function numberOrZero(value) {
   const n = Number(value);
@@ -71,6 +77,7 @@ function mapTeam(row) {
   return {
     id: row.id,
     name: row.name,
+    nameAr: row.name_ar || null,
     code: row.code,
     color: row.color,
     divisionId: row.division_id || 'd1'
@@ -91,12 +98,16 @@ function mapPlayer(row) {
     id: row.id,
     teamId: row.team_id,
     name: row.name,
+    nameAr: row.name_ar || null,
     pos: row.pos,
     num: row.num,
     goals: numberOrZero(row.goals),
     yellow: numberOrZero(row.yellow),
     red: numberOrZero(row.red),
-    isActive: row.is_active !== false
+    isActive: row.is_active !== false,
+    // Filled from the admin-only player_profiles read; never part of a public row.
+    licenseId: null,
+    birthDate: null
   };
 }
 
@@ -176,15 +187,18 @@ function seasonToRow(season) {
   };
 }
 
-function teamToRow(team) {
+function teamToRow(team, includeNameAr = NAMES_AR_READY) {
   const row = { id: team.id, name: team.name, code: team.code, color: team.color };
   // Omitted until the divisions migration has run in the project.
   if (team.divisionId && appState && appState.divisionsReady) row.division_id = team.divisionId;
+  // Omitted until the task L migration has run: PostgREST rejects an unknown
+  // column on a direct write. The value is sent as null so an admin can clear it.
+  if (includeNameAr) row.name_ar = team.nameAr || null;
   return row;
 }
 
 /** Player columns that exist in every schema version. */
-function playerIdentityToRow(player, includeActive = true) {
+function playerIdentityToRow(player, includeActive = true, includeNameAr = NAMES_AR_READY) {
   const row = {
     id: player.id,
     team_id: player.teamId,
@@ -193,6 +207,7 @@ function playerIdentityToRow(player, includeActive = true) {
     num: player.num
   };
   if (includeActive) row.is_active = player.isActive !== false;
+  if (includeNameAr) row.name_ar = player.nameAr || null;
   return row;
 }
 
@@ -203,10 +218,14 @@ function playerIdentityToRow(player, includeActive = true) {
  */
 function playerImportRow(player, includeActive = true) {
   return {
-    ...playerIdentityToRow(player, includeActive),
+    ...playerIdentityToRow(player, includeActive, true),
     goals: numberOrZero(player.goals),
     yellow: numberOrZero(player.yellow),
-    red: numberOrZero(player.red)
+    red: numberOrZero(player.red),
+    // replace_all_data() puts these in public.player_profiles. An older
+    // function ignores the extra keys, so old projects still import cleanly.
+    license_id: player.licenseId || null,
+    birth_date: player.birthDate || null
   };
 }
 
@@ -318,10 +337,13 @@ async function selectAllRows(table, orderColumn, ascending, tiebreaker = 'id') {
 async function refreshData() {
   if (!BACKEND_READY) {
     PLAYERS_ARCHIVE_READY = true;
+    NAMES_AR_READY = true;
+    PROFILES_READY = false;
     appState = normalizeState(DEFAULT_DATA);
     appState.seasonsReady = true;
     appState.eventsReady = true;
     appState.divisionsReady = true;
+    appState.profilesReady = false;
     appState.activeSeasonId = appState.seasons.find(season => season.isActive).id;
     appState.viewSeasonId = appState.activeSeasonId;
     appState.viewDivisionId = appState.divisions[0].id;
@@ -334,7 +356,11 @@ async function refreshData() {
   const wantsOfficials = (typeof isAdmin === 'function' && isAdmin()) ||
     (typeof isScorer === 'function' && isScorer());
 
-  const [teamsResult, playersResult, statsResult, matchesResult, seasonsResult, eventsResult, officialsResult] = await Promise.all([
+  // Licence numbers and birth dates are admin-only. Querying the table for
+  // anyone else would log a 401 on every load, so only admins ask for it.
+  const wantsProfiles = typeof isAdmin === 'function' && isAdmin();
+
+  const [teamsResult, playersResult, statsResult, matchesResult, seasonsResult, eventsResult, officialsResult, profilesResult] = await Promise.all([
     selectAllRows('teams', 'name', true),
     selectAllRows('players', 'num', true),
     selectAllRows('v_player_stats', 'player_id', true, null),
@@ -343,6 +369,9 @@ async function refreshData() {
     selectAllRows('match_events', 'minute', true),
     wantsOfficials
       ? selectAllRows('match_officials', 'match_id', true, 'user_id')
+      : Promise.resolve({ data: [], error: null }),
+    wantsProfiles
+      ? selectAllRows('player_profiles', 'player_id', true, null)
       : Promise.resolve({ data: [], error: null })
   ]);
 
@@ -416,6 +445,29 @@ async function refreshData() {
     PLAYERS_ARCHIVE_READY = !probe.error;
   }
 
+  // Task L: teams and players gained an optional name_ar column. Only send it
+  // on direct writes once a row proves the migration has run.
+  NAMES_AR_READY = teamRows.some(row => Object.prototype.hasOwnProperty.call(row, 'name_ar')) ||
+    playerRows.some(row => Object.prototype.hasOwnProperty.call(row, 'name_ar'));
+  if (!NAMES_AR_READY && teamRows.length === 0 && playerRows.length === 0) {
+    const probe = await db.from('teams').select('name_ar').limit(1);
+    NAMES_AR_READY = !probe.error;
+  }
+
+  // Player profiles are optional until the task L migration is run, and only
+  // admins may read them. Merge them onto the mapped players.
+  let profileRows = [];
+  PROFILES_READY = false;
+  if (wantsProfiles) {
+    if (profilesResult.error) {
+      if (!isMissingTable(profilesResult.error)) throw profilesResult.error;
+    } else {
+      profileRows = profilesResult.data || [];
+      PROFILES_READY = true;
+    }
+  }
+  const profileById = new Map(profileRows.map(row => [row.player_id, row]));
+
   // Totals only live in v_player_stats (roadmap A): legacy_* plus the counted
   // events. A missing view means the database was not migrated, and the read
   // above fails loudly rather than showing every player on zero.
@@ -428,6 +480,11 @@ async function refreshData() {
       player.goals = numberOrZero(derived.goals);
       player.yellow = numberOrZero(derived.yellow);
       player.red = numberOrZero(derived.red);
+    }
+    const profile = profileById.get(player.id);
+    if (profile) {
+      player.licenseId = profile.license_id || null;
+      player.birthDate = profile.birth_date ? String(profile.birth_date).slice(0, 10) : null;
     }
     return player;
   });
@@ -461,6 +518,7 @@ async function refreshData() {
     matchOfficials,
     seasonsReady,
     divisionsReady,
+    profilesReady: PROFILES_READY,
     eventsReady,
     officialsReady,
     activeSeasonId,
@@ -553,6 +611,29 @@ async function dbSavePlayer(player) {
     .upsert(playerIdentityToRow(player, PLAYERS_ARCHIVE_READY));
   if (error) throw error;
 
+  // Licence number and birth date live in the admin-only profile table. With
+  // both blank the row is removed so the table never holds empty records.
+  if (PROFILES_READY) {
+    const licenseId = String(player.licenseId || '').trim();
+    const birthDate = String(player.birthDate || '').trim();
+    if (licenseId || birthDate) {
+      const { error: profileError } = await db.from('player_profiles').upsert({
+        player_id: player.id,
+        license_id: licenseId || null,
+        birth_date: birthDate || null,
+        updated_at: new Date().toISOString()
+      });
+      // A duplicate licence is reported by the caller as a field error.
+      if (profileError) throw profileError;
+    } else {
+      const { error: profileError } = await db
+        .from('player_profiles')
+        .delete()
+        .eq('player_id', player.id);
+      if (profileError) throw profileError;
+    }
+  }
+
   const totals = await db.rpc('set_player_totals', {
     p_player_id: player.id,
     p_goals: numberOrZero(player.goals),
@@ -604,11 +685,14 @@ async function dbAddPlayers(teamId, players) {
     p_team_id: teamId,
     p_players: players.map(player => ({
       name: player.name,
+      name_ar: player.nameAr || null,
       pos: player.pos,
       num: player.num,
       goals: player.goals,
       yellow: player.yellow,
-      red: player.red
+      red: player.red,
+      license_id: player.licenseId || null,
+      birth_date: player.birthDate || null
     }))
   });
   if (error) {
@@ -868,7 +952,7 @@ function buildAtomicImportPayload(data) {
   const fallbackSeason = seasons.find(season => season.isActive) || seasons[0];
   return {
     seasons: seasons.map(seasonToRow),
-    teams: (Array.isArray(data.teams) ? data.teams : []).map(teamToRow),
+    teams: (Array.isArray(data.teams) ? data.teams : []).map(team => teamToRow(team, true)),
     players: (Array.isArray(data.players) ? data.players : []).map(player => playerImportRow(player)),
     matches: (Array.isArray(data.matches) ? data.matches : []).map(match => matchToRow({
       ...match,

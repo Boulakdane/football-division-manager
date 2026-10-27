@@ -45,6 +45,40 @@ function toInt(value, fallback) {
   return isNaN(n) || n < 0 ? (fallback || 0) : n;
 }
 
+/**
+ * Show both names when the admin entered an Arabic one: Latin first in the
+ * English and French UI, Arabic first in the Arabic UI. Falls back to whichever
+ * name exists, so older rows and missing translations render normally.
+ */
+function bilingualName(latin, arabic) {
+  const en = String(latin == null ? '' : latin).trim();
+  const ar = String(arabic == null ? '' : arabic).trim();
+  if (!ar) return en;
+  if (!en) return ar;
+  return currentLang === 'ar' ? `${ar} (${en})` : `${en} (${ar})`;
+}
+
+/** Display name for a team or an audit snapshot (snake_case tolerated). */
+function teamDisplayName(team) {
+  if (!team) return '';
+  return bilingualName(team.name, team.nameAr || team.name_ar);
+}
+
+/** Display name for a player or an audit snapshot (snake_case tolerated). */
+function playerDisplayName(player) {
+  if (!player) return '';
+  return bilingualName(player.name, player.nameAr || player.name_ar);
+}
+
+/** Format a stored ISO date (YYYY-MM-DD) for the active language. */
+function formatIsoDate(value) {
+  if (!value) return '';
+  const date = new Date(String(value).slice(0, 10) + 'T00:00:00');
+  return isNaN(date.getTime())
+    ? String(value)
+    : date.toLocaleDateString(currentLang, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 function openModal(id) {
   const modal = document.getElementById(id);
   if (!modal) return;
@@ -863,7 +897,7 @@ function renderTopScorers() {
     <div class="flex items-center gap-3 px-4 py-2.5">
       <span class="w-5 shrink-0 text-center text-[11px] font-bold text-slate-500">${index + 1}</span>
       <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color:${esc(row.team.color || '#22c55e')}"></span>
-      <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-200">${esc(row.player.name)}</span>
+      <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-200">${esc(playerDisplayName(row.player))}</span>
       <span class="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-500">${esc(row.team.code)}</span>
       <span class="w-8 shrink-0 text-end text-sm font-extrabold tabular-nums text-white">${row.goals}</span>
     </div>`).join('');
@@ -907,7 +941,7 @@ function renderStandings() {
         <td class="py-3 px-4 font-semibold text-white">
           <span class="flex items-center gap-2.5">
             <span class="w-3 h-3 rounded-full shrink-0" style="background-color:${esc(s.team.color || '#22c55e')}"></span>
-            <span class="truncate max-w-[140px] sm:max-w-none">${esc(s.team.name)}</span>
+            <span class="truncate max-w-[140px] sm:max-w-none">${esc(teamDisplayName(s.team))}</span>
             <span class="text-[10px] text-slate-400 font-normal uppercase hidden sm:inline">(${esc(s.team.code)})</span>
           </span>
         </td>
@@ -969,7 +1003,7 @@ function matchEventMarker(event) {
 function matchEventTimelineRow(event) {
   const player = appState.players.find(item => item.id === event.playerId);
   const team = getTeam(event.teamId);
-  const name = esc(player ? player.name : t('unknownPlayer'));
+  const name = esc(player ? playerDisplayName(player) : t('unknownPlayer'));
   const minute = formatEventMinute(event.minute);
   const label = t(event.type === 'red' ? 'eventRed' : event.type === 'yellow' ? 'eventYellow' : 'eventGoal');
 
@@ -1193,7 +1227,7 @@ function renderFixtures() {
         <div class="grid grid-cols-7 items-center gap-2 my-2 text-center">
           <div class="col-span-3 flex flex-col items-center">
             <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 shadow" style="background-color:${esc(home.color || '#334155')};color:${esc(contrastTextColor(home.color || '#334155'))}">${esc(home.code || 'H')}</span>
-            <span class="font-semibold text-sm text-white truncate max-w-full">${esc(home.name)}</span>
+            <span class="font-semibold text-sm text-white truncate max-w-full">${esc(teamDisplayName(home))}</span>
           </div>
           <div class="col-span-1 flex flex-col items-center justify-center">
             ${scoreBlock}
@@ -1201,7 +1235,7 @@ function renderFixtures() {
           </div>
           <div class="col-span-3 flex flex-col items-center">
             <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 shadow" style="background-color:${esc(away.color || '#334155')};color:${esc(contrastTextColor(away.color || '#334155'))}">${esc(away.code || 'A')}</span>
-            <span class="font-semibold text-sm text-white truncate max-w-full">${esc(away.name)}</span>
+            <span class="font-semibold text-sm text-white truncate max-w-full">${esc(teamDisplayName(away))}</span>
           </div>
         </div>
 
@@ -1322,7 +1356,7 @@ function renderLiveEntry() {
         return `<li class="flex items-center gap-2 text-[11px] leading-5">
           <span class="w-8 shrink-0 text-end font-mono text-[10px] tabular-nums text-slate-500">${esc(formatEventMinute(event.minute))}</span>
           <span class="w-3 shrink-0 flex items-center justify-center">${matchEventMarker(event)}</span>
-          <span class="min-w-0 flex-1 truncate text-slate-200">${esc(player ? player.name : t('unknownPlayer'))}</span>
+          <span class="min-w-0 flex-1 truncate text-slate-200">${esc(player ? playerDisplayName(player) : t('unknownPlayer'))}</span>
           <span class="shrink-0 text-[10px] text-slate-500">${esc(t(typeKey))}</span>
           ${undoButton}
         </li>`;
@@ -1338,7 +1372,7 @@ function renderLiveEntry() {
     : `${toInt(match.homeScore)} - ${toInt(match.awayScore)}`;
 
   const playerOptions = players
-    .map(player => `<option value="${esc(player.id)}">${esc(`#${toInt(player.num)} ${player.name}`)}</option>`)
+    .map(player => `<option value="${esc(player.id)}">${esc(`#${toInt(player.num)} ${playerDisplayName(player)}`)}</option>`)
     .join('');
 
   const form = allowed ? `
@@ -1347,8 +1381,8 @@ function renderLiveEntry() {
         <div>
           <label class="text-[11px] font-medium text-slate-400 block mb-1" for="live-entry-team">${esc(t('liveEntryTeam'))}</label>
           <select id="live-entry-team" data-change="live-team" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-pitch-500">
-            <option value="home" ${liveEntrySide === 'home' ? 'selected' : ''}>${esc(home.name)}</option>
-            <option value="away" ${liveEntrySide === 'away' ? 'selected' : ''}>${esc(away.name)}</option>
+            <option value="home" ${liveEntrySide === 'home' ? 'selected' : ''}>${esc(teamDisplayName(home))}</option>
+            <option value="away" ${liveEntrySide === 'away' ? 'selected' : ''}>${esc(teamDisplayName(away))}</option>
           </select>
         </div>
         <div>
@@ -1378,9 +1412,9 @@ function renderLiveEntry() {
 
   body.innerHTML = `
     <div class="flex items-center justify-between gap-3 rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2">
-      <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white">${esc(home.name)}</span>
+      <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white">${esc(teamDisplayName(home))}</span>
       <span class="shrink-0 text-lg font-extrabold tracking-wider text-white">${esc(score)}</span>
-      <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white text-end">${esc(away.name)}</span>
+      <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white text-end">${esc(teamDisplayName(away))}</span>
     </div>
     <p class="text-[11px] text-slate-500 leading-relaxed">${esc(t('liveEntryHint'))}</p>
     <ol class="space-y-0.5 rounded-xl bg-slate-950/40 border border-slate-800 px-3 py-2">${eventRows}</ol>
@@ -1481,10 +1515,13 @@ function renderTeamsView() {
       ? allSquad.filter(p => p.isActive === false)
       : [];
     if (query) {
-      const teamMatches = team.name.toLowerCase().includes(query);
+      const teamMatches = team.name.toLowerCase().includes(query) ||
+        String(team.nameAr || '').toLowerCase().includes(query);
+      const playerMatches = p => p.name.toLowerCase().includes(query) ||
+        String(p.nameAr || '').toLowerCase().includes(query);
       if (!teamMatches) {
-        squad = squad.filter(p => p.name.toLowerCase().includes(query));
-        archived = archived.filter(p => p.name.toLowerCase().includes(query));
+        squad = squad.filter(playerMatches);
+        archived = archived.filter(playerMatches);
       }
       if (!teamMatches && squad.length === 0 && archived.length === 0) return '';
     }
@@ -1496,7 +1533,7 @@ function renderTeamsView() {
           <div class="flex items-center gap-3 min-w-0">
             <div class="w-2 h-8 rounded-full shrink-0" style="background-color:${esc(team.color || '#22c55e')}"></div>
             <div class="min-w-0">
-              <h3 class="font-bold text-base text-white truncate">${esc(team.name)}</h3>
+              <h3 class="font-bold text-base text-white truncate">${esc(teamDisplayName(team))}</h3>
               <p class="text-xs text-slate-400">${totalSquad} ${esc(t('lblPlayers'))} • ${esc(team.code)} • <span class="text-pitch-400">${esc(divisionLabel(team.divisionId))}</span></p>
             </div>
           </div>
@@ -1525,6 +1562,7 @@ function renderTeamsView() {
                 <tr>
                   <th class="pb-2 w-8">#</th>
                   <th class="pb-2">${esc(t('thPlayer'))}</th>
+                  ${appState.profilesReady ? `<th class="pb-2 text-center admin-only">${esc(t('thLicense'))}</th>` : ''}
                   <th class="pb-2 text-center">${esc(t('lblPosition'))}</th>
                   <th class="pb-2 text-center">${esc(t('lblGoals'))}</th>
                   <th class="pb-2 text-center">${esc(t('thCards'))}</th>
@@ -1535,7 +1573,11 @@ function renderTeamsView() {
                 ${squad.map(p => `
                   <tr class="hover:bg-slate-800/40">
                     <td class="py-2 text-slate-400 font-medium">${esc(p.num)}</td>
-                    <td class="py-2 font-semibold text-slate-200">${esc(p.name)}</td>
+                    <td class="py-2 font-semibold text-slate-200">${esc(playerDisplayName(p))}</td>
+                    ${appState.profilesReady ? `<td class="py-2 text-center admin-only">
+                      <div class="text-slate-300">${esc(p.licenseId || '—')}</div>
+                      ${p.birthDate ? `<div class="text-[10px] text-slate-500">${esc(formatIsoDate(p.birthDate))}</div>` : ''}
+                    </td>` : ''}
                     <td class="py-2 text-center">
                       <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300">${esc(p.pos)}</span>
                     </td>
@@ -1562,7 +1604,7 @@ function renderTeamsView() {
               <div class="space-y-1">
                 ${archived.map(p => `
                   <div class="flex items-center justify-between gap-2 text-[11px] text-slate-400">
-                    <span class="truncate">${esc(p.name)} <span class="text-slate-600">#${esc(p.num)}</span></span>
+                    <span class="truncate">${esc(playerDisplayName(p))} <span class="text-slate-600">#${esc(p.num)}</span></span>
                     <button data-action="restore-player" data-id="${esc(p.id)}" class="text-pitch-400 hover:text-pitch-300 px-1.5 py-0.5 rounded border border-pitch-500/30 shrink-0">${esc(t('btnRestorePlayer'))}</button>
                   </div>`).join('')}
               </div>
@@ -1611,7 +1653,7 @@ function renderStatsBanner() {
     .slice()
     .sort((a, b) => toInt(b.goals) - toInt(a.goals));
   document.getElementById('stat-top-scorer').textContent =
-    scorers.length && toInt(scorers[0].goals) > 0 ? `${scorers[0].name} (${toInt(scorers[0].goals)})` : '--';
+    scorers.length && toInt(scorers[0].goals) > 0 ? `${playerDisplayName(scorers[0])} (${toInt(scorers[0].goals)})` : '--';
 }
 
 /* ---------------------------------------------------------------
@@ -1648,7 +1690,7 @@ function openMatchModal(matchId) {
 
   const homeSelect = document.getElementById('match-home-team');
   const awaySelect = document.getElementById('match-away-team');
-  const teamOptions = divisionTeamsForMatch.map(team => `<option value="${esc(team.id)}">${esc(team.name)}</option>`).join('');
+  const teamOptions = divisionTeamsForMatch.map(team => `<option value="${esc(team.id)}">${esc(teamDisplayName(team))}</option>`).join('');
   homeSelect.innerHTML = teamOptions;
   awaySelect.innerHTML = teamOptions;
 
@@ -1728,7 +1770,7 @@ function renderMatchEventPanel(side) {
   const teamId = select.value;
   const team = getTeam(teamId);
   const players = playersForTeam(teamId);
-  title.textContent = team ? team.name : '';
+  title.textContent = team ? teamDisplayName(team) : '';
 
   if (!team) return;
 
@@ -1745,11 +1787,11 @@ function renderMatchEventPanel(side) {
     if (!knownPlayer && eventPlayer) {
       // Existing history can still reference an archived player. Keep it
       // selectable so editing the match does not silently drop the event.
-      options += `<option value="${esc(eventPlayer.id)}" selected>${esc(`#${eventPlayer.num} ${eventPlayer.name}`)} (${esc(t('playerArchived'))})</option>`;
+      options += `<option value="${esc(eventPlayer.id)}" selected>${esc(`#${eventPlayer.num} ${playerDisplayName(eventPlayer)}`)} (${esc(t('playerArchived'))})</option>`;
     } else if (!knownPlayer) {
       options += `<option value="">${esc(t('unknownPlayer'))}</option>`;
     }
-    options += players.map(player => `<option value="${esc(player.id)}" ${player.id === event.playerId ? 'selected' : ''}>${esc(`#${player.num} ${player.name}`)}</option>`).join('');
+    options += players.map(player => `<option value="${esc(player.id)}" ${player.id === event.playerId ? 'selected' : ''}>${esc(`#${player.num} ${playerDisplayName(player)}`)}</option>`).join('');
 
     return `<div class="flex flex-col gap-1.5 rounded-lg border border-slate-700/60 bg-slate-900/50 p-2">
       <select data-change="update-event" data-id="${esc(event.id)}" data-field="playerId" aria-label="${esc(t('thPlayer'))}" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-white focus:border-pitch-500">
@@ -1986,6 +2028,7 @@ function editTeam(teamId) {
   document.getElementById('form-team').reset();
   document.getElementById('team-id').value = team.id;
   document.getElementById('team-name').value = team.name;
+  document.getElementById('team-name-ar').value = team.nameAr || '';
   document.getElementById('team-code').value = team.code || '';
   document.getElementById('team-color').value = team.color || '#16a34a';
   document.getElementById('team-modal-title').textContent = t('modalTeamEditTitle');
@@ -2004,6 +2047,7 @@ async function saveTeam(e) {
   const teamData = {
     id: id || uid('t'),
     name: document.getElementById('team-name').value.trim(),
+    nameAr: document.getElementById('team-name-ar').value.trim() || null,
     code: document.getElementById('team-code').value.trim().toUpperCase(),
     color: document.getElementById('team-color').value,
     divisionId
@@ -2011,6 +2055,10 @@ async function saveTeam(e) {
 
   if (!teamData.name) {
     alert(t('alertNameRequired'));
+    return;
+  }
+  if (teamData.nameAr && teamData.nameAr.length > 100) {
+    alert(t('alertNameArTooLong'));
     return;
   }
 
@@ -2113,6 +2161,9 @@ function editPlayer(playerId) {
   document.getElementById('player-id').value = p.id;
   document.getElementById('player-team-id').value = p.teamId;
   document.getElementById('player-name').value = p.name;
+  document.getElementById('player-name-ar').value = p.nameAr || '';
+  document.getElementById('player-license').value = p.licenseId || '';
+  document.getElementById('player-birth-date').value = p.birthDate || '';
   document.getElementById('player-position').value = p.pos || 'MID';
   document.getElementById('player-number').value = toInt(p.num, 10) || 10;
   document.getElementById('player-goals').value = toInt(p.goals);
@@ -2129,6 +2180,9 @@ async function savePlayer(e) {
     id: id || uid('p'),
     teamId: document.getElementById('player-team-id').value,
     name: document.getElementById('player-name').value.trim(),
+    nameAr: document.getElementById('player-name-ar').value.trim() || null,
+    licenseId: document.getElementById('player-license').value.trim() || null,
+    birthDate: document.getElementById('player-birth-date').value || null,
     pos: document.getElementById('player-position').value,
     num: toInt(document.getElementById('player-number').value, 10) || 10,
     goals: toInt(document.getElementById('player-goals').value),
@@ -2138,6 +2192,18 @@ async function savePlayer(e) {
 
   if (!playerData.name) {
     alert(t('alertNameRequired'));
+    return;
+  }
+  if (playerData.nameAr && playerData.nameAr.length > 100) {
+    alert(t('alertNameArTooLong'));
+    return;
+  }
+  if (playerData.licenseId && playerData.licenseId.length > 50) {
+    alert(t('alertLicenseTooLong'));
+    return;
+  }
+  if (playerData.birthDate && playerData.birthDate > new Date().toISOString().slice(0, 10)) {
+    alert(t('alertBirthDateFuture'));
     return;
   }
 
@@ -2168,6 +2234,10 @@ async function savePlayer(e) {
   } catch (err) {
     if (err && err.code === 'PLAYER_TOTALS_BELOW_EVENTS') {
       alert(totalsBelowEventsMessage(playerEventTotals(playerData.id)));
+      return;
+    }
+    if (err && String(err.code) === '23505' && /license/i.test(String(err.message || ''))) {
+      alert(t('alertLicenseTaken'));
       return;
     }
     alert(t('alertSaveFailed'));
@@ -2253,7 +2323,7 @@ function openSquadImport(teamId) {
 
   squadImportState = { teamId: team.id, analysis: null };
 
-  document.getElementById('squad-team-name').textContent = team.name;
+  document.getElementById('squad-team-name').textContent = teamDisplayName(team);
   document.getElementById('squad-file-name').textContent = '';
   const input = document.getElementById('squad-file');
   if (input) input.value = '';
@@ -2378,7 +2448,7 @@ function renderSquadPreview() {
     const issues = row.issues.map(squadIssueText).join('; ');
     return `<tr class="border-t border-slate-800/80 align-top">
       <td class="py-1.5 pe-2 text-slate-500">${toInt(row.line)}</td>
-      <td class="py-1.5 pe-2 text-slate-200 font-medium">${esc(row.name || '—')}</td>
+      <td class="py-1.5 pe-2 text-slate-200 font-medium">${esc(bilingualName(row.name, row.nameAr) || '—')}</td>
       <td class="py-1.5 pe-2 text-center text-slate-400">${esc(row.pos)}</td>
       <td class="py-1.5 pe-2 text-center text-slate-400">${esc(row.num)}</td>
       <td class="py-1.5">
@@ -2608,19 +2678,21 @@ function auditEntityLabel(entry) {
 
     case 'teams':
       if (!snapshot.name) return entry.entityId || auditEntityName('teams');
-      return snapshot.code ? `${snapshot.name} (${snapshot.code})` : snapshot.name;
+      return snapshot.code
+        ? `${teamDisplayName(snapshot)} (${snapshot.code})`
+        : teamDisplayName(snapshot);
 
     case 'players': {
       if (!snapshot.name) return entry.entityId || auditEntityName('players');
       const team = getTeam(snapshot.team_id);
-      return team ? `${snapshot.name} · ${team.name}` : snapshot.name;
+      return team ? `${playerDisplayName(snapshot)} · ${teamDisplayName(team)}` : playerDisplayName(snapshot);
     }
 
     case 'matches': {
       const home = getTeam(snapshot.home_id);
       const away = getTeam(snapshot.away_id);
-      const homeName = home ? home.name : (snapshot.home_id || '?');
-      const awayName = away ? away.name : (snapshot.away_id || '?');
+      const homeName = home ? teamDisplayName(home) : (snapshot.home_id || '?');
+      const awayName = away ? teamDisplayName(away) : (snapshot.away_id || '?');
       const score = `${snapshot.home_score == null ? 0 : snapshot.home_score}–${snapshot.away_score == null ? 0 : snapshot.away_score}`;
       const round = snapshot.round == null ? '?' : snapshot.round;
       return `${homeName} ${score} ${awayName} · ${t('matchdayPrefix')} ${round}`;
@@ -2631,7 +2703,7 @@ function auditEntityLabel(entry) {
         ? 'auditEventGoal'
         : (snapshot.event_type === 'yellow' ? 'auditEventYellow' : 'auditEventRed');
       const player = appState.players.find(p => p.id === snapshot.player_id);
-      const playerName = player ? player.name : (snapshot.player_id || '?');
+      const playerName = player ? playerDisplayName(player) : (snapshot.player_id || '?');
       return `${t(typeKey)} ${snapshot.minute == null ? '?' : snapshot.minute}' · ${playerName}`;
     }
 
@@ -2723,7 +2795,7 @@ function usersMatchLabel(match) {
   const date = match.datetime
     ? new Date(match.datetime).toLocaleDateString(currentLang, { month: 'short', day: 'numeric' })
     : '';
-  const name = `${home ? home.name : '?'} – ${away ? away.name : '?'}`;
+  const name = `${home ? teamDisplayName(home) : '?'} – ${away ? teamDisplayName(away) : '?'}`;
   return date ? `${name} · ${date}` : name;
 }
 
@@ -2967,7 +3039,8 @@ function renderTrash() {
 
       const sections = [];
       sections.push(renderTrashSection('trashTeams', teams.map(team => {
-        const label = team.code ? `${team.name} (${team.code})` : team.name;
+        const name = bilingualName(team.name, team.nameAr);
+        const label = team.code ? `${name} (${team.code})` : name;
         const meta = [
           `${team.playerCount || 0} ${t('trashPlayers')}`,
           `${team.matchCount || 0} ${t('trashFixtures')}`,
@@ -2977,7 +3050,9 @@ function renderTrash() {
       })));
 
       sections.push(renderTrashSection('trashMatches', matches.map(match => {
-        const label = `${match.homeName || '?'} ${match.homeScore == null ? 0 : match.homeScore}–${match.awayScore == null ? 0 : match.awayScore} ${match.awayName || '?'}`;
+        const home = bilingualName(match.homeName, match.homeNameAr) || '?';
+        const away = bilingualName(match.awayName, match.awayNameAr) || '?';
+        const label = `${home} ${match.homeScore == null ? 0 : match.homeScore}–${match.awayScore == null ? 0 : match.awayScore} ${away}`;
         const meta = [
           `${t('matchdayPrefix')} ${match.round == null ? '?' : match.round}`,
           `${t('trashDeletedAt')} ${auditTime(match.deletedAt)}`
@@ -3115,7 +3190,7 @@ function buildStandingsCsvRows() {
     ...rows.map((row, index) => [
       seasonName,
       index + 1,
-      row.team.name,
+      teamDisplayName(row.team),
       row.mp,
       row.w,
       row.d,
@@ -3136,7 +3211,7 @@ function exportStandingsCsv() {
 function buildFixturesCsvRows() {
   const season = viewedSeason();
   const seasonName = season ? season.name : '';
-  const teamName = id => (getTeam(id) || {}).name || id;
+  const teamName = id => teamDisplayName(getTeam(id)) || id;
   const matches = visibleMatches().slice().sort((a, b) =>
     (a.round - b.round) || (a.datetime || '').localeCompare(b.datetime || '')
   );
@@ -3169,25 +3244,33 @@ function exportFixturesCsv() {
 function buildSquadsCsvRows() {
   const season = viewedSeason();
   const seasonName = season ? season.name : '';
-  const teamName = id => (getTeam(id) || {}).name || id;
+  const teamName = id => teamDisplayName(getTeam(id)) || id;
   const players = appState.players
     .filter(player => player.isActive !== false)
     .slice()
     .sort((a, b) =>
       teamName(a.teamId).localeCompare(teamName(b.teamId)) || (a.num || 0) - (b.num || 0)
     );
+  // Licence numbers and birth dates are personal data, so the columns only
+  // appear for an admin whose session can read player_profiles.
+  const withProfiles = Boolean(appState.profilesReady);
 
   return [
-    [t('seasonLabel'), t('csvTeam'), t('thPlayer'), t('lblPosition'), t('lblJerseyNum'), t('lblGoals'), t('lblYellowCards'), t('lblRedCards')],
+    [
+      t('seasonLabel'), t('csvTeam'), t('thPlayer'), t('lblPosition'), t('lblJerseyNum'),
+      t('lblGoals'), t('lblYellowCards'), t('lblRedCards'),
+      ...(withProfiles ? [t('thLicense'), t('lblBirthDate')] : [])
+    ],
     ...players.map(player => [
       seasonName,
       teamName(player.teamId),
-      player.name,
+      playerDisplayName(player),
       player.pos,
       player.num,
       player.goals,
       player.yellow,
-      player.red
+      player.red,
+      ...(withProfiles ? [player.licenseId || '', player.birthDate || ''] : [])
     ])
   ];
 }

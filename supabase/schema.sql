@@ -255,6 +255,7 @@ grant execute on function public.is_active_season(text) to anon, authenticated;
 create table if not exists public.teams (
   id text primary key,
   name text not null,
+  name_ar text,
   code text not null default 'TBD',
   color text not null default '#16a34a',
   division_id text not null default 'd1' references public.divisions (id) on delete restrict,
@@ -262,6 +263,7 @@ create table if not exists public.teams (
   deleted_at timestamptz,
   constraint kickoff_teams_id_not_blank check (length(btrim(id)) between 1 and 100),
   constraint kickoff_teams_name_length check (length(btrim(name)) between 1 and 100),
+  constraint kickoff_teams_name_ar_length check (name_ar is null or length(btrim(name_ar)) between 1 and 100),
   constraint kickoff_teams_code_length check (length(btrim(code)) between 1 and 8),
   constraint kickoff_teams_color_hex check (color ~ '^#[0-9A-Fa-f]{6}$')
 );
@@ -297,6 +299,7 @@ create table if not exists public.players (
   id text primary key,
   team_id text not null references public.teams (id) on delete cascade,
   name text not null,
+  name_ar text,
   pos text not null default 'MID' check (pos in ('GK', 'DEF', 'MID', 'FWD')),
   num int not null default 10,
   legacy_goals int not null default 0,
@@ -306,9 +309,28 @@ create table if not exists public.players (
   created_at timestamptz not null default now(),
   constraint kickoff_players_id_not_blank check (length(btrim(id)) between 1 and 100),
   constraint kickoff_players_name_length check (length(btrim(name)) between 1 and 100),
+  constraint kickoff_players_name_ar_length check (name_ar is null or length(btrim(name_ar)) between 1 and 100),
   constraint kickoff_players_num_range check (num between 0 and 999),
   constraint kickoff_players_legacy_totals_range check (legacy_goals >= 0 and legacy_yellow >= 0 and legacy_red >= 0)
 );
+
+-- Licence number and birth date are personal data, so they live in their own
+-- admin-only table instead of on the publicly readable players table. A player
+-- has at most one row; deleting the player removes it.
+create table if not exists public.player_profiles (
+  player_id text primary key references public.players (id) on delete cascade,
+  license_id text,
+  birth_date date,
+  updated_at timestamptz not null default now(),
+  constraint kickoff_player_profiles_license_length check (license_id is null or length(btrim(license_id)) between 1 and 50),
+  constraint kickoff_player_profiles_birth_date_range check (birth_date is null or birth_date between date '1900-01-01' and date '2100-12-31')
+);
+
+-- Optional but unique: the partial index compares trimmed, upper-cased values
+-- so " ab-12 " and "AB-12" collide.
+create unique index if not exists kickoff_player_profiles_license_key
+  on public.player_profiles (upper(btrim(license_id)))
+  where license_id is not null;
 
 alter table public.players
   add column if not exists is_active boolean not null default true;
@@ -334,6 +356,35 @@ begin
     alter table public.players
       add constraint kickoff_players_legacy_totals_range
       check (legacy_goals >= 0 and legacy_yellow >= 0 and legacy_red >= 0);
+  end if;
+end $$;
+
+-- Bilingual names (task L). The Arabic name is optional; the Latin name stays
+-- required. Every column is optional, so an older database keeps working while
+-- the app reads them.
+alter table public.teams add column if not exists name_ar text;
+alter table public.players add column if not exists name_ar text;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'kickoff_teams_name_ar_length'
+      and conrelid = 'public.teams'::regclass
+  ) then
+    alter table public.teams
+      add constraint kickoff_teams_name_ar_length
+      check (name_ar is null or length(btrim(name_ar)) between 1 and 100);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'kickoff_players_name_ar_length'
+      and conrelid = 'public.players'::regclass
+  ) then
+    alter table public.players
+      add constraint kickoff_players_name_ar_length
+      check (name_ar is null or length(btrim(name_ar)) between 1 and 100);
   end if;
 end $$;
 
@@ -608,6 +659,7 @@ with (security_invoker = true) as
 select p.id as player_id,
        p.team_id,
        p.name,
+       p.name_ar,
        p.pos,
        p.num,
        p.is_active,
@@ -814,6 +866,13 @@ grant select on public.profiles to authenticated;
 revoke all on public.match_officials from public, anon, authenticated;
 grant select on public.match_officials to anon, authenticated;
 
+-- Task L: a player's licence number and birth date are personal data. No
+-- anonymous grant at all, so an anon REST read fails with 401 instead of
+-- returning an empty (policy-filtered) list; admins read and write through
+-- the policy below.
+revoke all on public.player_profiles from public, anon, authenticated;
+grant select, insert, update, delete on public.player_profiles to authenticated;
+
 -- Supabase grants every role full privileges on new public tables by default.
 -- Anonymous visitors only ever read, so drop every write-type privilege for them on
 -- existing tables and on tables created later. RLS stays the second layer.
@@ -832,6 +891,7 @@ alter table public.players enable row level security;
 alter table public.matches enable row level security;
 alter table public.match_events enable row level security;
 alter table public.match_officials enable row level security;
+alter table public.player_profiles enable row level security;
 
 -- Profiles: users see their own role; admins see everyone.
 drop policy if exists profiles_select_own on public.profiles;
@@ -855,6 +915,14 @@ drop policy if exists match_officials_select_admin on public.match_officials;
 create policy match_officials_select_admin on public.match_officials
   for select to authenticated
   using (public.is_admin());
+
+-- Player profiles: admin-only for every command. Visitors have no SELECT grant,
+-- so they cannot reach the personal columns at all.
+drop policy if exists player_profiles_admin_all on public.player_profiles;
+create policy player_profiles_admin_all on public.player_profiles
+  for all to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
 
 -- Divisions: public read, no client writes. The two rows are seeded and only
 -- the maintainer adds another tier with SQL.
@@ -2022,6 +2090,7 @@ begin
       select jsonb_agg(jsonb_build_object(
         'id', t.id,
         'name', t.name,
+        'nameAr', t.name_ar,
         'code', t.code,
         'deletedAt', t.deleted_at,
         'playerCount', (select count(*) from public.players p where p.team_id = t.id),
@@ -2038,7 +2107,9 @@ begin
       select jsonb_agg(jsonb_build_object(
         'id', m.id,
         'homeName', h.name,
+        'homeNameAr', h.name_ar,
         'awayName', a.name,
+        'awayNameAr', a.name_ar,
         'homeScore', m.home_score,
         'awayScore', m.away_score,
         'round', m.round,
@@ -2132,6 +2203,10 @@ declare
   v_item jsonb;
   v_idx int := 0;
   v_name text;
+  v_name_ar text;
+  v_player_id text;
+  v_license text;
+  v_birth date;
   v_pos text;
   v_num int;
   v_goals int;
@@ -2139,6 +2214,7 @@ declare
   v_red int;
   v_count int := 0;
   v_seen text[] := '{}';
+  v_seen_license text[] := '{}';
 begin
   if not public.is_admin() then
     raise exception 'Only admins can add players' using errcode = '42501';
@@ -2192,6 +2268,40 @@ begin
     end if;
     v_seen := v_seen || lower(v_name);
 
+    v_name_ar := nullif(regexp_replace(btrim(coalesce(v_item->>'name_ar', '')), '\s+', ' ', 'g'), '');
+    if v_name_ar is not null and length(v_name_ar) > 100 then
+      raise exception 'Row %: the Arabic name must be 1 to 100 characters', v_idx;
+    end if;
+
+    v_license := nullif(btrim(coalesce(v_item->>'license_id', '')), '');
+    if v_license is not null then
+      if length(v_license) > 50 then
+        raise exception 'Row %: the licence number must be at most 50 characters', v_idx;
+      end if;
+      if lower(v_license) = any (v_seen_license) then
+        raise exception 'Row %: licence "%" appears more than once', v_idx, v_license;
+      end if;
+      if exists (
+        select 1 from public.player_profiles
+        where upper(btrim(license_id)) = upper(v_license)
+      ) then
+        raise exception 'Row %: licence "%" belongs to another player', v_idx, v_license;
+      end if;
+      v_seen_license := v_seen_license || lower(v_license);
+    end if;
+
+    if coalesce(btrim(v_item->>'birth_date'), '') <> '' then
+      if btrim(v_item->>'birth_date') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then
+        raise exception 'Row %: the birth date must use YYYY-MM-DD', v_idx;
+      end if;
+      v_birth := btrim(v_item->>'birth_date')::date;
+      if v_birth < date '1900-01-01' or v_birth > current_date then
+        raise exception 'Row %: the birth date must be between 1900-01-01 and today', v_idx;
+      end if;
+    else
+      v_birth := null;
+    end if;
+
     v_pos := upper(coalesce(nullif(btrim(v_item->>'pos'), ''), 'MID'));
     if v_pos not in ('GK', 'DEF', 'MID', 'FWD') then
       raise exception 'Row %: the position must be GK, DEF, MID or FWD', v_idx;
@@ -2214,17 +2324,26 @@ begin
     v_yellow := coalesce(nullif(btrim(v_item->>'yellow'), ''), '0')::int;
     v_red := coalesce(nullif(btrim(v_item->>'red'), ''), '0')::int;
 
+    v_player_id := 'p_' || replace(gen_random_uuid()::text, '-', '');
+
     insert into public.players (
-      id, team_id, name, pos, num,
+      id, team_id, name, name_ar, pos, num,
       legacy_goals, legacy_yellow, legacy_red,
       is_active
     )
     values (
-      'p_' || replace(gen_random_uuid()::text, '-', ''),
-      p_team_id, v_name, v_pos, v_num,
+      v_player_id, p_team_id, v_name, v_name_ar, v_pos, v_num,
       v_goals, v_yellow, v_red,
       true
     );
+
+    -- Licence and birth date are personal data: they stay out of the publicly
+    -- readable players table and only get a row when the admin entered one.
+    if v_license is not null or v_birth is not null then
+      insert into public.player_profiles (player_id, license_id, birth_date)
+      values (v_player_id, v_license, v_birth);
+    end if;
+
     v_count := v_count + 1;
   end loop;
 
@@ -2406,6 +2525,30 @@ begin
     raise exception 'Every imported fixture needs a known division';
   end if;
 
+  -- Licence numbers are optional but unique, and a birth date must be a real
+  -- ISO date, so both are checked before anything is deleted.
+  if exists (
+    select 1
+    from (
+      select upper(btrim(pl.license_id)) as licence
+      from jsonb_to_recordset(v_players) as pl(license_id text)
+      where nullif(btrim(coalesce(pl.license_id, '')), '') is not null
+    ) licences
+    group by licences.licence
+    having count(*) > 1
+  ) then
+    raise exception 'Every imported licence number must be unique';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_to_recordset(v_players) as pl(birth_date text)
+    where nullif(btrim(coalesce(pl.birth_date, '')), '') is not null
+      and btrim(pl.birth_date) !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+  ) then
+    raise exception 'Every imported birth date must use YYYY-MM-DD';
+  end if;
+
   -- Serialize full imports so two admin tabs cannot delete and reinsert
   -- overlapping data at the same time.
   perform pg_advisory_xact_lock(748291);
@@ -2422,6 +2565,7 @@ begin
   -- clause. The primary key is NOT NULL, so this still removes every row.
   delete from public.match_events where id is not null;
   delete from public.matches where id is not null;
+  delete from public.player_profiles where player_id is not null;
   delete from public.players where id is not null;
   delete from public.teams where id is not null;
   delete from public.seasons where id is not null;
@@ -2440,24 +2584,27 @@ begin
     is_active boolean
   );
 
-  insert into public.teams (id, name, code, color, division_id)
+  insert into public.teams (id, name, name_ar, code, color, division_id)
   select t.id,
          t.name,
+         nullif(btrim(coalesce(t.name_ar, '')), ''),
          coalesce(t.code, 'TBD'),
          coalesce(t.color, '#16a34a'),
          coalesce(t.division_id, 'd1')
   from jsonb_to_recordset(v_teams) as t(
     id text,
     name text,
+    name_ar text,
     code text,
     color text,
     division_id text
   );
 
-  insert into public.players (id, team_id, name, pos, num, legacy_goals, legacy_yellow, legacy_red, is_active)
+  insert into public.players (id, team_id, name, name_ar, pos, num, legacy_goals, legacy_yellow, legacy_red, is_active)
   select pl.id,
          pl.team_id,
          pl.name,
+         nullif(btrim(coalesce(pl.name_ar, '')), ''),
          coalesce(pl.pos, 'MID'),
          coalesce(pl.num, 10),
          coalesce(pl.goals, 0),
@@ -2468,6 +2615,7 @@ begin
     id text,
     team_id text,
     name text,
+    name_ar text,
     pos text,
     num int,
     goals int,
@@ -2475,6 +2623,20 @@ begin
     red int,
     is_active boolean
   );
+
+  -- Licence and birth date are restored into their admin-only table, not onto
+  -- the public players row. A player without either keeps no profile row.
+  insert into public.player_profiles (player_id, license_id, birth_date)
+  select pl.id,
+         nullif(btrim(coalesce(pl.license_id, '')), ''),
+         nullif(btrim(coalesce(pl.birth_date, '')), '')::date
+  from jsonb_to_recordset(v_players) as pl(
+    id text,
+    license_id text,
+    birth_date text
+  )
+  where nullif(btrim(coalesce(pl.license_id, '')), '') is not null
+     or nullif(btrim(coalesce(pl.birth_date, '')), '') is not null;
 
   insert into public.matches (
     id,

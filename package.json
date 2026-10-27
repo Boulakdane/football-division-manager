@@ -13,6 +13,7 @@
     "test:drop-totals": "node tools/test-drop-totals.js",
     "test:scorer-role": "node tools/test-scorer-role.js",
     "test:divisions": "node tools/test-divisions.js",
+    "test:profile-fields": "node tools/test-profile-fields.js",
     "test:grants": "node tools/test-anon-grants.js",
     "test:drift": "node tools/test-security-drift.js",
     "test:e2e": "playwright test",
