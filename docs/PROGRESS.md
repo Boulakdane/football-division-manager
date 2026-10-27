@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
-- **Last updated:** 2026-10-25
+- **Last updated:** 2026-10-26
 - **Working-tree version:** `v3.10.1`
-- **Deployed version:** `v3.10.1`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete, MFA, data-quality, squad-import and scheduled-event migrations applied in development and production
+- **Deployed version:** `v3.10.1`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete, MFA, data-quality, squad-import, scheduled-event, derive-totals, drop-stored-totals and scorer-role migrations applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -11,8 +11,11 @@
 | Area | Status | Notes |
 |---|---|---|
 | Public standings, fixtures and squads | ✅ Done | Works without login; shared across devices |
-| Admin authentication and roles | ✅ Done | Supabase Auth; `admin` / `viewer`; signups disabled |
-| Database-enforced permissions | ✅ Done | RLS policies plus admin-only RPCs |
+| Admin authentication and roles | ✅ Done | Supabase Auth; `admin` / `viewer` / `scorer`; signups disabled |
+| Database-enforced permissions | ✅ Done | RLS policies plus admin-only RPCs; the scorer path is a separate, narrow RPC pair |
+| Player and team totals | ✅ Deployed and migrated in both environments | `match_events` is the source of truth; `v_player_stats` and `v_standings` are the only totals |
+| Scorer role and live match entry | ✅ Merged and migrated in both environments | `match_officials` plus `record_live_event()` / `remove_live_event()`; assigned, LIVE-or-today fixtures only |
+| Anonymous write grants | ⚠️ Pending in both projects | `anon` still holds `UPDATE` on teams/matches/seasons and `DELETE` on players. RLS rejects the writes and the probes change nothing, but the grant layer is wider than intended; apply `supabase/revoke-anon-write-grants-migration.sql` (issue #8) |
 | Multiple seasons and archive | ✅ Done | Archived seasons are read-only in the UI and in RLS |
 | Player history protection | ✅ Deployed and live-tested | `players.is_active`; history players are archived and restorable |
 | Destructive operations | ✅ Deployed and live-tested | Team/match deletes and event writes are RPC-only; match saves are atomic |
@@ -32,7 +35,7 @@
 | Realistic-scale import rehearsal | ✅ Done in development (2026-10-24) | 20 teams / 500 players / 200 matches / 2,043 events imported through the UI, exported, validated and restored to the exact original hash; production untouched |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.10.1` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Production now requires two-factor for admin writes (`admin_mfa_required()` returns `true`) and the real admin is enrolled; the development demo account remains password-only for disposable tests. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. A realistic-scale rehearsal (20 teams / 500 players / 200 matches / 2,043 events) imported through the admin UI, passed pagination, UI, export, audit and restore checks, and the original development data was restored with the identical SHA-256; production was verified unchanged. Post-`v3.10.1`, admins can import a whole squad from Excel/CSV with a row-by-row preview and one atomic `add_players()` call, and the scheduled-fixture repair migration means goals/cards added to upcoming matches now reach player totals in both projects. Both migrations are applied in development and production, and production MFA is required again (`admin_mfa_required()` returns `true`). The remaining operational work is loading the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.10.1` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Production now requires two-factor for admin writes (`admin_mfa_required()` returns `true`) and the real admin is enrolled; the development demo account remains password-only for disposable tests. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. A realistic-scale rehearsal (20 teams / 500 players / 200 matches / 2,043 events) imported through the admin UI, passed pagination, UI, export, audit and restore checks, and the original development data was restored with the identical SHA-256; production was verified unchanged. Post-`v3.10.1`, admins can import a whole squad from Excel/CSV with a row-by-row preview and one atomic `add_players()` call, and the scheduled-fixture repair migration means goals/cards added to upcoming matches now reach player totals in both projects. Both migrations are applied in development and production, and production MFA is required again (`admin_mfa_required()` returns `true`). Roadmap A and B are now merged and migrated in both projects: `v_player_stats` / `v_standings` are the only totals (the stored `players.goals / yellow / red` columns are gone), and a `scorer` account can add goals and cards only to fixtures an admin assigned to it, only while they are LIVE or scheduled today, with a 15-minute undo. The one outstanding database action is `supabase/revoke-anon-write-grants-migration.sql`: anonymous callers still hold `UPDATE`/`DELETE` grants on four tables (RLS rejects the writes, so no data changed), which is why the daily drift monitor is red — tracked in issue #8. The remaining operational work is loading the real league data.
 
 ## 2. Architecture
 
@@ -813,3 +816,23 @@ Two feature branches merged after `v3.10.1`; no version bump.
 - Production and development both export as **1 season / 6 teams / 9 players / 9 matches / 0 events**. Export SHA-256: production `577831c9…bdac`, development `cf9216f5…7a90`.
 - Production MFA was temporarily disabled for the maintenance session and has been restored: `admin_mfa_required()` returns `true` in production and `false` in development, where the disposable demo account stays password-only.
 
+
+## 23. Roadmap A and B (2026-10-26)
+
+### Event-derived totals (#13, #14, #15)
+- `match_events` is now the single source of truth for goals and cards. `legacy_goals / legacy_yellow / legacy_red` keep the history that was imported before events existed, and `matches.events_counted` stays as the per-fixture "already inside the legacy offset" marker, not a second totals store.
+- `v_player_stats` and `v_standings` are the only totals the app reads; `set_player_totals()` is the only way to write the legacy offset. `supabase/drop-stored-totals-migration.sql` backfilled the offsets and dropped `players.goals / yellow / red`.
+- Applied in development and production. The app reads the view unconditionally and shows the existing data-error banner when it is missing, so an un-migrated project fails loudly instead of rendering zeros.
+- Verification: `npm run test:derived-stats` and `npm run test:drop-totals` (a true pre-A database, the stage-1 upgrade, the X4 repair, the drop twice, every post-drop write path), the backup export and restore drill, `test:sql`, and the Playwright suite.
+
+### Scorer role and live entry (#16)
+- `app_role` gains `scorer`, and `is_admin()` is unchanged, so a scorer inherits no admin policy or RPC.
+- `match_officials (match_id, user_id, created_at, created_by)` with RLS: a scorer reads only their own rows, an admin every row, anon none. There is no write policy; assignments go through the RPC.
+- `record_live_event()` / `remove_live_event()` are the whole scorer write surface. The server re-checks the role, the assignment, the active season, `events_counted`, the player/team relation and a LIVE-or-scheduled-today fixture. The first event starts a today fixture, a goal moves the score, and a scorer can undo for 15 minutes. Admins bypass the assignment and the window but still need a live/today fixture; older fixtures use the full match editor.
+- `list_users()`, `set_user_role()` and `set_match_officials()` are admin-only, take the same advisory lock as the other writers, refuse to demote the acting admin, accept only scorer accounts as officials, and write an audit row for every change.
+- Frontend: scorer badge and login acceptance, a per-fixture **Live entry** dialog with the running timeline and inline undo (locked once the window closes), and an admin **Users & roles** dialog for roles and per-fixture assignments, in EN/FR/AR.
+- `supabase/scorer-role-migration.sql` is applied in development and production. Read-only production check: `match_officials` answers `200`, and an anonymous `list_users()` returns `42501 permission denied` (the function exists and is protected).
+- Verification: `npm run test:scorer-role` (enum/helper/roles, RLS/assignments/audit, live entry/score/today gate/undo, admin bypass/direct-write denial/migration re-run), the Validate and E2E workflows, and a mocked Playwright scorer/admin test.
+
+### Still open
+- `supabase/revoke-anon-write-grants-migration.sql` has not been applied to either hosted project: an anonymous `PATCH` on teams/matches/seasons and `DELETE` on players answer `204` because the grant is still present (RLS filters the row, so nothing changes). `npm run check:drift --env=dev` and `--env=prod` both report 24 PASS / 4 FAIL, and issue #8 tracks it. Applying the migration is one `revoke` plus the default-privilege change and should turn the monitor green.
