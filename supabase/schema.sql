@@ -211,6 +211,26 @@ create unique index if not exists seasons_one_active_idx
   on public.seasons (is_active)
   where is_active;
 
+-- ------------------------------------------------------------
+-- 2b. DIVISIONS (roadmap K)
+-- ------------------------------------------------------------
+-- Fixed competition tiers. The rows are seeded here and the UI translates
+-- d1/d2 and shows a two-option switcher; adding a third tier later is a row
+-- insert. There is no client write policy: only the maintainer changes tiers.
+create table if not exists public.divisions (
+  id text primary key,
+  name text not null,
+  sort_order int not null default 1,
+  created_at timestamptz not null default now(),
+  constraint kickoff_divisions_id_not_blank check (length(btrim(id)) between 1 and 100),
+  constraint kickoff_divisions_name_length check (length(btrim(name)) between 1 and 100)
+);
+
+insert into public.divisions (id, name, sort_order)
+values ('d1', 'Division 1', 1),
+       ('d2', 'Division 2', 2)
+on conflict (id) do nothing;
+
 -- Used by the write policies and RPCs to keep archived seasons read-only.
 create or replace function public.is_active_season(p_season_id text)
 returns boolean
@@ -237,6 +257,7 @@ create table if not exists public.teams (
   name text not null,
   code text not null default 'TBD',
   color text not null default '#16a34a',
+  division_id text not null default 'd1' references public.divisions (id) on delete restrict,
   created_at timestamptz not null default now(),
   deleted_at timestamptz,
   constraint kickoff_teams_id_not_blank check (length(btrim(id)) between 1 and 100),
@@ -244,6 +265,33 @@ create table if not exists public.teams (
   constraint kickoff_teams_code_length check (length(btrim(code)) between 1 and 8),
   constraint kickoff_teams_color_hex check (color ~ '^#[0-9A-Fa-f]{6}$')
 );
+
+-- Upgrade a teams table created before divisions existed. Existing clubs go to
+-- Division 1 so the current league keeps its table unchanged.
+alter table public.teams add column if not exists division_id text;
+
+update public.teams t
+set division_id = 'd1'
+where t.division_id is null
+   or not exists (select 1 from public.divisions d where d.id = t.division_id);
+
+alter table public.teams alter column division_id set default 'd1';
+alter table public.teams alter column division_id set not null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'teams_division_id_fkey'
+      and conrelid = 'public.teams'::regclass
+  ) then
+    alter table public.teams
+      add constraint teams_division_id_fkey
+      foreign key (division_id) references public.divisions (id) on delete restrict;
+  end if;
+end $$;
+
+create index if not exists teams_division_id_idx on public.teams (division_id);
 
 create table if not exists public.players (
   id text primary key,
@@ -292,6 +340,7 @@ end $$;
 create table if not exists public.matches (
   id text primary key,
   season_id text not null references public.seasons (id) on delete restrict,
+  division_id text not null default 'd1' references public.divisions (id) on delete restrict,
   round int not null default 1,
   home_id text not null references public.teams (id) on delete cascade,
   away_id text not null references public.teams (id) on delete cascade,
@@ -309,6 +358,38 @@ create table if not exists public.matches (
   constraint kickoff_matches_scores_range check (home_score between 0 and 999 and away_score between 0 and 999),
   constraint kickoff_matches_distinct_teams check (home_id <> away_id)
 );
+
+-- Upgrade a matches table created before divisions existed. Existing fixtures
+-- take the home team's division, so a club that later moves does not rewrite
+-- the history of matches it already played.
+alter table public.matches add column if not exists division_id text;
+
+update public.matches m
+set division_id = coalesce(t.division_id, 'd1')
+from public.teams t
+where t.id = m.home_id
+  and (
+    m.division_id is null
+    or not exists (select 1 from public.divisions d where d.id = m.division_id)
+  );
+
+alter table public.matches alter column division_id set default 'd1';
+alter table public.matches alter column division_id set not null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'matches_division_id_fkey'
+      and conrelid = 'public.matches'::regclass
+  ) then
+    alter table public.matches
+      add constraint matches_division_id_fkey
+      foreign key (division_id) references public.divisions (id) on delete restrict;
+  end if;
+end $$;
+
+create index if not exists matches_division_id_idx on public.matches (division_id);
 
 -- Upgrade a matches table created before seasons existed.
 alter table public.matches add column if not exists season_id text;
@@ -404,6 +485,91 @@ create index if not exists matches_home_id_idx on public.matches (home_id);
 create index if not exists matches_away_id_idx on public.matches (away_id);
 
 -- ------------------------------------------------------------
+-- 3a. DIVISION GUARDS (roadmap K)
+-- ------------------------------------------------------------
+-- A club can change division between seasons, but not while it has a fixture in
+-- the active season: the live table must keep matching the fixtures it shows.
+create or replace function public.guard_team_division()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'UPDATE' and new.division_id is distinct from old.division_id then
+    if exists (
+      select 1
+      from public.matches m
+      join public.seasons s on s.id = m.season_id
+      where m.deleted_at is null
+        and s.is_active
+        and new.id in (m.home_id, m.away_id)
+    ) then
+      raise exception 'A team with fixtures in the active season cannot change division';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists teams_division_guard on public.teams;
+create trigger teams_division_guard
+  before update of division_id on public.teams
+  for each row execute function public.guard_team_division();
+
+-- A fixture is played inside one division, and it keeps that division for ever.
+-- The match's own division is what history and the archived table read, so a
+-- later team move cannot rewrite an old result.
+create or replace function public.guard_match_division()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_home text;
+  v_away text;
+begin
+  -- A full admin restore writes rows exactly as they were exported, including
+  -- fixtures whose clubs have since moved. replace_all_data() validates every
+  -- division first; normal REST writes still take the checks below.
+  if coalesce(current_setting('kickoff.importing', true), '') = 'on' then
+    return new;
+  end if;
+
+  -- Score/status edits on an existing fixture never re-interpret history.
+  if tg_op = 'UPDATE'
+     and new.home_id = old.home_id
+     and new.away_id = old.away_id
+     and new.division_id = old.division_id then
+    return new;
+  end if;
+
+  select division_id into v_home from public.teams where id = new.home_id;
+  select division_id into v_away from public.teams where id = new.away_id;
+  if v_home is null or v_away is null then
+    raise exception 'Both teams must exist before a fixture can be saved';
+  end if;
+  if v_home <> v_away then
+    raise exception 'Home and away teams must be in the same division';
+  end if;
+  if tg_op = 'UPDATE' and new.division_id is distinct from old.division_id then
+    raise exception 'A match cannot be moved to another division';
+  end if;
+  if tg_op = 'INSERT' and new.division_id is distinct from v_home then
+    raise exception 'The fixture division must be the division of both teams';
+  end if;
+  new.division_id := v_home;
+  return new;
+end;
+$$;
+
+drop trigger if exists matches_division_guard on public.matches;
+create trigger matches_division_guard
+  before insert or update of home_id, away_id, division_id on public.matches
+  for each row execute function public.guard_match_division();
+
+-- ------------------------------------------------------------
 -- 3b. DERIVED VIEWS (roadmap item A, stage 1)
 -- ------------------------------------------------------------
 -- These recompute player and team totals from rows that exist. Player totals
@@ -453,7 +619,8 @@ select p.id as player_id,
        coalesce(e.red, 0) as event_red,
        p.legacy_goals + coalesce(e.goals, 0) as goals,
        p.legacy_yellow + coalesce(e.yellow, 0) as yellow,
-       p.legacy_red + coalesce(e.red, 0) as red
+       p.legacy_red + coalesce(e.red, 0) as red,
+       t.division_id
 from public.players p
 join public.teams t
   on t.id = p.team_id
@@ -489,7 +656,8 @@ select m.id as match_id,
          when m.away_score > m.home_score then 'W'
          when m.home_score = m.away_score then 'D'
          else 'L'
-       end as away_result
+       end as away_result,
+       m.division_id
 from public.matches m
 join public.seasons s
   on s.id = m.season_id
@@ -503,14 +671,15 @@ join public.teams away
 where m.status = 'FINISHED'
   and m.deleted_at is null;
 
--- Mirrors calculateStandings() in js/app.js:
---   * every visible club appears in the active season,
---   * an archived season only lists clubs that played in it,
+-- Mirrors calculateStandings() in js/app.js, one table per division:
+--   * the active season lists every visible club currently in that division,
+--   * an archived season only lists clubs that played in that division,
 --   * tie-breakers are points, goal difference, goals scored, wins, name.
 create or replace view public.v_standings
 with (security_invoker = true) as
 with results as (
   select r.season_id,
+         r.division_id,
          r.home_id as team_id,
          r.home_score as goals_for,
          r.away_score as goals_against,
@@ -521,6 +690,7 @@ with results as (
   from public.v_match_results r
   union all
   select r.season_id,
+         r.division_id,
          r.away_id,
          r.away_score,
          r.home_score,
@@ -532,6 +702,7 @@ with results as (
 ),
 totals as (
   select season_id,
+         division_id,
          team_id,
          count(*)::int as played,
          count(*) filter (where result = 'W')::int as won,
@@ -541,40 +712,46 @@ totals as (
          coalesce(sum(goals_against), 0)::int as goals_against,
          coalesce(sum(points), 0)::int as points
   from results
-  group by season_id, team_id
+  group by season_id, division_id, team_id
 ),
 ordered as (
   select season_id,
+         division_id,
          team_id,
          result,
          row_number() over (
-           partition by season_id, team_id
+           partition by season_id, division_id, team_id
            order by datetime nulls first, match_id
          ) as rn,
-         count(*) over (partition by season_id, team_id) as total
+         count(*) over (partition by season_id, division_id, team_id) as total
   from results
 ),
 form as (
   select season_id,
+         division_id,
          team_id,
          array_agg(result order by rn) as form
   from ordered
   where rn > total - 5
-  group by season_id, team_id
+  group by season_id, division_id, team_id
 ),
 scope as (
   select s.id as season_id,
+         d.id as division_id,
          t.id as team_id
   from public.seasons s
-  join public.teams t on true
+  cross join public.divisions d
+  join public.teams t on t.deleted_at is null
   where s.deleted_at is null
-    and t.deleted_at is null
     and (
-      s.is_active
+      -- The live table follows the current registration.
+      (s.is_active and t.division_id = d.id)
+      -- History follows the division the club actually played in.
       or exists (
         select 1
         from public.matches m
         where m.season_id = s.id
+          and m.division_id = d.id
           and m.deleted_at is null
           and t.id in (m.home_id, m.away_id)
       )
@@ -595,27 +772,32 @@ select sc.season_id,
        coalesce(tt.points, 0) as points,
        coalesce(f.form, '{}'::text[]) as form,
        row_number() over (
-         partition by sc.season_id
+         partition by sc.season_id, sc.division_id
          order by coalesce(tt.points, 0) desc,
                   coalesce(tt.goals_for, 0) - coalesce(tt.goals_against, 0) desc,
                   coalesce(tt.goals_for, 0) desc,
                   coalesce(tt.won, 0) desc,
                   t.name asc
-       )::int as position
+       )::int as position,
+       sc.division_id
 from scope sc
 join public.teams t on t.id = sc.team_id
 left join totals tt
   on tt.season_id = sc.season_id
+ and tt.division_id = sc.division_id
  and tt.team_id = sc.team_id
 left join form f
   on f.season_id = sc.season_id
+ and f.division_id = sc.division_id
  and f.team_id = sc.team_id;
 
 -- ------------------------------------------------------------
 -- 4. GRANTS (RLS still decides what each role may do)
 -- ------------------------------------------------------------
 grant usage on schema public to anon, authenticated;
-grant select on public.seasons, public.teams, public.players, public.matches, public.match_events to anon, authenticated;
+grant select on public.divisions, public.seasons, public.teams, public.players, public.matches, public.match_events to anon, authenticated;
+-- Divisions are maintainer-managed: no client role may insert, update or delete them.
+revoke insert, update, delete on public.divisions from anon, authenticated;
 revoke all on public.v_player_event_totals, public.v_player_stats, public.v_match_results, public.v_standings from public, anon, authenticated;
 grant select on public.v_player_event_totals, public.v_player_stats, public.v_match_results, public.v_standings to anon, authenticated;
 grant insert, update, delete on public.seasons, public.players to authenticated;
@@ -643,6 +825,7 @@ alter default privileges in schema public
 -- 5. ROW LEVEL SECURITY
 -- ------------------------------------------------------------
 alter table public.profiles enable row level security;
+alter table public.divisions enable row level security;
 alter table public.seasons enable row level security;
 alter table public.teams enable row level security;
 alter table public.players enable row level security;
@@ -672,6 +855,12 @@ drop policy if exists match_officials_select_admin on public.match_officials;
 create policy match_officials_select_admin on public.match_officials
   for select to authenticated
   using (public.is_admin());
+
+-- Divisions: public read, no client writes. The two rows are seeded and only
+-- the maintainer adds another tier with SQL.
+drop policy if exists divisions_select_all on public.divisions;
+create policy divisions_select_all on public.divisions
+  for select to anon, authenticated using (true);
 
 -- Seasons: public read, admin write.
 -- Trashed rows are invisible to everyone, admins included; admins find
@@ -1417,14 +1606,18 @@ as $$
 declare
   v_id text;
   v_season_id text;
+  v_division_id text;
   v_round int;
   v_home_id text;
   v_away_id text;
+  v_home_division text;
+  v_away_division text;
   v_home_score int;
   v_away_score int;
   v_status text;
   v_events_counted boolean;
   v_existing_season_id text;
+  v_existing_division_id text;
   v_existing_deleted_at timestamptz;
 begin
   if not public.is_admin() then
@@ -1467,6 +1660,29 @@ begin
     raise exception 'One or both teams do not exist or are in the trash';
   end if;
 
+  select division_id into v_home_division
+  from public.teams where id = v_home_id and deleted_at is null;
+  select division_id into v_away_division
+  from public.teams where id = v_away_id and deleted_at is null;
+  if v_home_division is distinct from v_away_division then
+    raise exception 'Home and away teams must be in the same division';
+  end if;
+
+  -- The fixture division is derived from its teams; an explicit value is only
+  -- accepted when it agrees with both of them.
+  v_division_id := nullif(p_match->>'division_id', '');
+  if v_division_id is null then
+    v_division_id := v_home_division;
+  end if;
+  if not exists (
+    select 1 from public.divisions where id = v_division_id
+  ) then
+    raise exception 'Unknown division: %', v_division_id;
+  end if;
+  if v_division_id <> v_home_division then
+    raise exception 'The fixture division must be the division of both teams';
+  end if;
+
   v_status := coalesce(nullif(p_match->>'status', ''), 'SCHEDULED');
   if v_status not in ('SCHEDULED', 'LIVE', 'FINISHED') then
     raise exception 'Invalid match status: %', v_status;
@@ -1480,8 +1696,8 @@ begin
 
   v_events_counted := coalesce((p_match->>'events_counted')::boolean, true);
 
-  select season_id, deleted_at
-    into v_existing_season_id, v_existing_deleted_at
+  select season_id, division_id, deleted_at
+    into v_existing_season_id, v_existing_division_id, v_existing_deleted_at
   from public.matches
   where id = v_id;
 
@@ -1490,6 +1706,9 @@ begin
   end if;
   if found and v_existing_season_id <> v_season_id then
     raise exception 'A match cannot be moved to another season';
+  end if;
+  if found and v_existing_division_id <> v_division_id then
+    raise exception 'A match cannot be moved to another division';
   end if;
   if found and not public.is_active_season(v_existing_season_id) then
     raise exception 'Only the active season can be edited' using errcode = '42501';
@@ -1513,6 +1732,7 @@ begin
   insert into public.matches (
     id,
     season_id,
+    division_id,
     round,
     home_id,
     away_id,
@@ -1527,6 +1747,7 @@ begin
   values (
     v_id,
     v_season_id,
+    v_division_id,
     v_round,
     v_home_id,
     v_away_id,
@@ -1540,6 +1761,7 @@ begin
   )
   on conflict (id) do update
     set season_id = excluded.season_id,
+        division_id = excluded.division_id,
         round = excluded.round,
         home_id = excluded.home_id,
         away_id = excluded.away_id,
@@ -1558,6 +1780,59 @@ begin
   end if;
 end;
 $$;
+
+-- ------------------------------------------------------------
+-- 6c2. MOVE A TEAM BETWEEN DIVISIONS (roadmap K)
+-- ------------------------------------------------------------
+-- The club keeps its identity, players and all played fixtures; only the
+-- current registration changes. The guard (3a) refuses a move while the club
+-- has a fixture in the active season, because the live table would no longer
+-- match the fixtures it shows.
+create or replace function public.set_team_division(p_team_id text, p_division_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can move teams between divisions' using errcode = '42501';
+  end if;
+  if p_team_id is null or p_division_id is null then
+    raise exception 'Team and division are required';
+  end if;
+  if not exists (select 1 from public.divisions where id = p_division_id) then
+    raise exception 'Unknown division: %', p_division_id;
+  end if;
+
+  perform pg_advisory_xact_lock(748291);
+
+  if not exists (
+    select 1 from public.teams where id = p_team_id and deleted_at is null
+  ) then
+    raise exception 'Team not found or in the trash';
+  end if;
+
+  if exists (
+    select 1
+    from public.matches m
+    join public.seasons s on s.id = m.season_id
+    where m.deleted_at is null
+      and s.is_active
+      and p_team_id in (m.home_id, m.away_id)
+  ) then
+    raise exception 'A team with fixtures in the active season cannot change division';
+  end if;
+
+  update public.teams
+  set division_id = p_division_id
+  where id = p_team_id
+    and division_id is distinct from p_division_id;
+end;
+$$;
+
+revoke execute on function public.set_team_division(text, text) from public, anon;
+grant execute on function public.set_team_division(text, text) to authenticated;
 
 -- ------------------------------------------------------------
 -- 6d. SAFE TEAM DELETION + PLAYER ARCHIVE/RESTORE
@@ -2111,6 +2386,26 @@ begin
     raise exception 'Import needs exactly one active season';
   end if;
 
+  -- Divisions are seeded, never replaced. Every imported row must point at one
+  -- of the existing tiers. A fixture keeps the division it was played in, so it
+  -- may differ from its clubs' current division after a between-season move.
+  if exists (
+    select 1
+    from jsonb_to_recordset(v_teams) as t(id text, division_id text)
+    where coalesce(t.division_id, 'd1') not in (select id from public.divisions)
+  ) then
+    raise exception 'Every imported team needs a known division';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_to_recordset(v_matches) as mt(id text, home_id text, away_id text, division_id text)
+    left join jsonb_to_recordset(v_teams) as home(id text, division_id text) on home.id = mt.home_id
+    where coalesce(mt.division_id, home.division_id, 'd1') not in (select id from public.divisions)
+  ) then
+    raise exception 'Every imported fixture needs a known division';
+  end if;
+
   -- Serialize full imports so two admin tabs cannot delete and reinsert
   -- overlapping data at the same time.
   perform pg_advisory_xact_lock(748291);
@@ -2118,6 +2413,10 @@ begin
   -- Transaction-local: the audit row triggers stay quiet during the
   -- replace, and one IMPORT summary is written at the end instead.
   perform set_config('app.audit_skip', '1', true);
+
+  -- The matches insert restores historical divisions verbatim; the guard is
+  -- re-armed immediately afterwards for ordinary writes.
+  perform set_config('kickoff.importing', 'on', true);
 
   -- Supabase enables pg-safeupdate, which rejects DELETE without a WHERE
   -- clause. The primary key is NOT NULL, so this still removes every row.
@@ -2141,16 +2440,18 @@ begin
     is_active boolean
   );
 
-  insert into public.teams (id, name, code, color)
+  insert into public.teams (id, name, code, color, division_id)
   select t.id,
          t.name,
          coalesce(t.code, 'TBD'),
-         coalesce(t.color, '#16a34a')
+         coalesce(t.color, '#16a34a'),
+         coalesce(t.division_id, 'd1')
   from jsonb_to_recordset(v_teams) as t(
     id text,
     name text,
     code text,
-    color text
+    color text,
+    division_id text
   );
 
   insert into public.players (id, team_id, name, pos, num, legacy_goals, legacy_yellow, legacy_red, is_active)
@@ -2178,6 +2479,7 @@ begin
   insert into public.matches (
     id,
     season_id,
+    division_id,
     round,
     home_id,
     away_id,
@@ -2191,6 +2493,11 @@ begin
   )
   select mt.id,
          mt.season_id,
+         coalesce(
+           mt.division_id,
+           (select home.division_id from public.teams home where home.id = mt.home_id),
+           'd1'
+         ),
          coalesce(mt.round, 1),
          mt.home_id,
          mt.away_id,
@@ -2204,6 +2511,7 @@ begin
   from jsonb_to_recordset(v_matches) as mt(
     id text,
     season_id text,
+    division_id text,
     round int,
     home_id text,
     away_id text,
@@ -2215,6 +2523,9 @@ begin
     scorers_text text,
     events_counted boolean
   );
+
+  -- Fixtures are in place; ordinary writes are guarded again.
+  perform set_config('kickoff.importing', 'off', true);
 
   if exists (
     select 1

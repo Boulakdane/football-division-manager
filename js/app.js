@@ -131,7 +131,7 @@ function refreshIcons() {
  *     exact view the sender was looking at.
  * --------------------------------------------------------------- */
 
-const URL_STATE_DEFAULTS = { tab: 'standings', round: 'ALL', status: 'ALL', q: '' };
+const URL_STATE_DEFAULTS = { tab: 'standings', round: 'ALL', status: 'ALL', q: '', division: 'd1' };
 
 function currentTabId() {
   const visible = Array.from(document.querySelectorAll('.tab-view'))
@@ -145,6 +145,7 @@ function readUrlState() {
   return {
     tab: params.get('tab') || '',
     season: params.get('season') || '',
+    division: params.get('division') || '',
     round: params.get('round') || '',
     status: params.get('status') || '',
     q: params.get('q') || ''
@@ -167,6 +168,7 @@ function syncUrlState() {
 
   write('tab', currentTabId(), URL_STATE_DEFAULTS.tab);
   write('season', appState.viewSeasonId, appState.activeSeasonId);
+  write('division', appState.viewDivisionId, URL_STATE_DEFAULTS.division);
 
   const roundSelect = document.getElementById('filter-round');
   const statusSelect = document.getElementById('filter-status');
@@ -192,6 +194,11 @@ function applyUrlState() {
   if (state.season && appState.seasonsReady &&
       (appState.seasons || []).some(season => season.id === state.season)) {
     appState.viewSeasonId = state.season;
+  }
+
+  if (state.division && appState.divisionsReady &&
+      (appState.divisions || []).some(division => division.id === state.division)) {
+    appState.viewDivisionId = state.division;
   }
 
   const roundSelect = document.getElementById('filter-round');
@@ -334,6 +341,7 @@ const CLICK_ACTIONS = {
 const CHANGE_ACTIONS = {
   language: el => changeLanguage(el.value),
   season: el => selectSeason(el.value),
+  division: el => selectDivision(el.value),
   'render-fixtures': () => renderFixtures(),
   'match-team-change': () => onMatchTeamChange(),
   'update-event': el => updateMatchEvent(el.dataset.id, el.dataset.field, el.value),
@@ -461,16 +469,60 @@ function viewedSeason() {
   return getSeason(appState.viewSeasonId);
 }
 
+/* ---------- division helpers (roadmap K) ---------- */
+
+function getDivision(divisionId) {
+  return (appState.divisions || []).find(division => division.id === divisionId);
+}
+
+/** Localised tier name: Division 1 / Division 2 (adding d3 means one i18n key). */
+function divisionLabel(divisionId) {
+  const key = 'division_' + divisionId;
+  const label = t(key);
+  if (label && label !== key) return label;
+  const division = getDivision(divisionId);
+  return division ? division.name : String(divisionId || '');
+}
+
+/** The tier selected in the division switcher. */
+function viewedDivisionId() {
+  return appState.viewDivisionId || (appState.divisions && appState.divisions[0]
+    ? appState.divisions[0].id
+    : 'd1');
+}
+
+/** Clubs currently registered in the viewed division. */
+function divisionTeams() {
+  const divisionId = viewedDivisionId();
+  return appState.teams.filter(team => (team.divisionId || 'd1') === divisionId);
+}
+
+function divisionTeamIds() {
+  return new Set(divisionTeams().map(team => team.id));
+}
+
+/** Turn a rejected team move into a message the admin can act on. */
+function saveTeamErrorMessage(error) {
+  const message = String((error && error.message) || '');
+  if (/cannot change division/i.test(message)) return t('alertTeamDivisionLocked');
+  if (error && error.code === 'INTEGRITY_MIGRATION_REQUIRED') return t('alertIntegrityMigration');
+  return t('alertSaveFailed');
+}
+
 /** True when the visible season is archived (or there is no active season yet). */
 function isSeasonReadOnly() {
   if (!appState.seasonsReady) return false;
   return !appState.viewSeasonId || appState.viewSeasonId !== appState.activeSeasonId;
 }
 
-/** Matches for the season currently selected in the switcher. */
+/** Matches for the season and division currently selected in the switchers. */
 function visibleMatches() {
-  if (!appState.seasonsReady || !appState.viewSeasonId) return appState.matches;
-  return appState.matches.filter(match => match.seasonId === appState.viewSeasonId);
+  const matchSeason = appState.seasonsReady && appState.viewSeasonId;
+  const divisionId = viewedDivisionId();
+  return appState.matches.filter(match =>
+    (!matchSeason || match.seasonId === appState.viewSeasonId) &&
+    (match.divisionId || 'd1') === divisionId
+  );
 }
 
 /** Matches belonging to the one season that can receive new results. */
@@ -598,7 +650,7 @@ function renderSeasonBar() {
   const bar = document.getElementById('season-bar');
   if (!bar) return;
 
-  const supported = Boolean(appState.seasonsReady);
+  const supported = Boolean(appState.seasonsReady) || Boolean(appState.divisionsReady);
   bar.classList.toggle('hidden', !supported);
 
   const seasons = appState.seasons || [];
@@ -609,6 +661,20 @@ function renderSeasonBar() {
       : `<option value="">${esc(t('seasonNone'))}</option>`;
     select.value = appState.viewSeasonId || '';
     select.disabled = seasons.length === 0;
+  }
+
+  // Roadmap K: a fixed two-option tier switcher, hidden until the migration
+  // has run and until there is more than one tier to choose from.
+  const divisions = appState.divisions || [];
+  const divisionSwitcher = document.getElementById('division-switcher');
+  const divisionSelect = document.getElementById('division-select');
+  const showDivisions = Boolean(appState.divisionsReady) && divisions.length > 1;
+  if (divisionSwitcher) divisionSwitcher.classList.toggle('hidden', !showDivisions);
+  if (divisionSelect && showDivisions) {
+    divisionSelect.innerHTML = divisions
+      .map(division => `<option value="${esc(division.id)}">${esc(divisionLabel(division.id))}</option>`)
+      .join('');
+    divisionSelect.value = viewedDivisionId();
   }
 
   const viewed = viewedSeason();
@@ -647,6 +713,14 @@ function selectSeason(seasonId) {
   if (!appState.seasonsReady) return;
   if (!(appState.seasons || []).some(season => season.id === seasonId)) return;
   appState.viewSeasonId = seasonId;
+  renderApp();
+}
+
+/** Roadmap K: switch the fixed Division 1 / Division 2 view. */
+function selectDivision(divisionId) {
+  if (!appState.divisionsReady) return;
+  if (!(appState.divisions || []).some(division => division.id === divisionId)) return;
+  appState.viewDivisionId = divisionId;
   renderApp();
 }
 
@@ -708,7 +782,7 @@ function calculateStandings() {
   });
   const teams = archived
     ? appState.teams.filter(team => seasonTeamIds.has(team.id))
-    : appState.teams;
+    : appState.teams.filter(team => (team.divisionId || 'd1') === viewedDivisionId());
 
   teams.forEach(team => {
     stats[team.id] = {
@@ -767,13 +841,14 @@ function formBadge(f) {
   return `<span class="w-4 h-4 rounded-full ${cls} text-[9px] font-bold inline-flex items-center justify-center border">${f}</span>`;
 }
 
-/** All-time top scorers (player totals are career totals, not per-season). */
+/** Top scorers in the viewed division (player totals are career totals). */
 function renderTopScorers() {
   const list = document.getElementById('top-scorers-list');
   if (!list) return;
 
+  const teamIds = divisionTeamIds();
   const rows = appState.players
-    .filter(player => player.isActive !== false && toInt(player.goals) > 0)
+    .filter(player => player.isActive !== false && toInt(player.goals) > 0 && teamIds.has(player.teamId))
     .map(player => ({ player, team: getTeam(player.teamId), goals: toInt(player.goals) }))
     .filter(row => row.team)
     .sort((a, b) => b.goals - a.goals || a.player.name.localeCompare(b.player.name))
@@ -1382,13 +1457,14 @@ async function removeLiveEvent(eventId) {
 function renderTeamsView() {
   const container = document.getElementById('teams-container');
   const query = (document.getElementById('player-search').value || '').trim().toLowerCase();
+  const teams = divisionTeams();
 
-  if (appState.teams.length === 0) {
+  if (teams.length === 0) {
     container.innerHTML = `
       <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center">
         <i data-lucide="shield-plus" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
-        <p class="font-medium text-sm text-slate-300">${esc(t('noTeamsFound'))}</p>
-        <p class="text-xs text-slate-500 mt-1">${esc(t('emptyNoTeamsHint'))}</p>
+        <p class="font-medium text-sm text-slate-300">${esc(t('emptyDivisionTeams'))}</p>
+        <p class="text-xs text-slate-500 mt-1">${esc(t('emptyDivisionTeamsHint'))}</p>
         <button data-action="new-team" class="admin-only mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddTeam'))}
         </button>
@@ -1398,7 +1474,7 @@ function renderTeamsView() {
     return;
   }
 
-  container.innerHTML = appState.teams.map(team => {
+  container.innerHTML = teams.map(team => {
     const allSquad = appState.players.filter(p => p.teamId === team.id);
     let squad = allSquad.filter(p => p.isActive !== false);
     let archived = (typeof isAdmin === 'function' && isAdmin())
@@ -1421,7 +1497,7 @@ function renderTeamsView() {
             <div class="w-2 h-8 rounded-full shrink-0" style="background-color:${esc(team.color || '#22c55e')}"></div>
             <div class="min-w-0">
               <h3 class="font-bold text-base text-white truncate">${esc(team.name)}</h3>
-              <p class="text-xs text-slate-400">${totalSquad} ${esc(t('lblPlayers'))} • ${esc(team.code)}</p>
+              <p class="text-xs text-slate-400">${totalSquad} ${esc(t('lblPlayers'))} • ${esc(team.code)} • <span class="text-pitch-400">${esc(divisionLabel(team.divisionId))}</span></p>
             </div>
           </div>
           <div class="admin-only flex items-center gap-2 shrink-0">
@@ -1524,12 +1600,16 @@ function clearPlayerSearch() {
 function renderStatsBanner() {
   const finished = visibleMatches().filter(m => m.status === 'FINISHED');
   const totalGoals = finished.reduce((sum, m) => sum + toInt(m.homeScore) + toInt(m.awayScore), 0);
+  const teamIds = divisionTeamIds();
 
-  document.getElementById('stat-teams-count').textContent = appState.teams.length;
+  document.getElementById('stat-teams-count').textContent = divisionTeams().length;
   document.getElementById('stat-matches-played').textContent = finished.length;
   document.getElementById('stat-total-goals').textContent = totalGoals;
 
-  const scorers = appState.players.slice().sort((a, b) => toInt(b.goals) - toInt(a.goals));
+  const scorers = appState.players
+    .filter(player => teamIds.has(player.teamId))
+    .slice()
+    .sort((a, b) => toInt(b.goals) - toInt(a.goals));
   document.getElementById('stat-top-scorer').textContent =
     scorers.length && toInt(scorers[0].goals) > 0 ? `${scorers[0].name} (${toInt(scorers[0].goals)})` : '--';
 }
@@ -1547,6 +1627,7 @@ function openMatchModal(matchId) {
     return;
   }
 
+  let existingDivisionId = viewedDivisionId();
   if (matchId) {
     const existing = appState.matches.find(m => m.id === matchId);
     if (!existing) return;
@@ -1554,17 +1635,20 @@ function openMatchModal(matchId) {
       alert(t('alertArchiveReadOnly'));
       return;
     }
+    existingDivisionId = existing.divisionId || existingDivisionId;
   }
 
-  if (appState.teams.length < 2) {
-    alert(t('alertMinTeams'));
+  const divisionTeamsForMatch = appState.teams
+    .filter(team => (team.divisionId || 'd1') === existingDivisionId);
+  if (divisionTeamsForMatch.length < 2) {
+    alert(t('alertMinDivisionTeams'));
     openTeamModal();
     return;
   }
 
   const homeSelect = document.getElementById('match-home-team');
   const awaySelect = document.getElementById('match-away-team');
-  const teamOptions = appState.teams.map(team => `<option value="${esc(team.id)}">${esc(team.name)}</option>`).join('');
+  const teamOptions = divisionTeamsForMatch.map(team => `<option value="${esc(team.id)}">${esc(team.name)}</option>`).join('');
   homeSelect.innerHTML = teamOptions;
   awaySelect.innerHTML = teamOptions;
 
@@ -1572,13 +1656,14 @@ function openMatchModal(matchId) {
   document.getElementById('match-id').value = '';
 
   // Sensible defaults for a new fixture
-  const nextRound = activeMatches().reduce((max, m) => Math.max(max, toInt(m.round)), 0) + 1;
+  const divisionActive = activeMatches().filter(m => (m.divisionId || 'd1') === existingDivisionId);
+  const nextRound = divisionActive.reduce((max, m) => Math.max(max, toInt(m.round)), 0) + 1;
   document.getElementById('match-round').value = Math.max(1, nextRound);
   document.getElementById('match-status').value = 'SCHEDULED';
   document.getElementById('match-home-score').value = 0;
   document.getElementById('match-away-score').value = 0;
   document.getElementById('match-datetime').value = new Date().toISOString().slice(0, 16);
-  awaySelect.selectedIndex = Math.min(1, appState.teams.length - 1);
+  awaySelect.selectedIndex = Math.min(1, divisionTeamsForMatch.length - 1);
 
   document.getElementById('match-modal-title').textContent = t('modalMatchTitle');
 
@@ -1820,6 +1905,9 @@ async function saveMatch(e) {
   const matchData = {
     id: matchId,
     seasonId: appState.seasonsReady ? appState.activeSeasonId : null,
+    divisionId: existing
+      ? (existing.divisionId || viewedDivisionId())
+      : ((getTeam(homeId) || {}).divisionId || viewedDivisionId()),
     round,
     status: document.getElementById('match-status').value,
     datetime: document.getElementById('match-datetime').value,
@@ -1868,11 +1956,26 @@ async function deleteMatch(matchId) {
 /* ---------------------------------------------------------------
  * 8. TEAM MODAL (add / edit / delete)
  * --------------------------------------------------------------- */
+/** Fill the division select and hide it until the divisions migration has run. */
+function prepareTeamDivisionField(selectedId) {
+  const wrap = document.getElementById('team-division-wrap');
+  const divisionSelect = document.getElementById('team-division');
+  if (wrap) wrap.classList.toggle('hidden', !appState.divisionsReady);
+  if (divisionSelect) {
+    divisionSelect.innerHTML = (appState.divisions || [])
+      .map(division => `<option value="${esc(division.id)}">${esc(divisionLabel(division.id))}</option>`)
+      .join('');
+    divisionSelect.disabled = !appState.divisionsReady;
+    divisionSelect.value = selectedId || viewedDivisionId();
+  }
+}
+
 function openTeamModal() {
   document.getElementById('form-team').reset();
   document.getElementById('team-id').value = '';
   document.getElementById('team-color').value = '#16a34a';
   document.getElementById('team-modal-title').textContent = t('modalTeamTitle');
+  prepareTeamDivisionField(null);
   openModal('modal-team');
 }
 
@@ -1886,17 +1989,24 @@ function editTeam(teamId) {
   document.getElementById('team-code').value = team.code || '';
   document.getElementById('team-color').value = team.color || '#16a34a';
   document.getElementById('team-modal-title').textContent = t('modalTeamEditTitle');
+  prepareTeamDivisionField(team.divisionId);
   openModal('modal-team');
 }
 
 async function saveTeam(e) {
   e.preventDefault();
   const id = document.getElementById('team-id').value;
+  const existing = id ? appState.teams.find(team => team.id === id) : null;
+  const divisionSelect = document.getElementById('team-division');
+  const divisionId = (appState.divisionsReady && divisionSelect && divisionSelect.value)
+    ? divisionSelect.value
+    : (existing ? existing.divisionId : viewedDivisionId());
   const teamData = {
     id: id || uid('t'),
     name: document.getElementById('team-name').value.trim(),
     code: document.getElementById('team-code').value.trim().toUpperCase(),
-    color: document.getElementById('team-color').value
+    color: document.getElementById('team-color').value,
+    divisionId
   };
 
   if (!teamData.name) {
@@ -1905,12 +2015,27 @@ async function saveTeam(e) {
   }
 
   try {
-    await dbSaveTeam(teamData);
+    const divisionChanged = Boolean(
+      existing && appState.divisionsReady &&
+      (existing.divisionId || 'd1') !== divisionId
+    );
+    if (divisionChanged) {
+      // Guarded move first: the database refuses the change while the club
+      // still has fixtures in the active season, before anything is written.
+      await dbSetTeamDivision(teamData.id, divisionId);
+      await dbSaveTeam(teamData);
+    } else {
+      await dbSaveTeam(teamData);
+    }
+    // Follow a moved club so the admin sees the result of their action.
+    if (appState.divisionsReady && divisionId !== viewedDivisionId()) {
+      appState.viewDivisionId = divisionId;
+    }
     closeModal('modal-team');
     await refreshData();
     renderApp();
   } catch (err) {
-    alert(t('alertSaveFailed'));
+    alert(saveTeamErrorMessage(err));
   }
 }
 

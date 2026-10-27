@@ -65,6 +65,26 @@ function isNonNegativeInt(value) {
   return Number.isInteger(value) && value >= 0;
 }
 
+/** Older backups have no divisionId; they belong to Division 1. */
+function divisionIdOf(row, label) {
+  if (row.divisionId === undefined) return 'd1';
+  if (typeof row.divisionId !== 'string' || !row.divisionId.trim()) {
+    errors.push(`${label}: invalid divisionId "${row.divisionId}"`);
+    return 'd1';
+  }
+  return row.divisionId;
+}
+
+/** Return the declared division, or null when the backup predates divisions. */
+function declaredDivision(row, label) {
+  if (row.divisionId === undefined) return null;
+  if (typeof row.divisionId !== 'string' || !row.divisionId.trim()) {
+    errors.push(`${label}: invalid divisionId "${row.divisionId}"`);
+    return null;
+  }
+  return row.divisionId;
+}
+
 const seasons = arrayOf('seasons');
 const teams = arrayOf('teams');
 const players = arrayOf('players');
@@ -95,6 +115,9 @@ for (const team of teams) {
     errors.push(`teams: ${team && team.id} has an empty name`);
   }
 }
+const teamDivisionById = new Map(
+  teams.filter(Boolean).map(team => [team.id, divisionIdOf(team, `teams: ${team.id}`)])
+);
 
 for (const player of players) {
   if (!player) continue;
@@ -125,6 +148,15 @@ for (const match of matches) {
   }
   if (match.homeId === match.awayId) {
     errors.push(`matches: ${match.id} has the same home and away team`);
+  }
+  const homeDivision = teamDivisionById.get(match.homeId) || 'd1';
+  const awayDivision = teamDivisionById.get(match.awayId) || 'd1';
+  const matchDivision = declaredDivision(match, `matches: ${match.id}`);
+  // A fixture keeps the division it was played in, so a declared division may
+  // differ from the clubs' current one after a between-season move. Only an
+  // older backup without one needs the clubs to still agree.
+  if (!matchDivision && homeDivision !== awayDivision) {
+    errors.push(`matches: ${match.id} has no divisionId and its clubs are now in different divisions`);
   }
   if (!isNonNegativeInt(match.round) || match.round < 1) {
     errors.push(`matches: ${match.id} has an invalid round "${match.round}"`);

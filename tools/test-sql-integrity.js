@@ -96,6 +96,11 @@ async function run() {
       alter table public.players
         add constraint kickoff_players_totals_range
         check (goals >= 0 and yellow >= 0 and red >= 0);
+
+      -- Simulate a pre-K database: the stage-1 migration owns the old view
+      -- shape and the divisions migration upgrades it below.
+      drop view if exists public.v_standings, public.v_match_results,
+        public.v_player_stats, public.v_player_event_totals;
     `);
 
     // Upgrading an existing project: integrity, audit, then soft delete.
@@ -667,6 +672,30 @@ async function run() {
       /players\.goals no longer exists.*drop-stored-totals-migration/
     );
     console.log('OK stage 3 drops the stored columns, keeps every total and is re-runnable');
+
+    // Roadmap K: the divisions migration upgrades the pre-K views in place and
+    // is safe to re-run.
+    const divisionsSql = fs.readFileSync(path.join(ROOT, 'supabase/divisions-migration.sql'), 'utf8');
+    await exec(divisionsSql);
+    await exec(divisionsSql);
+    const divisionColumns = await q(`
+      select table_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and column_name = 'division_id'
+        and table_name in ('teams', 'matches', 'v_player_stats', 'v_match_results', 'v_standings')
+      order by table_name
+    `);
+    assert.strictEqual(
+      divisionColumns.length,
+      5,
+      'the migration adds division_id to both tables and all three views'
+    );
+    assert(
+      (await q("select count(*)::int n from public.v_standings where division_id = 'd1'"))[0].n > 0,
+      'the upgraded table exposes Division 1 rows'
+    );
+    console.log('OK divisions migration upgrades the pre-K views and is re-runnable');
 
     // ------------------------------------------------------------
     // Fresh install path: schema.sql alone must provide the audit log

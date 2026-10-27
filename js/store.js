@@ -5,18 +5,25 @@
    --------------------------------------------------------------- */
 'use strict';
 
+/** The seeded tiers (roadmap K). A third one is a row insert plus i18n keys. */
+const DEFAULT_DIVISIONS = [
+  { id: 'd1', name: 'Division 1', sortOrder: 1 },
+  { id: 'd2', name: 'Division 2', sortOrder: 2 }
+];
+
 /** Demo dataset shown in read-only mode (and used by "Reset sample data"). */
 const DEFAULT_DATA = {
+  divisions: DEFAULT_DIVISIONS,
   seasons: [
     { id: 's1', name: '2026 Season', startDate: '2026-08-01', endDate: '2027-05-31', isActive: true }
   ],
   teams: [
-    { id: 't1', name: 'Spartan FC',        code: 'SFC', color: '#3b82f6' },
-    { id: 't2', name: 'Titan United',      code: 'TTN', color: '#10b981' },
-    { id: 't3', name: 'Phoenix Rovers',    code: 'PHX', color: '#f59e0b' },
-    { id: 't4', name: 'Vanguard Athletic', code: 'VNG', color: '#ef4444' },
-    { id: 't5', name: 'Atlas Warriors',    code: 'ATL', color: '#8b5cf6' },
-    { id: 't6', name: 'Coastal Sharks',    code: 'CSH', color: '#06b6d4' }
+    { id: 't1', name: 'Spartan FC',        code: 'SFC', color: '#3b82f6', divisionId: 'd1' },
+    { id: 't2', name: 'Titan United',      code: 'TTN', color: '#10b981', divisionId: 'd1' },
+    { id: 't3', name: 'Phoenix Rovers',    code: 'PHX', color: '#f59e0b', divisionId: 'd1' },
+    { id: 't4', name: 'Vanguard Athletic', code: 'VNG', color: '#ef4444', divisionId: 'd1' },
+    { id: 't5', name: 'Atlas Warriors',    code: 'ATL', color: '#8b5cf6', divisionId: 'd2' },
+    { id: 't6', name: 'Coastal Sharks',    code: 'CSH', color: '#06b6d4', divisionId: 'd2' }
   ],
   players: [
     { id: 'p1', teamId: 't1', name: 'David Silva',  pos: 'MID', num: 10, goals: 5, yellow: 1, red: 0 },
@@ -30,15 +37,15 @@ const DEFAULT_DATA = {
     { id: 'p9', teamId: 't6', name: 'Sam Okafor',   pos: 'GK',  num: 1,  goals: 0, yellow: 0, red: 0 }
   ],
   matches: [
-    { id: 'm1', seasonId: 's1', round: 1, homeId: 't1', awayId: 't2', homeScore: 3, awayScore: 1, status: 'FINISHED',  datetime: '2026-10-03T15:00', venue: 'Main Field - Pitch 1',       scorersText: 'Carlos Ramos (2), David Silva (1) - Ethan Hunt (1)' },
-    { id: 'm2', seasonId: 's1', round: 1, homeId: 't3', awayId: 't4', homeScore: 2, awayScore: 2, status: 'FINISHED',  datetime: '2026-10-03T17:30', venue: 'Main Field - Pitch 2',       scorersText: 'Leo Mendes (2) - John Terry (1), K. Diaz (1)' },
-    { id: 'm3', seasonId: 's1', round: 1, homeId: 't5', awayId: 't6', homeScore: 1, awayScore: 0, status: 'FINISHED',  datetime: '2026-10-04T16:00', venue: 'Community Sports Complex',   scorersText: 'Omar Belaid (1)' },
-    { id: 'm4', seasonId: 's1', round: 2, homeId: 't2', awayId: 't3', homeScore: 0, awayScore: 1, status: 'FINISHED',  datetime: '2026-10-10T15:30', venue: 'United Arena',               scorersText: 'Leo Mendes (1)' },
-    { id: 'm5', seasonId: 's1', round: 2, homeId: 't4', awayId: 't5', homeScore: 2, awayScore: 2, status: 'FINISHED',  datetime: '2026-10-11T18:00', venue: 'Vanguard Ground',            scorersText: 'John Terry (1), R. Cole (1) - Omar Belaid (2)' },
-    { id: 'm6', seasonId: 's1', round: 2, homeId: 't6', awayId: 't1', homeScore: 1, awayScore: 1, status: 'LIVE',      datetime: '2026-10-20T19:00', venue: 'Shark Park',                 scorersText: 'Lucas Ferrao (1) - Carlos Ramos (1)' },
-    { id: 'm7', seasonId: 's1', round: 3, homeId: 't1', awayId: 't3', homeScore: 0, awayScore: 0, status: 'SCHEDULED', datetime: '2026-10-24T15:00', venue: 'Main Field - Pitch 1',       scorersText: '' },
-    { id: 'm8', seasonId: 's1', round: 3, homeId: 't2', awayId: 't5', homeScore: 0, awayScore: 0, status: 'SCHEDULED', datetime: '2026-10-25T17:00', venue: 'United Arena',               scorersText: '' },
-    { id: 'm9', seasonId: 's1', round: 3, homeId: 't4', awayId: 't6', homeScore: 0, awayScore: 0, status: 'SCHEDULED', datetime: '2026-10-25T19:30', venue: 'Vanguard Ground',            scorersText: '' }
+    { id: 'm1', seasonId: 's1', divisionId: 'd1', round: 1, homeId: 't1', awayId: 't2', homeScore: 3, awayScore: 1, status: 'FINISHED',  datetime: '2026-10-03T15:00', venue: 'Main Field - Pitch 1',       scorersText: 'Carlos Ramos (2), David Silva (1) - Ethan Hunt (1)' },
+    { id: 'm2', seasonId: 's1', divisionId: 'd1', round: 1, homeId: 't3', awayId: 't4', homeScore: 2, awayScore: 2, status: 'FINISHED',  datetime: '2026-10-03T17:30', venue: 'Main Field - Pitch 2',       scorersText: 'Leo Mendes (2) - John Terry (1), K. Diaz (1)' },
+    { id: 'm3', seasonId: 's1', divisionId: 'd2', round: 1, homeId: 't5', awayId: 't6', homeScore: 1, awayScore: 0, status: 'FINISHED',  datetime: '2026-10-04T16:00', venue: 'Community Sports Complex',   scorersText: 'Omar Belaid (1)' },
+    { id: 'm4', seasonId: 's1', divisionId: 'd1', round: 2, homeId: 't2', awayId: 't3', homeScore: 0, awayScore: 1, status: 'FINISHED',  datetime: '2026-10-10T15:30', venue: 'United Arena',               scorersText: 'Leo Mendes (1)' },
+    { id: 'm5', seasonId: 's1', divisionId: 'd1', round: 2, homeId: 't4', awayId: 't1', homeScore: 2, awayScore: 2, status: 'FINISHED',  datetime: '2026-10-11T18:00', venue: 'Vanguard Ground',            scorersText: 'John Terry (1) - Carlos Ramos (2)' },
+    { id: 'm6', seasonId: 's1', divisionId: 'd2', round: 2, homeId: 't6', awayId: 't5', homeScore: 1, awayScore: 1, status: 'LIVE',      datetime: '2026-10-20T19:00', venue: 'Shark Park',                 scorersText: 'Lucas Ferrao (1) - Omar Belaid (1)' },
+    { id: 'm7', seasonId: 's1', divisionId: 'd1', round: 3, homeId: 't1', awayId: 't3', homeScore: 0, awayScore: 0, status: 'SCHEDULED', datetime: '2026-10-24T15:00', venue: 'Main Field - Pitch 1',       scorersText: '' },
+    { id: 'm8', seasonId: 's1', divisionId: 'd1', round: 3, homeId: 't2', awayId: 't4', homeScore: 0, awayScore: 0, status: 'SCHEDULED', datetime: '2026-10-25T17:00', venue: 'United Arena',               scorersText: '' },
+    { id: 'm9', seasonId: 's1', divisionId: 'd2', round: 3, homeId: 't6', awayId: 't5', homeScore: 0, awayScore: 0, status: 'SCHEDULED', datetime: '2026-10-25T19:30', venue: 'Shark Park',                 scorersText: '' }
   ],
   matchEvents: [
     { id: 'e1',  matchId: 'm1', teamId: 't1', playerId: 'p2', type: 'goal',   minute: 23 },
@@ -61,7 +68,27 @@ const DEFAULT_DATA = {
  */
 function normalizeState(data) {
   const source = data || {};
-  const teams = (Array.isArray(source.teams) ? source.teams : []).map(team => ({ ...team }));
+
+  let divisions = (Array.isArray(source.divisions) ? source.divisions : [])
+    .filter(division => division && typeof division.id === 'string' && division.id)
+    .map(division => ({
+      id: division.id,
+      name: typeof division.name === 'string' && division.name ? division.name : division.id,
+      sortOrder: Number.isFinite(Number(division.sortOrder)) ? Number(division.sortOrder) : 0
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  if (!divisions.length) divisions = DEFAULT_DIVISIONS.map(division => ({ ...division }));
+
+  const divisionIds = new Set(divisions.map(division => division.id));
+  const fallbackDivisionId = divisions[0].id;
+  const pickDivision = value => (divisionIds.has(value) ? value : fallbackDivisionId);
+
+  const teams = (Array.isArray(source.teams) ? source.teams : []).map(team => ({
+    ...team,
+    divisionId: pickDivision(team.divisionId)
+  }));
+  const teamById = new Map(teams.map(team => [team.id, team]));
+
   const players = (Array.isArray(source.players) ? source.players : []).map(player => ({
     ...player,
     isActive: player.isActive !== false
@@ -85,10 +112,16 @@ function normalizeState(data) {
   const active = seasons.find(season => season.isActive) || seasons[0];
   seasons = seasons.map(season => ({ ...season, isActive: season.id === active.id }));
 
-  const matches = (Array.isArray(source.matches) ? source.matches : []).map(match => ({
-    ...match,
-    seasonId: hadSeasons && match.seasonId ? match.seasonId : active.id
-  }));
+  // A fixture keeps the division it was played in. Older backups have no
+  // division, so the home team's current registration is the best guess.
+  const matches = (Array.isArray(source.matches) ? source.matches : []).map(match => {
+    const home = teamById.get(match.homeId);
+    return {
+      ...match,
+      seasonId: hadSeasons && match.seasonId ? match.seasonId : active.id,
+      divisionId: pickDivision(match.divisionId || (home && home.divisionId))
+    };
+  });
 
   const matchEvents = (Array.isArray(source.matchEvents) ? source.matchEvents : [])
     .filter(event => event && typeof event === 'object')
@@ -101,12 +134,14 @@ function normalizeState(data) {
       minute: Number(event.minute)
     }));
 
-  return { teams, players, matches, seasons, matchEvents };
+  return { divisions, teams, players, matches, seasons, matchEvents };
 }
 
 /** Current application state. */
 let appState = normalizeState(DEFAULT_DATA);
 appState.seasonsReady = true;
 appState.eventsReady = true;
+appState.divisionsReady = true;
 appState.activeSeasonId = appState.seasons.find(season => season.isActive).id;
 appState.viewSeasonId = appState.activeSeasonId;
+appState.viewDivisionId = appState.divisions[0].id;
