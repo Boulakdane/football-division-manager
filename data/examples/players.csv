@@ -1,10 +1,10 @@
-id,teamId,name,pos,num,goals,yellow,red
-p1,t1,David Silva,MID,10,5,1,0
-p2,t1,Carlos Ramos,FWD,9,7,0,0
-p3,t2,Ethan Hunt,FWD,11,4,2,0
-p4,t3,Leo Mendes,MID,8,6,0,0
-p5,t4,John Terry,DEF,4,1,3,1
-p6,t5,Omar Belaid,FWD,7,8,1,0
-p7,t5,Karim Ziani,MID,6,2,4,0
-p8,t6,Lucas Ferrao,FWD,9,3,0,0
-p9,t6,Sam Okafor,GK,1,0,0,0
+id,teamId,name,nameAr,pos,num,goals,yellow,red,licenseId,birthDate
+p1,t1,David Silva,ديفيد سيلفا,MID,10,5,1,0,,1986-01-08
+p2,t1,Carlos Ramos,,FWD,9,7,0,0,LIC-1001,1998-04-12
+p3,t2,Ethan Hunt,,FWD,11,4,2,0,,1995-09-03
+p4,t3,Leo Mendes,ليو مينديز,MID,8,6,0,0,,1993-11-21
+p5,t4,John Terry,,DEF,4,1,3,1,,1980-12-07
+p6,t5,Omar Belaid,عمر بلعيد,FWD,7,8,1,0,LIC-1002,1997-02-18
+p7,t5,Karim Ziani,كريم زياني,MID,6,2,4,0,,1994-06-30
+p8,t6,Lucas Ferrao,,FWD,9,3,0,0,,1999-08-14
+p9,t6,Sam Okafor,,GK,1,0,0,0,,2000-03-25

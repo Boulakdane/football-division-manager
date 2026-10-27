@@ -67,12 +67,13 @@ async function run() {
       { name: '  Amine   Belkacem ', pos: 'gk', num: 1 },
       { name: 'Yacine Mansouri', pos: 'DEF', num: '4', goals: 2, yellow: 1, red: 0 },
       { name: 'Karim Benali' },
-      { name: 'محمد العربي', pos: 'MID', num: 6 }
+      { name: 'محمد العربي', pos: 'MID', num: 6 },
+      { name: 'Nabil Touati', name_ar: '  نبيل   تواطي ', pos: 'FWD', num: 9 }
     ]));
-    assert.strictEqual(result[0].n, 4);
-    assert.strictEqual(await count(team.id), base + 4);
+    assert.strictEqual(result[0].n, 5);
+    assert.strictEqual(await count(team.id), base + 5);
     const rows = await q(`
-      select p.id, p.name, p.pos, p.num, p.is_active,
+      select p.id, p.name, p.name_ar, p.pos, p.num, p.is_active,
              coalesce(v.goals, 0) as goals,
              coalesce(v.yellow, 0) as yellow,
              coalesce(v.red, 0) as red
@@ -89,6 +90,7 @@ async function run() {
     assert.strictEqual(byName['Karim Benali'].num, 10, 'shirt number defaults to 10');
     assert.strictEqual(byName['Karim Benali'].goals, 0);
     assert(byName['محمد العربي'], 'non-Latin names survive');
+    assert.strictEqual(byName['Nabil Touati'].name_ar, 'نبيل تواطي', 'the Arabic name is collapsed whitespace');
     assert(rows.every(r => r.is_active === true && /^p_[0-9a-f]{32}$/.test(r.id)));
     console.log('OK add_players adds a squad with defaults and cleaned names');
 
@@ -97,7 +99,7 @@ async function run() {
     assert.strictEqual(audit.length, 1, 'exactly one audit entry: ' + JSON.stringify(audit));
     assert.strictEqual(audit[0].action, 'IMPORT');
     assert.strictEqual(audit[0].entity_id, team.id);
-    assert.strictEqual(audit[0].summary, `Imported 4 players into ${team.name}`);
+    assert.strictEqual(audit[0].summary, `Imported 5 players into ${team.name}`);
     assert.strictEqual(audit[0].actor_email, 'admin@test.local');
     console.log('OK one IMPORT audit entry, no per-player rows');
 
@@ -118,6 +120,7 @@ async function run() {
     await bad([{ name: 'Neg', yellow: 'x' }], /goals and cards/, 'text yellow cards');
     await bad([{ name: '   ' }], /name must be 1 to 100/, 'blank name');
     await bad([{ name: 'x'.repeat(101) }], /name must be 1 to 100/, 'name too long');
+    await bad([{ name: 'Long Arabic', name_ar: 'x'.repeat(101) }], /Arabic name/, 'Arabic name too long');
     await bad([], /no players to add/, 'empty list');
     await bad(Array.from({ length: 101 }, (_, i) => ({ name: 'Bulk ' + i })), /At most 100/, 'too many rows');
     await asAdmin(() => expectError(() => q("select public.add_players($1, '{\"name\":\"x\"}'::jsonb)", [team.id]), /JSON array/));

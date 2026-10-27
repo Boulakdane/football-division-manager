@@ -59,6 +59,9 @@ jobs:
       - name: Test the two divisions (roadmap K)
         run: npm run test:divisions
 
+      - name: Test Arabic names, licence numbers and birth dates (task L)
+        run: npm run test:profile-fields
+
       - name: Test squad import parser (xlsx/csv)
         run: npm run test:squad-import
 

@@ -197,6 +197,26 @@ function checkDivision(record, fileName, fallback) {
   return raw;
 }
 
+/** Optional free text with a database length cap. Empty cells become null. */
+function optionalText(record, field, fileName, maxLength) {
+  const raw = record[field];
+  if (raw === undefined || raw === '') return null;
+  if (maxLength && raw.length > maxLength) {
+    fail(`${fileName}:${record.__line} - "${field}" must be ${maxLength} characters or fewer.`);
+  }
+  return raw;
+}
+
+/** Optional birth date: YYYY-MM-DD between 1900-01-01 and 2100-12-31. */
+function checkBirthDate(record, fileName) {
+  const value = checkDate(record.birthDate, 'birthDate', fileName, record);
+  if (!value) return null;
+  if (value < '1900-01-01' || value > '2100-12-31') {
+    fail(`${fileName}:${record.__line} - "birthDate" must be between 1900-01-01 and 2100-12-31.`);
+  }
+  return value;
+}
+
 // ---------------------------------------------------------------------------
 
 const seasonRows = readTable(
@@ -253,6 +273,7 @@ const teams = teamRows.map(record => {
   return {
     id,
     name,
+    nameAr: optionalText(record, 'nameAr', 'teams.csv', 100),
     code,
     color: color.toLowerCase(),
     divisionId: checkDivision(record, 'teams.csv', 'd1')
@@ -261,6 +282,7 @@ const teams = teamRows.map(record => {
 const teamById = new Map(teams.map(team => [team.id, team]));
 
 const playerIds = new Set();
+const licenseIds = new Set();
 const players = playerRows.map(record => {
   const id = required(record, 'id', 'players.csv');
   unique(playerIds, id, 'player id', 'players.csv', record);
@@ -272,10 +294,13 @@ const players = playerRows.map(record => {
   if (!['GK', 'DEF', 'MID', 'FWD'].includes(pos)) {
     fail(`players.csv:${record.__line} — pos must be GK, DEF, MID or FWD.`);
   }
+  const licenseId = optionalText(record, 'licenseId', 'players.csv', 50);
+  if (licenseId) unique(licenseIds, licenseId.toUpperCase(), 'licence number', 'players.csv', record);
   return {
     id,
     teamId,
     name: required(record, 'name', 'players.csv'),
+    nameAr: optionalText(record, 'nameAr', 'players.csv', 100),
     pos,
     num: integer(record, 'num', 'players.csv', 1),
     goals: integer(record, 'goals', 'players.csv', 0, 0),
@@ -283,7 +308,9 @@ const players = playerRows.map(record => {
     red: integer(record, 'red', 'players.csv', 0, 0),
     isActive: record.isActive === undefined || record.isActive === ''
       ? true
-      : bool(record, 'isActive', 'players.csv')
+      : bool(record, 'isActive', 'players.csv'),
+    licenseId,
+    birthDate: checkBirthDate(record, 'players.csv')
   };
 });
 

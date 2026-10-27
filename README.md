@@ -30,6 +30,12 @@ accounts live in a free [Supabase](https://supabase.com) project.
 - **Teams & squads** — create/edit clubs, add players with positions, squad numbers,
   goals, yellow and red cards. Players with history can be archived and restored
   without losing their events.
+- **Bilingual names** — teams and players can carry an optional Arabic name next to
+  the required Latin one. Both are shown everywhere (Latin first in English and
+  French, Arabic first in the Arabic UI), and search matches either script.
+- **Player licence & birth date** — optional per player, unique when set, and visible
+  to admins only: they live in a separate `player_profiles` table that anonymous
+  visitors cannot read. They travel with the admin JSON backup and CSV export.
 - **Trilingual UI** — English, French and Arabic, with automatic RTL layout for Arabic.
 - **Real accounts & roles** — Supabase Auth with email + password. Spectators browse
   without an account; only users with the `admin` role can add, edit or delete.
@@ -134,7 +140,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── derive-totals-migration.sql # Legacy offsets + event-derived player/standings views (roadmap A)
     ├── drop-stored-totals-migration.sql # Drop players.goals / yellow / red; v_player_stats is the only total
     ├── scorer-role-migration.sql    # Scorer role, match officials and the narrow live-entry RPCs (roadmap B)
-    └── divisions-migration.sql      # Division 1 / Division 2: seeded tiers, team and fixture divisions (roadmap K)
+    ├── divisions-migration.sql      # Division 1 / Division 2: seeded tiers, team and fixture divisions (roadmap K)
+    └── arabic-names-and-license-migration.sql # Optional Arabic names, admin-only licence number and birth date (task L)
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -251,6 +258,15 @@ plus Supabase.
 >    `replace_all_data()` keeps the seeded tiers and restores each fixture in its
 >    historic division. Existing clubs and fixtures become Division 1. Safe to
 >    re-run; run it development first, then production.
+> 15. [`supabase/arabic-names-and-license-migration.sql`](supabase/arabic-names-and-license-migration.sql)
+>    — task L. Adds the optional `teams.name_ar` / `players.name_ar` columns and the
+>    admin-only `player_profiles` table holding an optional licence number (unique
+>    when set) and birth date (1900-01-01 to 2100-12-31). `player_profiles` has
+>    RLS enabled and no anonymous grant, because `players` is publicly readable.
+>    `add_players()` and `replace_all_data()` carry all three fields, and
+>    `v_player_stats` exposes `name_ar` only. Safe to re-run; run it development
+>    first, then production. The app keeps working without it: the Arabic name
+>    simply stays empty and the licence fields are hidden.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. It does **not** add the new `CHECK`

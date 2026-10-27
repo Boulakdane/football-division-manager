@@ -85,6 +85,48 @@ function declaredDivision(row, label) {
   return row.divisionId;
 }
 
+/** Optional Arabic name: absent (pre-L backup) or 1..100 characters. */
+function checkNameAr(row, label) {
+  if (row.nameAr === undefined || row.nameAr === null || row.nameAr === '') return;
+  if (typeof row.nameAr !== 'string') {
+    errors.push(`${label}: nameAr must be a string`);
+    return;
+  }
+  const value = row.nameAr.trim();
+  if (!value || value.length > 100) errors.push(`${label}: invalid nameAr "${row.nameAr}"`);
+}
+
+/** Optional licence number: absent, or 1..50 characters (unique per backup). */
+function checkLicense(row, label, seen) {
+  if (row.licenseId === undefined || row.licenseId === null || row.licenseId === '') return;
+  if (typeof row.licenseId !== 'string') {
+    errors.push(`${label}: licenseId must be a string`);
+    return;
+  }
+  const value = row.licenseId.trim();
+  if (!value || value.length > 50) {
+    errors.push(`${label}: invalid licenseId "${row.licenseId}"`);
+    return;
+  }
+  const key = value.toUpperCase();
+  if (seen.has(key)) errors.push(`${label}: duplicate licenseId "${value}"`);
+  seen.add(key);
+}
+
+/** Optional birth date inside the database range, or absent. */
+function checkBirthDate(row, label) {
+  if (row.birthDate === undefined || row.birthDate === null || row.birthDate === '') return;
+  if (typeof row.birthDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(row.birthDate)) {
+    errors.push(`${label}: invalid birthDate "${row.birthDate}"`);
+    return;
+  }
+  const date = new Date(row.birthDate + 'T00:00:00Z');
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== row.birthDate ||
+      row.birthDate < '1900-01-01' || row.birthDate > '2100-12-31') {
+    errors.push(`${label}: invalid birthDate "${row.birthDate}"`);
+  }
+}
+
 const seasons = arrayOf('seasons');
 const teams = arrayOf('teams');
 const players = arrayOf('players');
@@ -114,11 +156,13 @@ for (const team of teams) {
   if (!team || typeof team.name !== 'string' || !team.name.trim()) {
     errors.push(`teams: ${team && team.id} has an empty name`);
   }
+  if (team) checkNameAr(team, `teams: ${team.id}`);
 }
 const teamDivisionById = new Map(
   teams.filter(Boolean).map(team => [team.id, divisionIdOf(team, `teams: ${team.id}`)])
 );
 
+const seenLicenses = new Set();
 for (const player of players) {
   if (!player) continue;
   if (!teamById.has(player.teamId)) {
@@ -135,6 +179,9 @@ for (const player of players) {
   if (player.isActive !== undefined && typeof player.isActive !== 'boolean') {
     errors.push(`players: ${player.id} has a non-boolean isActive`);
   }
+  checkNameAr(player, `players: ${player.id}`);
+  checkLicense(player, `players: ${player.id}`, seenLicenses);
+  checkBirthDate(player, `players: ${player.id}`);
 }
 
 const seenFixtures = new Set();

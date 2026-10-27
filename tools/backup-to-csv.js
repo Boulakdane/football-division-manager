@@ -87,6 +87,7 @@ const teams = data.teams.map(team => {
   return {
     id: team.id,
     name: team.name,
+    nameAr: team.nameAr || '',
     code: team.code || 'TBD',
     color: team.color || '#16a34a',
     divisionId: team.divisionId || 'd1'
@@ -104,12 +105,15 @@ const players = sourcePlayers.map(player => {
     id: player.id,
     teamId: player.teamId,
     name: player.name,
+    nameAr: player.nameAr || '',
     pos: player.pos || 'MID',
     num: player.num == null || player.num === '' ? 10 : player.num,
     goals: player.goals == null || player.goals === '' ? 0 : player.goals,
     yellow: player.yellow == null || player.yellow === '' ? 0 : player.yellow,
     red: player.red == null || player.red === '' ? 0 : player.red,
-    isActive: player.isActive !== false
+    isActive: player.isActive !== false,
+    licenseId: player.licenseId || '',
+    birthDate: player.birthDate || ''
   };
 });
 
@@ -205,12 +209,12 @@ const files = [
   },
   {
     name: 'teams.csv',
-    headers: ['id', 'name', 'code', 'color', 'divisionId'],
+    headers: ['id', 'name', 'nameAr', 'code', 'color', 'divisionId'],
     rows: teams
   },
   {
     name: 'players.csv',
-    headers: ['id', 'teamId', 'name', 'pos', 'num', 'goals', 'yellow', 'red', 'isActive'],
+    headers: ['id', 'teamId', 'name', 'nameAr', 'pos', 'num', 'goals', 'yellow', 'red', 'isActive', 'licenseId', 'birthDate'],
     rows: players.map(player => ({ ...player, isActive: player.isActive ? 'true' : 'false' }))
   },
   {

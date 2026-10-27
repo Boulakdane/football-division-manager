@@ -25,6 +25,8 @@ function teamFromRow(row) {
   return {
     id: row.id,
     name: row.name,
+    // Task L: optional Arabic name. Absent on a pre-L project.
+    nameAr: row.name_ar || null,
     code: row.code,
     color: row.color,
     divisionId: row.division_id || 'd1'
@@ -36,12 +38,17 @@ function playerFromRow(row) {
     id: row.id,
     teamId: row.team_id,
     name: row.name,
+    nameAr: row.name_ar || null,
     pos: row.pos,
     num: row.num,
     goals: row.goals,
     yellow: row.yellow,
     red: row.red,
-    isActive: row.is_active !== false
+    isActive: row.is_active !== false,
+    // Personal data from public.player_profiles. Only an admin session can
+    // read it, so the anon export leaves these null.
+    licenseId: row.license_id || null,
+    birthDate: dateOnly(row.birth_date) || null
   };
 }
 
@@ -93,6 +100,7 @@ function toDbPayload(data) {
     teams: (Array.isArray(data.teams) ? data.teams : []).map(team => ({
       id: team.id,
       name: team.name,
+      name_ar: team.nameAr || null,
       code: team.code || 'TBD',
       color: team.color || '#16a34a',
       division_id: team.divisionId || 'd1'
@@ -101,12 +109,15 @@ function toDbPayload(data) {
       id: player.id,
       team_id: player.teamId,
       name: player.name,
+      name_ar: player.nameAr || null,
       pos: player.pos || 'MID',
       num: player.num == null ? 10 : player.num,
       goals: player.goals == null ? 0 : player.goals,
       yellow: player.yellow == null ? 0 : player.yellow,
       red: player.red == null ? 0 : player.red,
-      is_active: player.isActive !== false
+      is_active: player.isActive !== false,
+      license_id: player.licenseId || null,
+      birth_date: player.birthDate || null
     })),
     matches: (Array.isArray(data.matches) ? data.matches : []).map(match => ({
       id: match.id,

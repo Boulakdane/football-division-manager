@@ -64,6 +64,46 @@ const existing = [{ name: 'David Silva', num: 8, isActive: true }, { name: 'Old 
   check('ar: card headers and positions', r.headerFound && r.canImport && r.toAdd.length === 2 &&
     r.toAdd[0].pos === 'GK' && r.toAdd[1].pos === 'FWD' && r.toAdd[1].goals === 3, r.toAdd);
 
+  // Task L: optional Arabic name, licence number and birth date columns.
+  r = SI.analyze([{ name: 'CSV', rows: [
+    ['Name', 'Arabic Name', 'Licence', 'Birth date', 'Position', 'Number'],
+    ['Bilal Haddad', 'بلال حداد', 'LIC-1', '2001-09-14', 'MID', '8'],
+    ['Sami Nouri', '', '', '', 'FWD', '9']
+  ] }], []);
+  check('L: optional columns parsed', r.canImport && r.toAdd.length === 2 &&
+    r.toAdd[0].nameAr === 'بلال حداد' && r.toAdd[0].licenseId === 'LIC-1' &&
+    r.toAdd[0].birthDate === '2001-09-14', r.toAdd);
+  check('L: blank optional columns become null', r.toAdd[1].nameAr === null &&
+    r.toAdd[1].licenseId === null && r.toAdd[1].birthDate === null, r.toAdd[1]);
+
+  r = SI.analyze([{ name: 'CSV', rows: [
+    ['Nom', 'Nom arabe', 'Licence', 'Date de naissance', 'Poste', 'Numéro'],
+    ['Yacine Brahimi', 'ياسين براهيمي', 'FR-7', '14/09/2001', 'Milieu', '10']
+  ] }], []);
+  check('L: French headers, D/M/YYYY date', r.canImport && r.toAdd[0].licenseId === 'FR-7' &&
+    r.toAdd[0].birthDate === '2001-09-14', r.toAdd);
+
+  r = SI.analyze([{ name: 'CSV', rows: [
+    ['الاسم', 'الاسم العربي', 'رقم الرخصة', 'تاريخ الميلاد', 'المركز', 'الرقم'],
+    ['أحمد بن علي', 'أحمد', 'AR-1', '1999-01-02', 'حارس مرمى', '1']
+  ] }], []);
+  check('L: Arabic headers', r.canImport && r.toAdd[0].nameAr === 'أحمد' &&
+    r.toAdd[0].licenseId === 'AR-1' && r.toAdd[0].birthDate === '1999-01-02', r.toAdd);
+
+  r = SI.validateSquad([
+    ['name', 'license', 'birthDate'],
+    ['Dup A', 'ab-12', '2000-01-01'],
+    ['Dup B', 'AB-12', '2000-01-01'],
+    ['Bad Date', '', '2001-13-40'],
+    ['Future', '', '2999-01-01'],
+    ['Long', 'x'.repeat(51), '2000-01-01']
+  ], []);
+  const codesL = r.rows.map(row => row.issues.map(issue => issue.code).join('|'));
+  check('L: duplicate licence blocks the import', codesL[1].includes('licenseInFile'), codesL);
+  check('L: invalid and future birth dates rejected',
+    codesL[2].includes('birthDateInvalid') && codesL[3].includes('birthDateInvalid'), codesL);
+  check('L: over-long licence rejected', codesL[4].includes('licenseTooLong'), codesL);
+
   r = SI.analyze([{ name: 'x', rows: [['foo', 'bar'], ['a', 'b']] }], []);
   check('no header -> headerFound false', r.headerFound === false && !r.canImport);
 

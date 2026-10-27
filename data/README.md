@@ -45,7 +45,8 @@ used to link rows together.
 | Column | Required | Notes |
 |---|---|---|
 | `id` | yes | e.g. `t1` |
-| `name` | yes | Club name |
+| `name` | yes | Club name (Latin script) |
+| `nameAr` | no | Arabic name, shown alongside the Latin one |
 | `code` | yes | Short code, e.g. `SFC` |
 | `color` | yes | Six-digit hex, e.g. `#3b82f6` |
 
@@ -55,13 +56,16 @@ used to link rows together.
 |---|---|---|
 | `id` | yes | e.g. `p1` |
 | `teamId` | yes | Must exist in `teams.csv` |
-| `name` | yes | Player name |
+| `name` | yes | Player name (Latin script) |
+| `nameAr` | no | Arabic name, shown alongside the Latin one |
 | `pos` | yes | `GK`, `DEF`, `MID` or `FWD` |
 | `num` | yes | Shirt number, 1–99 |
 | `goals` | no | Defaults to `0` |
 | `yellow` | no | Defaults to `0` |
 | `red` | no | Defaults to `0` |
 | `isActive` | no | Defaults to `true`; `false` keeps the player's history but hides them from the active squad |
+| `licenseId` | no | Licence number, unique when set. Admin-only: it is stored in `player_profiles` and never shown to visitors |
+| `birthDate` | no | `YYYY-MM-DD` between 1900-01-01 and 2100-12-31. Admin-only, like `licenseId` |
 
 ### `matches.csv`
 

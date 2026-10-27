@@ -151,9 +151,10 @@ async function run() {
       seasons: (await q('select * from public.seasons order by id')).map(seasonFromRow),
       teams: (await q('select * from public.teams order by id')).map(teamFromRow),
       players: (await q(`
-        select p.*, v.goals, v.yellow, v.red
+        select p.*, v.goals, v.yellow, v.red, pp.license_id, pp.birth_date
         from public.players p
         left join public.v_player_stats v on v.player_id = p.id
+        left join public.player_profiles pp on pp.player_id = p.id
         order by p.id
       `)).map(row => playerFromRow({
         ...row,
