@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
 - **Last updated:** 2026-10-27
-- **Working-tree version:** `v3.10.1`
-- **Deployed version:** `v3.10.1`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete, MFA, data-quality, squad-import, scheduled-event, derive-totals, drop-stored-totals, scorer-role, divisions and anon-write-revoke migrations applied in development and production
+- **Working-tree version:** `v3.11.0`
+- **Deployed version:** `v3.11.0`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete, MFA, data-quality, squad-import, scheduled-event, derive-totals, drop-stored-totals, scorer-role, divisions and anon-write-revoke migrations applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -36,7 +36,7 @@
 | Realistic-scale import rehearsal | ✅ Done in development (2026-10-24) | 20 teams / 500 players / 200 matches / 2,043 events imported through the UI, exported, validated and restored to the exact original hash; production untouched |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.10.1` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Production now requires two-factor for admin writes (`admin_mfa_required()` returns `true`) and the real admin is enrolled; the development demo account remains password-only for disposable tests. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. A realistic-scale rehearsal (20 teams / 500 players / 200 matches / 2,043 events) imported through the admin UI, passed pagination, UI, export, audit and restore checks, and the original development data was restored with the identical SHA-256; production was verified unchanged. Post-`v3.10.1`, admins can import a whole squad from Excel/CSV with a row-by-row preview and one atomic `add_players()` call, and the scheduled-fixture repair migration means goals/cards added to upcoming matches now reach player totals in both projects. Both migrations are applied in development and production, and production MFA is required again (`admin_mfa_required()` returns `true`). Roadmap A and B are now merged and migrated in both projects: `v_player_stats` / `v_standings` are the only totals (the stored `players.goals / yellow / red` columns are gone), and a `scorer` account can add goals and cards only to fixtures an admin assigned to it, only while they are LIVE or scheduled today, with a 15-minute undo. The one outstanding database action is `supabase/revoke-anon-write-grants-migration.sql`: anonymous callers still hold `UPDATE`/`DELETE` grants on four tables (RLS rejects the writes, so no data changed), which is why the daily drift monitor is red — tracked in issue #8. Both were resolved on 2026-10-27: the grant migration is applied in development and production, `check:drift` reports 28 PASS / 0 WARN / 0 FAIL in both projects, and the league now runs Division 1 and Division 2 in one shared season with division-scoped standings, fixtures and squads (`teams.division_id` for the current registration, `matches.division_id` for the division a fixture was played in). The remaining operational work is loading the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.11.0` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Production now requires two-factor for admin writes (`admin_mfa_required()` returns `true`) and the real admin is enrolled; the development demo account remains password-only for disposable tests. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. A realistic-scale rehearsal (20 teams / 500 players / 200 matches / 2,043 events) imported through the admin UI, passed pagination, UI, export, audit and restore checks, and the original development data was restored with the identical SHA-256; production was verified unchanged. Post-`v3.10.1`, admins can import a whole squad from Excel/CSV with a row-by-row preview and one atomic `add_players()` call, and the scheduled-fixture repair migration means goals/cards added to upcoming matches now reach player totals in both projects. Both migrations are applied in development and production, and production MFA is required again (`admin_mfa_required()` returns `true`). Roadmap A and B are now merged and migrated in both projects: `v_player_stats` / `v_standings` are the only totals (the stored `players.goals / yellow / red` columns are gone), and a `scorer` account can add goals and cards only to fixtures an admin assigned to it, only while they are LIVE or scheduled today, with a 15-minute undo. The one outstanding database action is `supabase/revoke-anon-write-grants-migration.sql`: anonymous callers still hold `UPDATE`/`DELETE` grants on four tables (RLS rejects the writes, so no data changed), which is why the daily drift monitor is red — tracked in issue #8. Both were resolved on 2026-10-27: the grant migration is applied in development and production, `check:drift` reports 28 PASS / 0 WARN / 0 FAIL in both projects, and the league now runs Division 1 and Division 2 in one shared season with division-scoped standings, fixtures and squads (`teams.division_id` for the current registration, `matches.division_id` for the division a fixture was played in). The remaining operational work is loading the real league data.
 
 ## 2. Architecture
 
@@ -841,8 +841,8 @@ Two feature branches merged after `v3.10.1`; no version bump.
 ## 24. Divisions and the drift fix (2026-10-27)
 
 Two things landed together: Division 1 and Division 2 (#18), and the anonymous write grants
-were finally revoked in both hosted projects (issue #8). No version bump; `v3.10.1` is still
-the last tagged release.
+were finally revoked in both hosted projects (issue #8). The feature PRs carried no version
+bump; the release was cut as `v3.11.0` the same day (section 25).
 
 ### Two divisions inside one season (#18)
 - `supabase/divisions-migration.sql` (also in `schema.sql`) seeds `public.divisions` with
@@ -910,3 +910,44 @@ the last tagged release.
 - The move path is covered by the PGlite guard tests and the division-scoped UI test, not
   by an admin-session e2e test against a hosted project. Creating a Division 2 club in
   production is still a manual admin check.
+
+## 25. Release v3.11.0 (2026-10-27)
+
+### What is in it
+- **Two divisions** (#18, rolled up in #19, README polish in #20): Division 1 and Division 2 in
+  one shared season, seeded `d1` / `d2`, `teams.division_id` for the current registration and
+  `matches.division_id` for the division a fixture was played in, division-scoped standings,
+  fixtures, squads and top scorers, a fixed switcher with `?division=` URL state, division-aware
+  backups, and the guards that keep a move from rewriting history.
+- **Anonymous write grants revoked** (issue #8): the grant migration is applied in development
+  and production, so the daily drift monitor reports 28 PASS / 0 WARN / 0 FAIL in both.
+- **Documentation**: the divisions roll-up (section 24), the missing README migration step and
+  feature bullet, and the security-audit statuses that still said the integrity migration was
+  pending (#21).
+- There is **no schema change and no app-logic change in this release commit**: the release
+  only bumps the version strings and the `?v=` cache-busters on every asset.
+
+### Release mechanics
+- `package.json` and `package-lock.json` are `3.11.0`; the version badge in `index.html` reads
+  `v3.11.0`, and every stylesheet, vendor and app script carries `?v=3.11.0` so browsers fetch
+  the new files instead of a cached copy.
+- Annotated tag `v3.11.0` on the release commit; the `prod` tag moves from `3a8c6bd` (`v3.10.1`)
+  to the same commit.
+- No new migration to apply: `divisions-migration.sql` and
+  `revoke-anon-write-grants-migration.sql` were already applied to development and production on
+  2026-10-27, before the release.
+
+### Verification
+- CI on the release commit: Validate, E2E smoke and the Pages build all pass.
+- Live site after deploy: Division 1 shows the 6 existing clubs and 9 fixtures, Division 2 shows
+  its guided empty state with Team/Played at 0, `?division=d2` survives a reload, and the
+  console stays clean.
+- `node tools/check-security-drift.js --env=dev` and `--env=prod` both report 28 PASS.
+- The release wrote nothing to either database: both projects still hold 6 clubs and 9 fixtures,
+  all in `d1`.
+
+### Follow-ups
+- A manual admin spot check in production (create a Division 2 club, then confirm the move guard
+  refuses a club with an active-season fixture) is still open; it needs an MFA admin session and
+  real league writes.
+- Roadmap **E** (pure domain modules) is the next task; it touches the hot `js/app.js`.
