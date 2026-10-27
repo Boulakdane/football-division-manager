@@ -22,6 +22,11 @@ accounts live in a free [Supabase](https://supabase.com) project.
 - **Multiple seasons** — create a new season, switch between active and archived
   seasons, and keep every past table and fixture intact. Archived seasons are
   read-only in both the UI and the database until an admin makes them active again.
+- **Two divisions** — Division 1 and Division 2 run in the same season with their own
+  clubs, tables and fixtures. A switcher scopes the standings, fixtures, squads and
+  top-scorer card and is remembered in the URL. A club belongs to one division and
+  can be moved between seasons; every played fixture keeps the division it was
+  played in.
 - **Teams & squads** — create/edit clubs, add players with positions, squad numbers,
   goals, yellow and red cards. Players with history can be archived and restored
   without losing their events.
@@ -128,7 +133,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── scheduled-match-events-migration.sql # Count events already saved on upcoming fixtures
     ├── derive-totals-migration.sql # Legacy offsets + event-derived player/standings views (roadmap A)
     ├── drop-stored-totals-migration.sql # Drop players.goals / yellow / red; v_player_stats is the only total
-    └── scorer-role-migration.sql    # Scorer role, match officials and the narrow live-entry RPCs (roadmap B)
+    ├── scorer-role-migration.sql    # Scorer role, match officials and the narrow live-entry RPCs (roadmap B)
+    └── divisions-migration.sql      # Division 1 / Division 2: seeded tiers, team and fixture divisions (roadmap K)
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -234,6 +240,17 @@ plus Supabase.
 >    `set_match_officials()` are admin-only and write an audit entry for every
 >    change. `is_admin()` is unchanged, so a scorer never inherits admin writes. The
 >    migration is safe to re-run; run it development first, then production.
+> 14. [`supabase/divisions-migration.sql`](supabase/divisions-migration.sql) —
+>    roadmap K. Creates `public.divisions`, seeded with `d1` (Division 1) and `d2`
+>    (Division 2), and adds `teams.division_id` (the club's current division) and
+>    `matches.division_id` (the division a fixture was played in). `save_match()`
+>    stamps the fixture division and rejects mixed-division fixtures,
+>    `set_team_division()` (admin-only) refuses to move a club that already has a
+>    fixture in the active season, and triggers enforce both rules for direct REST
+>    writes. The standings and player-stats views expose `division_id`, and
+>    `replace_all_data()` keeps the seeded tiers and restores each fixture in its
+>    historic division. Existing clubs and fixtures become Division 1. Safe to
+>    re-run; run it development first, then production.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. It does **not** add the new `CHECK`
