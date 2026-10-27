@@ -59,19 +59,19 @@ CI      ──push──► GitHub Pages
 
 | ID | Severity | Finding | Status |
 |---|---|---|---|
-| SEC-01 | High | No MFA/step-up authentication for a role that can erase the league | Mitigated in code (`v3.9.0`); migration + enrolment pending |
+| SEC-01 | High | No MFA/step-up authentication for a role that can erase the league | Mitigated and live in both hosted projects (`v3.9.0`); production MFA required and enrolled, development off by design |
 | SEC-02 | High | No strict CSP; inline handlers and `innerHTML` keep XSS impact high | Mitigated: all inline handlers replaced by delegated `data-*` actions, CSP ships `script-src 'self'`; residual `style-src 'unsafe-inline'` and template-string escaping discipline |
 | SEC-03 | High | Atomic full-data import RPC installed and live-tested; no-op and rollback verified | Mitigated |
 | SEC-04 | Medium | Third-party CDN and font dependency | Mitigated: Lucide, Supabase JS and the Inter/Cairo fonts are vendored; CSP leaves no external script/style/font origin |
-| SEC-05 | Medium | No audit log, soft delete or restore path | Mitigated in code (`v3.7.0` audit log, `v3.8.0` trash/restore); production migrations pending |
-| SEC-06 | Medium | Archived seasons are read-only only in the UI | Mitigated in code; integrity migration pending |
+| SEC-05 | Medium | No audit log, soft delete or restore path | Mitigated and applied in both hosted projects (`v3.7.0` audit log, `v3.8.0` trash/restore) |
+| SEC-06 | Medium | Archived seasons are read-only only in the UI | Mitigated and applied in both hosted projects (integrity migration) |
 | SEC-07 | Medium | Server-side data validation is incomplete | Partially mitigated: import references validated in RPC; CHECK constraints still open |
 | SEC-08 | Medium | Security headers cannot be set on GitHub Pages | Open |
 | SEC-09 | Medium | CSV formula injection in exported files | Mitigated |
 | SEC-10 | Low | Environment override (`?env=prod`) can point local work at production | Open |
 | SEC-11 | Low | No rate limiting or statement timeout for admin RPCs | Open |
 | SEC-12 | Low | Local backups are unencrypted | Open |
-| SEC-13 | Medium | Destructive deletes could leave aggregate totals inconsistent | Mitigated in code; integrity migration pending |
+| SEC-13 | Medium | Destructive deletes could leave aggregate totals inconsistent | Mitigated and applied in both hosted projects (integrity migration) |
 
 ### SEC-01 — Admin account takeover has no second factor
 
@@ -221,7 +221,7 @@ CI      ──push──► GitHub Pages
 ### SEC-06 - Archived seasons were not write-protected in the database
 
 **Severity:** Medium
-**Status:** Mitigated in code by `supabase/integrity-migration.sql`; hosted projects need the migration.
+**Status:** Mitigated and applied in both hosted projects. `supabase/integrity-migration.sql` is live in development and production (`PLAYERS_ARCHIVE_READY` is `true` in both), so archived-season matches are write-protected by the policies and RPCs below.
 
 **Evidence:** The UI blocked edits when a season was archived, but the old `matches_insert_admin`, `matches_update_admin` and `matches_delete_admin` policies only checked `public.is_admin()`. The integrity migration adds `public.is_active_season(text)` and applies it to match insert/update policies, drops direct match delete in favour of `delete_match()`, and makes match events RPC-only. The RPCs reject archived seasons with `Matches can only be saved in the active season` or `Only the active season can be edited`.
 
@@ -376,7 +376,7 @@ CI      ──push──► GitHub Pages
 ### SEC-13 - Destructive deletes could leave aggregate totals inconsistent
 
 **Severity:** Medium
-**Status:** Mitigated in code by `supabase/integrity-migration.sql`; hosted projects need the migration.
+**Status:** Mitigated and applied in both hosted projects. `supabase/integrity-migration.sql` is live in development and production, so every destructive path runs through the total-adjusting RPCs below and a player with history is archived instead of hard-deleted.
 
 **Evidence:** Before this pass, deleting a team cascaded its matches and `match_events`, but opponent players' cumulative goals/cards stayed counted. Deleting a player removed their historical events. A match and its events were saved with separate client requests, so a rejected event could leave a half-saved match. Direct REST deletes could bypass the total-adjusting RPCs.
 
@@ -437,8 +437,8 @@ CI      ──push──► GitHub Pages
 ### P1 — 1 to 4 weeks
 
 - Add database `CHECK` constraints and extend server-side JSON validation.
-- ✅ Enforce archived-season immutability in the database (pending hosted migration).
-- ✅ Make match saves, team deletes and event writes atomic/RPC-only (pending hosted migration).
+- ✅ Enforce archived-season immutability in the database (applied in both hosted projects).
+- ✅ Make match saves, team deletes and event writes atomic/RPC-only (applied in both hosted projects).
 - Move hosting to Cloudflare Pages for security headers, or add an edge proxy.
 - Self-host Supabase JS, Lucide and fonts.
 - ✅ Add an in-memory SQL/RLS regression suite (PGlite) and run it in CI; add a credential-free Playwright public smoke test. Admin E2E remains manual.
