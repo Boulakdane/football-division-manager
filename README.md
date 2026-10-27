@@ -18,7 +18,7 @@ accounts live in a free [Supabase](https://supabase.com) project.
   so a copied link reopens exactly what you were looking at. A **Copy link** button does
   this for you.
 - **Top scorers** — an all-time leaderboard under the league table ranks the top five
-  goalscorers with their club and total.
+  goalscorers with their club and total, scoped to the division selected in the switcher.
 - **Multiple seasons** — create a new season, switch between active and archived
   seasons, and keep every past table and fixture intact. Archived seasons are
   read-only in both the UI and the database until an admin makes them active again.
@@ -458,6 +458,7 @@ Logging into the dev admin does not log you into production.
 | Create seasons / switch the active season | ❌ | ❌ | ❌ | ✅ |
 | Delete an empty archived season | ❌ | ❌ | ❌ | ✅ |
 | Manage accounts, roles and match officials | ❌ | ❌ | ❌ | ✅ |
+| Move a club to the other division (between seasons) | ❌ | ❌ | ❌ | ✅ |
 | View archived season tables and fixtures | ✅ | ✅ | ✅ | ✅ |
 | Import / reset data, export backup | ❌ | ❌ | ❌ | ✅ |
 
