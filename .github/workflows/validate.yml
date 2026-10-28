@@ -34,7 +34,7 @@ jobs:
       - name: Check JavaScript syntax
         shell: bash
         run: |
-          for file in js/*.js tools/*.js; do
+          for file in js/*.js js/domain/*.js tools/*.js; do
             node --check "$file"
           done
 
@@ -52,6 +52,12 @@ jobs:
 
       - name: Test dropping the stored player totals (roadmap A stage 3)
         run: npm run test:drop-totals
+
+      - name: Test domain helpers and standings without a browser (roadmap E)
+        run: npm run test:domain
+
+      - name: Compare JS and SQL standings (roadmap E dual-run)
+        run: npm run test:standings-dual
 
       - name: Test the scorer role and live match entry (roadmap B)
         run: npm run test:scorer-role
