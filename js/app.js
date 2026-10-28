@@ -9,28 +9,10 @@
  * 1. UTILITIES
  * --------------------------------------------------------------- */
 
-/** Escape user-supplied strings before injecting them into HTML. */
-function esc(value) {
-  return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c]));
-}
-
-/** Pick black or white text for a team colour with WCAG-friendly contrast. */
-function contrastTextColor(color) {
-  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(color || '').trim());
-  if (!match) return '#ffffff';
-  let hex = match[1];
-  if (hex.length === 3) hex = hex.split('').map(char => char + char).join('');
-  const channel = index => parseInt(hex.slice(index, index + 2), 16) / 255;
-  const linear = value => value <= 0.03928
-    ? value / 12.92
-    : Math.pow((value + 0.055) / 1.055, 2.4);
-  const luminance = 0.2126 * linear(channel(0)) +
-    0.7152 * linear(channel(2)) +
-    0.0722 * linear(channel(4));
-  return luminance > 0.179 ? '#020617' : '#ffffff';
-}
+/*
+ * esc() and contrastTextColor() live in js/domain/format.js and are published
+ * on globalThis by js/domain/index.js.
+ */
 
 function uid(prefix) {
   return prefix + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
@@ -40,10 +22,7 @@ function getTeam(id) {
   return appState.teams.find(t => t.id === id);
 }
 
-function toInt(value, fallback) {
-  const n = parseInt(value, 10);
-  return isNaN(n) || n < 0 ? (fallback || 0) : n;
-}
+/* toInt() lives in js/domain/format.js and is published on globalThis. */
 
 /**
  * Show both names when the admin entered an Arabic one: Latin first in the
@@ -847,69 +826,21 @@ function switchTab(tabId) {
 /* ---------------------------------------------------------------
  * 3. LEAGUE STANDINGS (points, W/D/L, goals, GD, form)
  * --------------------------------------------------------------- */
+/**
+ * Thin adapter over js/domain/standings.js. The pure function takes plain
+ * arrays; this one supplies the visible season/division and keeps every
+ * rendering call site unchanged.
+ */
 function calculateStandings() {
-  const stats = {};
-  const seasonMatches = visibleMatches();
   const archived = appState.seasonsReady && appState.viewSeasonId !== appState.activeSeasonId;
-
-  // An archived table should not gain clubs that joined in a later season.
-  const seasonTeamIds = new Set();
-  seasonMatches.forEach(match => {
-    seasonTeamIds.add(match.homeId);
-    seasonTeamIds.add(match.awayId);
-  });
   const teams = archived
-    ? appState.teams.filter(team => seasonTeamIds.has(team.id))
+    ? appState.teams
     : appState.teams.filter(team => (team.divisionId || 'd1') === viewedDivisionId());
-
-  teams.forEach(team => {
-    stats[team.id] = {
-      team,
-      mp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0,
-      form: []
-    };
+  return globalThis.KickOffDomain.calculateStandings({
+    teams,
+    matches: visibleMatches(),
+    archived
   });
-
-  // Only finished matches in the visible season count towards the table
-  const finished = seasonMatches
-    .filter(m => m.status === 'FINISHED')
-    .sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
-
-  finished.forEach(m => {
-    const home = stats[m.homeId];
-    const away = stats[m.awayId];
-    if (!home || !away) return;
-
-    const hs = toInt(m.homeScore);
-    const as = toInt(m.awayScore);
-    home.mp++; away.mp++;
-    home.gf += hs; home.ga += as;
-    away.gf += as; away.ga += hs;
-
-    if (hs > as) {
-      home.w++; home.pts += 3; home.form.push('W');
-      away.l++; away.form.push('L');
-    } else if (hs < as) {
-      away.w++; away.pts += 3; away.form.push('W');
-      home.l++; home.form.push('L');
-    } else {
-      home.d++; home.pts += 1; home.form.push('D');
-      away.d++; away.pts += 1; away.form.push('D');
-    }
-  });
-
-  const rows = Object.values(stats).map(s => {
-    s.gd = s.gf - s.ga;
-    s.form = s.form.slice(-5);
-    return s;
-  });
-
-  // Tie-breakers: points → goal difference → goals scored → wins → name
-  rows.sort((a, b) =>
-    b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || b.w - a.w ||
-    a.team.name.localeCompare(b.team.name)
-  );
-  return rows;
 }
 
 function formBadge(f) {
@@ -1029,10 +960,7 @@ function playersForTeam(teamId) {
     .sort((a, b) => (toInt(a.num) - toInt(b.num)) || a.name.localeCompare(b.name));
 }
 
-function formatEventMinute(minute) {
-  const value = toInt(minute);
-  return value ? `${value}'` : '';
-}
+/* formatEventMinute() lives in js/domain/standings.js (published on globalThis). */
 
 /** Marker shown in the match timeline: ball for goals, coloured card otherwise. */
 function matchEventMarker(event) {
@@ -1101,22 +1029,9 @@ function renderMatchEventSummary(match) {
   return '';
 }
 
+/** Thin adapter: the pure helper takes the player list explicitly. */
 function summarizeEventsForText(events, homeId, awayId) {
-  const playerName = id => {
-    const player = appState.players.find(item => item.id === id);
-    return player ? player.name : '?';
-  };
-  const teamText = teamId => events
-    .filter(event => event.teamId === teamId)
-    .slice()
-    .sort((a, b) => toInt(a.minute) - toInt(b.minute))
-    .map(event => {
-      const suffix = event.type === 'yellow' ? ' (Y)' : event.type === 'red' ? ' (R)' : '';
-      return `${playerName(event.playerId)} ${formatEventMinute(event.minute)}${suffix}`;
-    })
-    .join(', ');
-
-  return [teamText(homeId), teamText(awayId)].filter(Boolean).join(' - ');
+  return globalThis.KickOffDomain.summarizeEventsForText(events, homeId, awayId, appState.players);
 }
 
 function collectMatchEvents(matchId) {
@@ -3360,15 +3275,7 @@ function exportData() {
 
 /* ---------- CSV exports (current season) ---------- */
 
-function csvEscape(value) {
-  let text = String(value == null ? '' : value);
-  // Stop spreadsheet formula execution when an exported cell begins with a
-  // formula marker. Numeric values are left untouched so negative scores stay numeric.
-  if (typeof value === 'string' && /^[=+\-@\t\r\n]/.test(text)) {
-    text = "'" + text;
-  }
-  return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
-}
+/* csvEscape() lives in js/domain/format.js (published on globalThis). */
 
 function downloadCsv(filename, rows) {
   const csv = '\uFEFF' + rows.map(row => row.map(csvEscape).join(',')).join('\r\n');
