@@ -26,6 +26,16 @@ const KickOffDomain = {
 
 globalThis.KickOffDomain = KickOffDomain;
 
+// js/app.js calls these helpers as bare globals. Keep those call sites
+// unchanged now that the implementations live here. calculateStandings and
+// summarizeEventsForText stay on the namespace because app.js keeps thin
+// adapters that inject appState.
+globalThis.esc = esc;
+globalThis.toInt = toInt;
+globalThis.csvEscape = csvEscape;
+globalThis.contrastTextColor = contrastTextColor;
+globalThis.formatEventMinute = formatEventMinute;
+
 export {
   esc,
   toInt,

@@ -1150,6 +1150,8 @@
   <script src="js/auth.js?v=3.11.0" defer></script>
   <script src="js/mfa.js?v=3.11.0" defer></script>
   <script src="js/squad-import.js?v=3.11.0" defer></script>
+  <!-- Domain helpers as ES modules; deferred, and app.js only calls them after DOMContentLoaded. -->
+  <script type="module" src="js/domain/index.js?v=3.11.0"></script>
   <script src="js/app.js?v=3.11.0" defer></script>
 </body>
 </html>
