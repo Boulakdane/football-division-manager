@@ -14,6 +14,8 @@
  *     fixtures, never touching rows the backup still references;
  *   * only admins can preview, merge or read import_runs;
  *   * replace_all_data() still works for disaster recovery;
+ *   * NULL and '' are the same "no value" for the match text fields, so a
+ *     browser export does not look changed and a merge never stores '';
  *   * merge-import-migration.sql upgrades a pre-H database and is re-runnable.
  *
  * Usage: npm run test:merge-import
@@ -94,6 +96,20 @@ async function run() {
   };
 
   const payloadOf = data => JSON.stringify(toDbPayload(data));
+  // tools/backup-map.js normalises '' to null, but the browser's
+  // buildAtomicImportPayload() sends mapMatch()'s '' values unchanged.
+  // Reproduce that payload so the test covers a real hosted round trip.
+  const browserPayload = data => {
+    const payload = JSON.parse(payloadOf(data));
+    const byId = new Map((data.matches || []).map(match => [match.id, match]));
+    for (const row of payload.matches) {
+      const match = byId.get(row.id) || {};
+      row.datetime = match.datetime == null ? '' : match.datetime;
+      row.venue = match.venue == null ? '' : match.venue;
+      row.scorers_text = match.scorersText == null ? '' : match.scorersText;
+    }
+    return JSON.stringify(payload);
+  };
   const preview = (data, removeMissing = false) => asAdmin(async () =>
     (await q('select public.import_preview($1::jsonb, $2) as r', [payloadOf(data), removeMissing]))[0].r
   );
@@ -105,6 +121,12 @@ async function run() {
   );
   const replace = data => asAdmin(async () =>
     exec(`select public.replace_all_data('${payloadOf(data).replace(/'/g, "''")}'::jsonb)`)
+  );
+  const previewJson = json => asAdmin(async () =>
+    (await q('select public.import_preview($1::jsonb, false) as r', [json]))[0].r
+  );
+  const mergeJson = (json, key) => asAdmin(async () =>
+    (await q('select public.import_merge($1::jsonb, $2, false, null) as r', [json, key]))[0].r
   );
 
   try {
@@ -378,6 +400,37 @@ async function run() {
     const afterMigration = await preview(backup());
     assert.strictEqual(afterMigration.ok, true);
     console.log('OK merge-import-migration.sql upgrades a pre-H database and is re-runnable');
+
+    // ------------------------------------------------------------
+    // 11. NULL and '' mean the same thing for the match text fields
+    // ------------------------------------------------------------
+    // mapMatch() turns a NULL column into '' and buildAtomicImportPayload()
+    // sends it back unchanged. Before this regression test, a browser export
+    // of fixtures without scorers looked "changed" and the merge wrote ''
+    // into columns that held NULL.
+    const blankMatches = backup({
+      matches: [{ ...backup().matches[0], datetime: '', venue: '', scorersText: '' }]
+    });
+    const blankPayload = browserPayload(blankMatches);
+
+    await exec("update public.matches set datetime = null, venue = null, scorers_text = null where id = 'm1'");
+    const nullPreview = await previewJson(blankPayload);
+    assert.strictEqual(nullPreview.tables.matches.changed, 0, 'NULL compares equal to an empty string');
+    assert.strictEqual(nullPreview.totals.changed, 0);
+
+    await exec("update public.matches set scorers_text = '' where id = 'm1'");
+    const emptyPreview = await previewJson(blankPayload);
+    assert.strictEqual(emptyPreview.tables.matches.changed, 0, 'an empty string compares equal to NULL');
+
+    const blankMerge = await mergeJson(blankPayload, 'test-merge-key-0010');
+    assert.strictEqual(blankMerge.replayed, false);
+    assert.strictEqual(blankMerge.totals.changed, 0);
+    assert.deepStrictEqual(
+      (await q("select datetime, venue, scorers_text from public.matches where id = 'm1'"))[0],
+      { datetime: null, venue: null, scorers_text: null },
+      'a merge stores NULL instead of writing an empty string'
+    );
+    console.log('OK NULL and an empty string are the same match value in preview and merge');
 
     console.log('\nAll merge import checks passed');
   } finally {

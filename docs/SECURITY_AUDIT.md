@@ -175,9 +175,9 @@ CI      ──push──► GitHub Pages
   hashes and used only `replace_all_data`, with no client fallback.
 - ✅ Concurrent imports are serialized by the advisory lock.
 - ✅ The admin sees a dry-run summary before commit (and a fresh preview whenever
-  “remove missing rows” changes). PGlite and browser tests cover it, and read-only probes
-  confirm that `import_preview` exists in both hosted projects and refuses anonymous callers
-  (2026-10-28).
+  “remove missing rows” changes). PGlite and browser tests cover it; a hosted admin round trip
+  in development confirmed the preview/merge/replay path on 2026-10-28, and read-only probes
+  confirm that `import_preview` exists in both hosted projects and refuses anonymous callers.
 
 **Merge follow-up (roadmap H, applied 2026-10-28):**
 [`supabase/merge-import-migration.sql`](../supabase/merge-import-migration.sql) adds
@@ -188,8 +188,9 @@ archives missing players when the box is ticked; it never hard-deletes. `import_
 stores the checksum, the key and the result, and `import_merge` rejects a payload whose
 `expected_checksum` no longer matches the preview. The dialog loads the diff, sends the
 checksum and a fresh key, and reports a replay instead of applying twice. Applied to
-development and production on 2026-10-28; a real admin preview/merge on hosted data is still
-pending.
+development and production on 2026-10-28. A real admin preview/merge round trip in
+development found and fixed one NULL-versus-empty-string mismatch in the match text fields;
+re-run the updated, idempotent migration to pick up the fix.
 
 ### SEC-04 — Third-party CDN and font dependency
 

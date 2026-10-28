@@ -23,7 +23,7 @@
 | CSV bulk entry and admin exports | ✅ Done | Five-file workflow including `events.csv` |
 | JSON backup and restore | ✅ Done | Full replacement; development round-trip and production no-op import passed |
 | Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
-| Merge import with a diff preview | ✅ Merged in #29 and migrated in both environments | `import_preview` shows the per-table diff before writing; `import_merge` upserts in one transaction with an idempotency key and checksum; `replace_all_data` stays for disaster recovery behind MFA and a typed `REPLACE` |
+| Merge import with a diff preview | ✅ Merged in #29, migrated in both environments and round-trip tested in development | `import_preview` shows the per-table diff before writing; `import_merge` upserts in one transaction with an idempotency key and checksum; `replace_all_data` stays for disaster recovery behind MFA and a typed `REPLACE` |
 | Bilingual names and admin-only player profiles | ✅ Merged in #24 and migrated in both environments | Optional `teams.name_ar` / `players.name_ar`; licence and birth date in the admin-only `player_profiles` table |
 | Team crests | ✅ Merged in #25 and migrated in both environments | Optional `teams.icon` data URL; PNG/JPEG/WebP only, no SVG, no new origin |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
@@ -991,12 +991,33 @@ grant layer rejects before the body runs, or the existing drift monitor (read-on
 
 ### Local checks on the merged tree
 - `npm run check:secrets`, `node --check`, and all 13 PGlite suites pass, including
-  `test:merge-import` (10 sections) and the fresh-schema assertions in `test:sql`.
+  `test:merge-import` (11 sections) and the fresh-schema assertions in `test:sql`.
 - Playwright: 9/9 pass, including the new `import-preview` spec (9 checks) and the existing
   public, divisions, profiles, crests and totals specs.
 
+### Hosted round trip in development (admin session, 2026-10-28)
+Development only; production was not written to. Development has the MFA gate switched off, so
+a normal admin sign-in was enough.
+
+1. The admin exported the current data and selected that file in the merge dialog. The preview
+   returned **0 added, 3 changed, 0 removed** with checksum `c56cb503…`; `rpc/import_preview`
+   answered 200. The three changed rows were fixtures `m7`, `m8` and `m9`.
+2. Merging applied the same totals (`rpc/import_merge` 200, toast
+   “Backup merged: 0 added, 3 changed, 0 removed.”).
+3. A second preview of the same export was **0/0/0**. The next merge was a no-op, and replaying
+   the same request with its key returned `replayed: true`, `runId 2`, totals `0/0/0` and
+   25 unchanged rows.
+
+Root cause of the three changes: `mapMatch()` turns a NULL `datetime`, `venue` or `scorers_text`
+into `''`, and the preview compared that `''` with the live `NULL`; the merge then wrote `''`
+back. The database confirmed it: `m7–m9.scorers_text` went from `NULL` to `""`.
+`import_preview` now normalises both sides with `nullif(…, '')` and `import_merge` stores
+`nullif(…, '')`, so an absent value stays `NULL` and a fresh export is a true no-op. Section 11
+of `tools/test-merge-import.js` sends the browser payload (empty strings, not the test-only
+`null` mapping) and asserts that the preview stays unchanged and the merge keeps `NULL`.
+
 ### Still open
-- A real admin preview/merge round trip against hosted data (the safest first run is a no-op
-  merge of a fresh export, then the same file again to confirm the replay). It needs an admin
-  session with MFA; the hosted database was not written during this verification.
+- Re-apply the updated, idempotent `supabase/merge-import-migration.sql` to development, then
+  production. After that, a preview of a fresh development export should be `0/0/0` and the
+  next merge should put `m7–m9.scorers_text` back to `NULL`.
 - Task J (player photos) stays deferred with the other privacy work.
