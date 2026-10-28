@@ -1,8 +1,8 @@
 # KickOff Division — Progress Update
 
-- **Last updated:** 2026-10-27
+- **Last updated:** 2026-10-28
 - **Working-tree version:** `v3.11.0`
-- **Deployed version:** `v3.11.0`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete, MFA, data-quality, squad-import, scheduled-event, derive-totals, drop-stored-totals, scorer-role, divisions and anon-write-revoke migrations applied in development and production
+- **Deployed version:** `v3.11.0`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete, MFA, data-quality, squad-import, scheduled-event, derive-totals, drop-stored-totals, scorer-role, divisions, anon-write-revoke, bilingual-names/licence, team-icons and merge-import migrations applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
 - **Repository:** <https://github.com/Boulakdane/football-division-manager>
 
@@ -23,6 +23,9 @@
 | CSV bulk entry and admin exports | ✅ Done | Five-file workflow including `events.csv` |
 | JSON backup and restore | ✅ Done | Full replacement; development round-trip and production no-op import passed |
 | Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
+| Merge import with a diff preview | ✅ Merged in #29 and migrated in both environments | `import_preview` shows the per-table diff before writing; `import_merge` upserts in one transaction with an idempotency key and checksum; `replace_all_data` stays for disaster recovery behind MFA and a typed `REPLACE` |
+| Bilingual names and admin-only player profiles | ✅ Merged in #24 and migrated in both environments | Optional `teams.name_ar` / `players.name_ar`; licence and birth date in the admin-only `player_profiles` table |
+| Team crests | ✅ Merged in #25 and migrated in both environments | Optional `teams.icon` data URL; PNG/JPEG/WebP only, no SVG, no new origin |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
 | Squad import from Excel/CSV | ✅ Deployed and live-tested in development | Bilingual template, row-by-row preview and one atomic `add_players()` call; migration applied in both projects |
 | Scheduled-fixture event counting | ✅ Applied in development and production | The repair migration counts events already saved on upcoming fixtures; UI round trip verified in development |
@@ -36,7 +39,7 @@
 | Realistic-scale import rehearsal | ✅ Done in development (2026-10-24) | 20 teams / 500 players / 200 matches / 2,043 events imported through the UI, exported, validated and restored to the exact original hash; production untouched |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
 
-**Bottom line:** the core league manager is usable, publicly readable and `v3.11.0` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Production now requires two-factor for admin writes (`admin_mfa_required()` returns `true`) and the real admin is enrolled; the development demo account remains password-only for disposable tests. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. A realistic-scale rehearsal (20 teams / 500 players / 200 matches / 2,043 events) imported through the admin UI, passed pagination, UI, export, audit and restore checks, and the original development data was restored with the identical SHA-256; production was verified unchanged. Post-`v3.10.1`, admins can import a whole squad from Excel/CSV with a row-by-row preview and one atomic `add_players()` call, and the scheduled-fixture repair migration means goals/cards added to upcoming matches now reach player totals in both projects. Both migrations are applied in development and production, and production MFA is required again (`admin_mfa_required()` returns `true`). Roadmap A and B are now merged and migrated in both projects: `v_player_stats` / `v_standings` are the only totals (the stored `players.goals / yellow / red` columns are gone), and a `scorer` account can add goals and cards only to fixtures an admin assigned to it, only while they are LIVE or scheduled today, with a 15-minute undo. The one outstanding database action is `supabase/revoke-anon-write-grants-migration.sql`: anonymous callers still hold `UPDATE`/`DELETE` grants on four tables (RLS rejects the writes, so no data changed), which is why the daily drift monitor is red — tracked in issue #8. Both were resolved on 2026-10-27: the grant migration is applied in development and production, `check:drift` reports 28 PASS / 0 WARN / 0 FAIL in both projects, and the league now runs Division 1 and Division 2 in one shared season with division-scoped standings, fixtures and squads (`teams.division_id` for the current registration, `matches.division_id` for the division a fixture was played in). The remaining operational work is loading the real league data.
+**Bottom line:** the core league manager is usable, publicly readable and `v3.11.0` is on `main`. All database migrations (integrity, audit log, soft delete, MFA and data-quality constraints) are applied in development and production. Archived seasons are read-only in RLS, players with history are archived instead of deleted, team/match deletes and event writes go through total-adjusting RPCs, every write is attributed in the activity log, and deletion is reversible through the trash. A live delete/restore round trip passed in development; production has the same functions and keeps the original league data (6 teams / 9 fixtures). Production now requires two-factor for admin writes (`admin_mfa_required()` returns `true`) and the real admin is enrolled; the development demo account remains password-only for disposable tests. `v3.10.0` adds self-service password recovery and a 30-minute idle logout; `v3.10.1` adds an admin **Sign out all devices** action as well. A successful reset or global sign-out invalidates every existing session, and the real production reset round trip is now confirmed. A realistic-scale rehearsal (20 teams / 500 players / 200 matches / 2,043 events) imported through the admin UI, passed pagination, UI, export, audit and restore checks, and the original development data was restored with the identical SHA-256; production was verified unchanged. Post-`v3.10.1`, admins can import a whole squad from Excel/CSV with a row-by-row preview and one atomic `add_players()` call, and the scheduled-fixture repair migration means goals/cards added to upcoming matches now reach player totals in both projects. Both migrations are applied in development and production, and production MFA is required again (`admin_mfa_required()` returns `true`). Roadmap A and B are now merged and migrated in both projects: `v_player_stats` / `v_standings` are the only totals (the stored `players.goals / yellow / red` columns are gone), and a `scorer` account can add goals and cards only to fixtures an admin assigned to it, only while they are LIVE or scheduled today, with a 15-minute undo. The one outstanding database action is `supabase/revoke-anon-write-grants-migration.sql`: anonymous callers still hold `UPDATE`/`DELETE` grants on four tables (RLS rejects the writes, so no data changed), which is why the daily drift monitor is red — tracked in issue #8. Both were resolved on 2026-10-27: the grant migration is applied in development and production, `check:drift` reports 28 PASS / 0 WARN / 0 FAIL in both projects, and the league now runs Division 1 and Division 2 in one shared season with division-scoped standings, fixtures and squads (`teams.division_id` for the current registration, `matches.division_id` for the division a fixture was played in). The remaining operational work is loading the real league data. On 2026-10-28 the maintainer applied the L, I and H migrations in development and production; read-only probes now find `teams.name_ar` / `teams.icon`, `players.name_ar`, `player_profiles`, `import_runs`, `import_preview` and `import_merge` in both projects, anonymous reads of the admin-only `player_profiles` / `import_runs` and calls of the new RPCs are denied, and `check:drift` still reports 28 PASS / 0 WARN / 0 FAIL. Section 26 records the evidence; a real admin preview/merge on hosted data is still pending.
 
 ## 2. Architecture
 
@@ -951,3 +954,49 @@ bump; the release was cut as `v3.11.0` the same day (section 25).
   refuses a club with an active-season fixture) is still open; it needs an MFA admin session and
   real league writes.
 - Roadmap **E** (pure domain modules) is the next task; it touches the hot `js/app.js`.
+
+## 26. Bilingual names, team crests and merge import (2026-10-28)
+
+### What shipped
+- **L (#24):** optional `teams.name_ar` / `players.name_ar`, and the admin-only
+  `player_profiles` table for licence number and birth date. Both names appear in EN/FR/AR,
+  search, CSV and JSON backups; the personal fields are admin-only.
+- **I (#25):** optional `teams.icon` as a downscaled PNG/JPEG/WebP data URL. No bucket and no
+  new origin; the check constraint refuses SVG and `http(s)` sources.
+- **H (#29):** `import_preview` / `import_merge` / `import_runs`. The import dialog previews a
+  backup per table, merges in one transaction with a checksum and an idempotency key, and keeps
+  `replace_all_data` for disaster recovery behind MFA and a typed `REPLACE`.
+
+### Migrations applied (maintainer, 2026-10-28)
+Run in this order in both projects, development first, then production:
+
+1. `supabase/arabic-names-and-license-migration.sql`
+2. `supabase/team-icons-migration.sql` (depends on L)
+3. `supabase/merge-import-migration.sql` (depends on L and I)
+
+### Read-only evidence after the migrations
+| Check | Development | Production |
+|---|---|---|
+| `teams?select=name_ar,icon` | 206 (columns exist), no rows returned | 206 (columns exist), no rows returned |
+| `players?select=name_ar` | 206, no rows returned | 206, no rows returned |
+| `player_profiles` as anon | denied (401) | denied (401) |
+| `import_runs` as anon | denied (401), so the table exists | denied (401), so the table exists |
+| `rpc/import_preview` as anon | denied (401), so the function exists | denied (401) |
+| `rpc/import_merge` as anon | denied (401), so the function exists | denied (401) |
+| `rpc/replace_all_data` as anon | denied (401), unchanged | denied (401), unchanged |
+| `check:drift` | 28 PASS / 0 WARN / 0 FAIL | 28 PASS / 0 WARN / 0 FAIL |
+
+No request wrote anything: every probe is a `select` with `limit=0`, an anonymous call that the
+grant layer rejects before the body runs, or the existing drift monitor (read-only).
+
+### Local checks on the merged tree
+- `npm run check:secrets`, `node --check`, and all 13 PGlite suites pass, including
+  `test:merge-import` (10 sections) and the fresh-schema assertions in `test:sql`.
+- Playwright: 9/9 pass, including the new `import-preview` spec (9 checks) and the existing
+  public, divisions, profiles, crests and totals specs.
+
+### Still open
+- A real admin preview/merge round trip against hosted data (the safest first run is a no-op
+  merge of a fresh export, then the same file again to confirm the replay). It needs an admin
+  session with MFA; the hosted database was not written during this verification.
+- Task J (player photos) stays deferred with the other privacy work.

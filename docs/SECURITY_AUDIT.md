@@ -137,7 +137,7 @@ CI      ──push──► GitHub Pages
 ### SEC-03 - Full-data import atomic RPC (live-tested)
 
 **Severity:** High
-**Status:** Installed and live-tested in development and production. The first production attempt was safely rejected by Supabase `pg-safeupdate`; the patched function now uses qualified deletes. No-op admin imports completed through `replace_all_data` with no client fallback and identical pre/post data hashes in both projects, and invalid event imports rolled back without inserting their test rows.
+**Status:** Installed and live-tested in development and production. The first production attempt was safely rejected by Supabase `pg-safeupdate`; the patched function now uses qualified deletes. No-op admin imports completed through `replace_all_data` with no client fallback and identical pre/post data hashes in both projects, and invalid event imports rolled back without inserting their test rows. The roadmap H merge-import migration was applied to both projects on 2026-10-28; read-only probes find `import_preview`, `import_merge`, `import_runs` and the L/I columns, and anonymous access is denied.
 **Evidence:** before this change, `js/backend.js` `dbReplaceAll()` deleted `match_events`, `matches`, `players`, `teams` and `seasons` in separate requests, then inserted each table in separate requests. RLS protects who can do it, but not what happens if a request fails halfway. The new `public.replace_all_data(jsonb)` performs the delete and insert in one database transaction and the frontend prefers it automatically.
 
 **Impact:** A network error, constraint violation or malformed import can leave the league partially deleted or with orphaned/incomplete data only if the RPC is unavailable and the frontend falls back. The admin may not have a fresh backup. This is the most likely way to lose real data.
@@ -153,11 +153,11 @@ CI      ──push──► GitHub Pages
 4. ✅ Add a dry-run mode that returns counts and a diff summary before commit. Done in the
    roadmap H PR: `import_preview(payload, remove_missing)` returns per-table
    added/changed/removed/unchanged counts plus a capped entity list and writes nothing.
-   **Migration not yet applied.**
+   Applied in development and production (2026-10-28).
 5. ✅ Store an import checksum/idempotency key and a “last import” record. Done in the
    roadmap H PR: `import_runs` stores the SHA-256 checksum, the idempotency key and the
    stored result, so a retry returns `replayed: true` and a key reused for a different
-   payload is rejected. **Migration not yet applied.**
+   payload is rejected. Applied in development and production (2026-10-28).
 6. ✅ Require a fresh JSON backup download before the replacement, and keep the previous
    snapshot for rollback. The replace-all panel still calls `exportData()` before
    `replace_all_data`, and the merge mode now means a full replacement is no longer the
@@ -175,10 +175,11 @@ CI      ──push──► GitHub Pages
   hashes and used only `replace_all_data`, with no client fallback.
 - ✅ Concurrent imports are serialized by the advisory lock.
 - ✅ The admin sees a dry-run summary before commit (and a fresh preview whenever
-  “remove missing rows” changes). PGlite and browser tests cover it; the hosted
-  projects still need `supabase/merge-import-migration.sql`.
+  “remove missing rows” changes). PGlite and browser tests cover it, and read-only probes
+  confirm that `import_preview` exists in both hosted projects and refuses anonymous callers
+  (2026-10-28).
 
-**Merge follow-up (roadmap H, migration not yet applied):**
+**Merge follow-up (roadmap H, applied 2026-10-28):**
 [`supabase/merge-import-migration.sql`](../supabase/merge-import-migration.sql) adds
 `import_preview(payload, remove_missing)` and
 `import_merge(payload, idempotency_key, remove_missing, expected_checksum)`. The merge
@@ -186,8 +187,9 @@ upserts by id in one transaction and only soft-deletes missing seasons/teams/mat
 archives missing players when the box is ticked; it never hard-deletes. `import_runs`
 stores the checksum, the key and the result, and `import_merge` rejects a payload whose
 `expected_checksum` no longer matches the preview. The dialog loads the diff, sends the
-checksum and a fresh key, and reports a replay instead of applying twice. Apply the
-migration to development, then production.
+checksum and a fresh key, and reports a replay instead of applying twice. Applied to
+development and production on 2026-10-28; a real admin preview/merge on hosted data is still
+pending.
 
 ### SEC-04 — Third-party CDN and font dependency
 
