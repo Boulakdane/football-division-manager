@@ -217,7 +217,7 @@ the updated migration was re-applied to both projects and re-verified in develop
 
 ### SEC-05 — No audit log, soft delete or restore path
 
-**Severity:** Medium (audit/trash deployed; hash chain in review, migration pending)
+**Severity:** Medium (audit/trash and hash chain deployed)
 **Status:** Mitigated in code (`v3.8.0`) and deployed. `supabase/audit-log-migration.sql` adds an append-only `public.audit_log` fed by AFTER triggers on `teams`, `players`, `matches`, `match_events` and `seasons`, plus `list_audit_log(int)` for admins and an "Activity log" panel. `supabase/soft-delete-migration.sql` adds `deleted_at`, hides trashed rows in RLS and installs `delete_season`, `restore_team`, `restore_match`, `restore_season` and `list_deleted()` for a "Recently deleted" panel. Both migrations are applied in development and production; a live delete/restore round trip passed in development, and anonymous production calls to both admin RPCs are rejected with `42501`.
 
 **Evidence (history):** there was no `audit_log` table, no `deleted_at` for teams/matches/seasons, and no restore action for them. Player totals and match events could change with no record of who changed them. The integrity release added `players.is_active`, so players with history can be archived and restored, but that was not a full audit or trash system.
@@ -228,7 +228,7 @@ the updated migration was re-applied to both projects and re-verified in develop
 - A full import sets `app.audit_skip` for the transaction and writes a single `IMPORT` summary, so replacing the dataset does not produce hundreds of rows.
 - Soft deletes and restores are `deleted_at` updates relabelled as `DELETE` / `RESTORE`, so the history stays readable even though no row is physically removed.
 
-**Tamper evidence (roadmap D):** clients were never able to edit the log, but a database administrator could still update or delete a row. `supabase/audit-chain-migration.sql` adds `prev_hash` and `row_hash`; a `BEFORE INSERT` trigger computes the SHA-256 of a canonical JSON document holding the previous hash and the row, under an advisory lock, so every insert path is covered. A one-time backfill hashes existing rows and never rewrites a row that already has a hash, so re-running the file cannot repair tampering. `audit_verify_chain(expected_head)` (admin only) walks the chain and reports the first broken id and reason; `audit_chain_head()` is public but returns only the row count, last id/time and head hash. The daily backup stores that head next to the data, so a rewritten log fails the next comparison even if every row is re-hashed. Covered by `npm run test:audit-chain` (trigger, backfill, re-run, edit, middle delete, rewritten tail, anon/viewer denial). The migration is pending in development and production.
+**Tamper evidence (roadmap D):** clients were never able to edit the log, but a database administrator could still update or delete a row. `supabase/audit-chain-migration.sql` adds `prev_hash` and `row_hash`; a `BEFORE INSERT` trigger computes the SHA-256 of a canonical JSON document holding the previous hash and the row, under an advisory lock, so every insert path is covered. A one-time backfill hashes existing rows and never rewrites a row that already has a hash, so re-running the file cannot repair tampering. `audit_verify_chain(expected_head)` (admin only) walks the chain and reports the first broken id and reason; `audit_chain_head()` is public but returns only the row count, last id/time and head hash. The daily backup stores that head next to the data, so a rewritten log fails the next comparison even if every row is re-hashed. Covered by `npm run test:audit-chain` (trigger, backfill, re-run, edit, middle delete, rewritten tail, anon/viewer denial). The migration was applied in development and production on 2026-10-28. Development verified live with `audit_verify_chain()`: `ok=true`, 61/61 rows, head `d01a01b7…`. Production publishes `count=32`, head `68d2e69b…`; backup run 5 recorded exactly that head inside the encrypted artifact, and decrypting it reproduced the same value before validate and restore drill passed.
 
 **Impact:** Accidental or malicious changes are attributable, and a wrongly deleted team, match or season can be restored from the trash without a backup. The log itself is still not a backup.
 
@@ -240,7 +240,7 @@ the updated migration was re-applied to both projects and re-verified in develop
 4. ✅ Add admin-only restore actions with total recalculation, plus an admin trash panel. (A permanent purge path is still optional.)
 5. ✅ Keep archived seasons immutable at the database level.
 6. ✅ Hash-chain the audit log and add admin verification plus a public head, with a PGlite suite (roadmap D).
-7. ⬜ Apply `audit-chain-migration.sql` in development, then production; the daily backup then starts publishing the head.
+7. ✅ Apply `audit-chain-migration.sql` in development and production (2026-10-28); the daily backup publishes the head.
 
 **Acceptance criteria:**
 
@@ -249,7 +249,7 @@ the updated migration was re-applied to both projects and re-verified in develop
 - ✅ Audit rows are admin-readable only and cannot be edited by clients (anon select and RPC both rejected in tests).
 - ✅ Run `soft-delete-migration.sql` in development and production; the live development delete/restore round trip passed.
 - ✅ An edited row, a deleted middle row and a rewritten tail are detected, and re-running the migration does not repair them (PGlite).
-- ⬜ Apply the chain migration in both hosted projects and record a live verification result.
+- ✅ The chain migration is applied in both hosted projects; development reports `61/61` verified rows and the production head is recorded in the encrypted backup.
 
 ### SEC-06 - Archived seasons were not write-protected in the database
 
@@ -391,8 +391,8 @@ the updated migration was re-applied to both projects and re-verified in develop
 ### SEC-12 — Local backups are unencrypted
 
 **Severity:** Low
-**Status:** Mitigated for the daily CI backup (roadmap D); local admin exports remain plain text by design.
-**Evidence:** `backups/` is gitignored (good), but JSON backups contain the full league and player names in plain text on the local filesystem. The scheduled workflow used to upload a plain `backup.json` artifact.
+**Status:** Mitigated and running for the daily CI backup (roadmap D); local admin exports remain plain text by design.
+**Evidence:** `backups/` is gitignored (good), but JSON backups contain the full league and player names in plain text on the local filesystem. The scheduled workflow previously uploaded a plain `backup.json` artifact.
 
 **Impact:** Device loss or shared-folder access exposes league data, and a plain artifact is readable by anyone who can list the repository's Actions artifacts.
 
@@ -401,20 +401,21 @@ the updated migration was re-applied to both projects and re-verified in develop
 - The passphrase comes only from `KICKOFF_BACKUP_PASSPHRASE` (environment or repository secret), never from `argv`. The workflow fails closed when the secret is missing.
 - The workflow exports and validates the plaintext, runs the in-memory restore drill, records the audit chain head, encrypts to `backup.kob`, decrypts it again and compares byte for byte, deletes the plaintext, and uploads only `backup.kob`.
 - `npm run test:backup-crypt` proves the round trip, rejects a wrong passphrase and edited ciphertext/metadata, and checks the CLI fails without the secret.
+- Backup run 5 (2026-10-28) uploaded a 10,732-byte `backup.kob`. Downloading it, decrypting with the stored passphrase, validating and restoring it locally reproduced the production chain head and passed the restore drill; the decrypted file's SHA-256 was `34eb386e…`.
 
 **Remediation:**
 
 - ✅ Encrypt the daily CI backup before upload and fail closed without the secret.
 - ✅ Test decryption inside the workflow on every run, then delete the plaintext.
 - ✅ Test wrong-passphrase and tamper rejection without a database (`npm run test:backup-crypt`).
-- ⬜ Add the `KICKOFF_BACKUP_PASSPHRASE` repository secret and store the same passphrase in a password manager.
-- ⬜ Copy the artifacts somewhere the Supabase/GitHub administrator cannot rewrite (private repository, release asset or encrypted object store) and define retention.
+- ✅ Add the `KICKOFF_BACKUP_PASSPHRASE` repository secret (2026-10-28); the repository contains no copy of the passphrase.
+- ⬜ Copy the artifacts somewhere the Supabase/GitHub administrator cannot rewrite (private repository, release asset or encrypted object store) and define retention. GitHub artifacts are off Supabase but remain deletable by a repository admin.
 - ⬜ Schedule the quarterly restore from that off-site copy; keep `.gitignore` rules for local backups.
 
 **Acceptance criteria:**
 
 - ✅ Uploaded backups are authenticated ciphertext, and the plaintext is removed from the runner.
-- ✅ A restore from the encrypted artifact is exercised on every run.
+- ✅ A restore from the encrypted artifact is exercised on every run, and a manual download → decrypt → validate → restore drill passed on 2026-10-28.
 - ⬜ Quarterly restore drill from the off-site copy is on the maintainer's calendar.
 
 ### SEC-13 - Destructive deletes could leave aggregate totals inconsistent
@@ -519,6 +520,7 @@ npm.cmd run test:sql
 # 4a. Tamper-evident audit chain and encryption (roadmap D)
 npm.cmd run test:audit-chain
 npm.cmd run test:backup-crypt
+npm.cmd run test:export-chain-head
 
 # 5. CSV round trip
 node tools/csv-to-backup.js data/examples "$env:TEMP\kickoff-first.json"
