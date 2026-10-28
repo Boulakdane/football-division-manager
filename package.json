@@ -17,6 +17,7 @@
     "test:divisions": "node tools/test-divisions.js",
     "test:profile-fields": "node tools/test-profile-fields.js",
     "test:team-icons": "node tools/test-team-icons.js",
+    "test:merge-import": "node tools/test-merge-import.js",
     "test:grants": "node tools/test-anon-grants.js",
     "test:drift": "node tools/test-security-drift.js",
     "test:e2e": "playwright test",
