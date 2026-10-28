@@ -11,6 +11,12 @@
  * works in CI without secrets. Trashed rows are intentionally excluded, just
  * like the admin JSON export in the app.
  *
+ * Roadmap D: when the project has audit_chain_head(), the backup also records
+ * the public head of the audit hash chain. It contains no log entries, only the
+ * row count, last id/time and head hash, so publishing it with the backup makes
+ * a later rewrite of the log detectable. A project that predates roadmap D has
+ * no such function; the backup is then written without the field.
+ *
  * Environment overrides: SUPABASE_URL, SUPABASE_ANON_KEY.
  */
 
@@ -88,7 +94,48 @@ function eventRow(row) {
   return eventFromRow(row);
 }
 
-(async () => {
+/**
+ * Read public.audit_chain_head() with the publishable key.
+ *
+ * Returns null on a project that predates roadmap D (404) and on any other
+ * failure, so a chain problem never blocks the data backup; the warning is
+ * printed so CI keeps the evidence.
+ */
+async function readChainHead(base) {
+  try {
+    const response = await fetch(`${base.url}/rest/v1/rpc/audit_chain_head`, {
+      method: 'POST',
+      headers: {
+        apikey: base.key,
+        Authorization: 'Bearer ' + base.key,
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: '{}'
+    });
+    if (response.status === 404) {
+      console.log('Audit chain: not installed on this project (roadmap D pending)');
+      return null;
+    }
+    if (!response.ok) {
+      console.warn(`Audit chain: head request failed (${response.status}); backup continues without it`);
+      return null;
+    }
+    const head = await response.json();
+    const shaped = head && Number.isInteger(head.count) &&
+      (typeof head.head === 'string' || (head.head === null && head.count === 0));
+    if (!shaped) {
+      console.warn('Audit chain: head response did not match the expected shape; backup continues without it');
+      return null;
+    }
+    return { ...head, readAt: new Date().toISOString() };
+  } catch (error) {
+    console.warn(`Audit chain: head request failed (${error.message}); backup continues without it`);
+    return null;
+  }
+}
+
+async function main() {
   const base = readConfig(envArg);
   console.log(`Reading ${envArg === 'dev' ? 'development' : 'production'} data from ${base.url}`);
   console.log(`Credentials: ${base.source}`);
@@ -122,6 +169,13 @@ function eventRow(row) {
     matchEvents: events.map(eventRow)
   };
 
+  const auditChainHead = await readChainHead(base);
+  if (auditChainHead) {
+    payload.auditChainHead = auditChainHead;
+    console.log(`Audit chain: ${auditChainHead.count} rows, last id ${auditChainHead.lastId}, ` +
+      `head ${String(auditChainHead.head).slice(0, 16)}...`);
+  }
+
   const json = JSON.stringify(payload, null, 2) + '\n';
   const outFile = path.resolve(
     outArg || path.join('backups', `${envArg === 'dev' ? 'dev' : 'prod'}-backup-${new Date().toISOString().slice(0, 10)}.json`)
@@ -134,4 +188,10 @@ function eventRow(row) {
   console.log(`Counts: ${payload.seasons.length} seasons, ${payload.teams.length} teams, ` +
     `${payload.players.length} players, ${payload.matches.length} matches, ${payload.matchEvents.length} events`);
   console.log(`SHA-256 (file): ${hash}`);
-})().catch(error => fail(error && error.message ? error.message : String(error)));
+}
+
+module.exports = { readChainHead };
+
+if (require.main === module) {
+  main().catch(error => fail(error && error.message ? error.message : String(error)));
+}
