@@ -407,6 +407,16 @@ test('the import dialog previews, merges idempotently and gates replace-all', as
   await expect(page.locator('#import-preview')).toBeHidden();
   await expect(page.locator('#import-apply')).toBeDisabled();
 
+  // Disaster recovery still works from the parsed file when the merge RPC is missing.
+  await expect(page.locator('#import-replace-open')).toBeVisible();
+  await page.locator('#import-replace-open').click();
+  await expect(page.locator('#import-replace-panel')).toBeVisible();
+  await expect(page.locator('#import-replace-count')).toHaveText('');
+  await page.locator('#import-replace-word').fill('REPLACE');
+  await page.locator('#import-replace-confirm').click();
+  await expect(page.locator('#toast')).toContainText('All league data was replaced');
+  expect(state.replaceCalls).toHaveLength(2);
+
   // The flow never falls back to window.confirm/alert.
   expect(dialogs).toEqual([]);
 });

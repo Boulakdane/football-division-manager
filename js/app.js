@@ -3675,8 +3675,10 @@ function renderImportReplaceCount() {
   const panel = document.getElementById('import-replace-panel');
   const el = document.getElementById('import-replace-count');
   if (!panel || !el || panel.classList.contains('hidden')) return;
-  el.textContent = t('importReplaceCount')
-    .replace('{n}', importFormatCount(importLiveRowCount(importState.preview)));
+  // Without a preview (e.g. the merge migration is missing) the count is unknown.
+  el.textContent = importState.preview
+    ? t('importReplaceCount').replace('{n}', importFormatCount(importLiveRowCount(importState.preview)))
+    : '';
 }
 
 function renderImportPreview() {
@@ -3686,7 +3688,9 @@ function renderImportPreview() {
   previewEl.classList.toggle('hidden', !preview);
 
   const replaceOpen = document.getElementById('import-replace-open');
-  if (replaceOpen) replaceOpen.classList.toggle('hidden', !preview);
+  // Keep disaster recovery reachable from a parsed file even when the merge
+  // migration has not been applied yet.
+  if (replaceOpen) replaceOpen.classList.toggle('hidden', !preview && !importState.data);
   const summaryEl = document.getElementById('import-summary');
   const body = document.getElementById('import-diff-body');
   const details = document.getElementById('import-diff-details');
