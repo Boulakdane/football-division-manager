@@ -57,7 +57,9 @@ accounts live in a free [Supabase](https://supabase.com) project.
 - **Shared data** — every visitor sees the same league, from any device.
 - **Activity log** — admins see the last 50 changes (adds, edits, deletes, restores,
   imports and security changes) with who made them, when, and before/after values. The
-  log is append-only and invisible to spectators and other signed-in users.
+  log is append-only and invisible to spectators and other signed-in users. It is
+  hash-chained, and the daily backup records the chain head, so editing or removing
+  history later is detectable.
 - **Recently deleted** — teams, matches and seasons go to a trash instead of being
   destroyed; admins can restore them with their squad, events and totals intact.
 - **JSON backup** — export/import the full dataset from the admin settings menu.
@@ -118,6 +120,7 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   ├── export-backup.js       # Export public data without an admin session
 │   ├── validate-backup.js     # Check structure and referential integrity
 │   ├── restore-drill.js       # Restore a backup into in-memory Postgres and compare
+│   ├── backup-crypt.js        # Encrypt/decrypt a backup (AES-256-GCM, scrypt)
 │   ├── backup-map.js          # Shared camelCase ⇄ database row mapping
 │   ├── keepalive.js           # One public read to prevent Free-tier pausing
 │   ├── check-secrets.js       # Fail CI if a privileged secret is committed

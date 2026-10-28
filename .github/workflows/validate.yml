@@ -74,6 +74,15 @@ jobs:
       - name: Test merge import, preview and idempotency (roadmap H)
         run: npm run test:merge-import
 
+      - name: Test the tamper-evident audit chain (roadmap D)
+        run: npm run test:audit-chain
+
+      - name: Test backup encryption (roadmap D)
+        run: npm run test:backup-crypt
+
+      - name: Test the backup chain-head probe (roadmap D)
+        run: npm run test:export-chain-head
+
       - name: Test squad import parser (xlsx/csv)
         run: npm run test:squad-import
 

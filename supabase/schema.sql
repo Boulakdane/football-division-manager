@@ -4137,8 +4137,14 @@ create table if not exists public.audit_log (
   season_id text,
   summary text,
   before jsonb,
-  after jsonb
+  after jsonb,
+  prev_hash text,
+  row_hash text
 );
+
+-- Roadmap D: upgrade an audit_log created before the hash chain existed.
+alter table public.audit_log add column if not exists prev_hash text;
+alter table public.audit_log add column if not exists row_hash text;
 
 create index if not exists audit_log_occurred_at_idx
   on public.audit_log (occurred_at desc, id desc);
@@ -4150,6 +4156,121 @@ alter table public.audit_log enable row level security;
 
 revoke all on public.audit_log from anon, authenticated;
 revoke all on sequence public.audit_log_id_seq from anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 9a. HASH CHAIN (roadmap D)
+-- ------------------------------------------------------------
+create or replace function public.audit_row_hash(
+  p_prev text,
+  p_id bigint,
+  p_occurred_at timestamptz,
+  p_actor_id uuid,
+  p_actor_email text,
+  p_action text,
+  p_entity text,
+  p_entity_id text,
+  p_season_id text,
+  p_summary text,
+  p_before jsonb,
+  p_after jsonb
+)
+returns text
+language sql
+immutable
+set search_path = public
+as $$
+  select encode(
+    sha256(convert_to(
+      jsonb_build_object(
+        'version', 1,
+        'prev', coalesce(p_prev, ''),
+        'id', p_id,
+        'occurredAt', to_char(p_occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+        'actorId', p_actor_id,
+        'actorEmail', p_actor_email,
+        'action', p_action,
+        'entity', p_entity,
+        'entityId', p_entity_id,
+        'seasonId', p_season_id,
+        'summary', p_summary,
+        'before', p_before,
+        'after', p_after
+      )::text,
+      'utf8'
+    )),
+    'hex'
+  );
+$$;
+
+revoke execute on function public.audit_row_hash(
+  text, bigint, timestamptz, uuid, text, text, text, text, text, text, jsonb, jsonb
+) from public, anon, authenticated;
+
+-- Existing rows from a pre-D table get one hash each; hashed rows are kept.
+do $$
+declare
+  r record;
+  v_prev text;
+  v_hash text;
+begin
+  for r in
+    select * from public.audit_log where row_hash is null order by id
+  loop
+    select a.row_hash into v_prev
+    from public.audit_log a
+    where a.id < r.id
+    order by a.id desc
+    limit 1;
+
+    v_hash := public.audit_row_hash(
+      v_prev, r.id, r.occurred_at, r.actor_id, r.actor_email,
+      r.action, r.entity, r.entity_id, r.season_id, r.summary, r.before, r.after
+    );
+
+    update public.audit_log
+       set prev_hash = v_prev,
+           row_hash = v_hash
+     where id = r.id;
+  end loop;
+end;
+$$;
+
+create or replace function public.audit_log_chain()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_prev text;
+begin
+  if new.row_hash is not null then
+    return new;
+  end if;
+
+  perform pg_advisory_xact_lock(748292);
+
+  select a.row_hash into v_prev
+  from public.audit_log a
+  order by a.id desc
+  limit 1;
+
+  new.prev_hash := v_prev;
+  new.row_hash := public.audit_row_hash(
+    v_prev, new.id, new.occurred_at, new.actor_id, new.actor_email,
+    new.action, new.entity, new.entity_id, new.season_id, new.summary,
+    new.before, new.after
+  );
+  return new;
+end;
+$$;
+
+revoke execute on function public.audit_log_chain() from public, anon, authenticated;
+
+drop trigger if exists audit_log_chain on public.audit_log;
+create trigger audit_log_chain
+  before insert on public.audit_log
+  for each row execute function public.audit_log_chain();
 
 create or replace function public.audit_row_change()
 returns trigger
@@ -4253,6 +4374,105 @@ $$;
 
 revoke execute on function public.list_audit_log(int) from public, anon;
 grant execute on function public.list_audit_log(int) to authenticated;
+
+create or replace function public.audit_verify_chain(
+  p_expected_head text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  v_prev text := null;
+  v_checked int := 0;
+  v_total int;
+  v_expected text;
+  r record;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can verify the audit log' using errcode = '42501';
+  end if;
+
+  select count(*)::int into v_total from public.audit_log;
+
+  for r in select * from public.audit_log order by id loop
+    if r.prev_hash is distinct from v_prev then
+      return jsonb_build_object(
+        'ok', false,
+        'checked', v_checked,
+        'total', v_total,
+        'brokenAt', r.id,
+        'reason', 'prev_hash',
+        'expectedPrev', v_prev,
+        'actualPrev', r.prev_hash
+      );
+    end if;
+
+    v_expected := public.audit_row_hash(
+      v_prev, r.id, r.occurred_at, r.actor_id, r.actor_email,
+      r.action, r.entity, r.entity_id, r.season_id, r.summary, r.before, r.after
+    );
+
+    if r.row_hash is distinct from v_expected then
+      return jsonb_build_object(
+        'ok', false,
+        'checked', v_checked,
+        'total', v_total,
+        'brokenAt', r.id,
+        'reason', 'row_hash',
+        'expectedHash', v_expected,
+        'actualHash', r.row_hash
+      );
+    end if;
+
+    v_prev := r.row_hash;
+    v_checked := v_checked + 1;
+  end loop;
+
+  if p_expected_head is not null
+     and p_expected_head is distinct from coalesce(v_prev, '') then
+    return jsonb_build_object(
+      'ok', false,
+      'checked', v_checked,
+      'total', v_total,
+      'reason', 'head_mismatch',
+      'expectedHead', p_expected_head,
+      'actualHead', v_prev
+    );
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'checked', v_checked,
+    'total', v_total,
+    'head', v_prev
+  );
+end;
+$$;
+
+revoke execute on function public.audit_verify_chain(text) from public, anon;
+grant execute on function public.audit_verify_chain(text) to authenticated;
+
+create or replace function public.audit_chain_head()
+returns jsonb
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select jsonb_build_object(
+    'count', count(*)::int,
+    'lastId', max(id),
+    'at', (select a.occurred_at from public.audit_log a order by a.id desc limit 1),
+    'head', (select a.row_hash from public.audit_log a order by a.id desc limit 1)
+  )
+  from public.audit_log;
+$$;
+
+revoke execute on function public.audit_chain_head() from public;
+grant execute on function public.audit_chain_head() to anon, authenticated;
 
 -- Ask PostgREST to pick up new tables/functions immediately.
 notify pgrst, 'reload schema';

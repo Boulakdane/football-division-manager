@@ -50,17 +50,53 @@ jobs:
               events: data.matchEvents.length
             };
             console.log(counts);
-            require('fs').appendFileSync(
-              process.env.GITHUB_STEP_SUMMARY,
-              '### KickOff Division backup\n\n' +
-              Object.entries(counts).map(([k, v]) => '- ' + k + ': ' + v).join('\n') + '\n'
-            );
+            const chain = data.auditChainHead;
+            const lines = [
+              '### KickOff Division backup',
+              '',
+              ...Object.entries(counts).map(([k, v]) => '- ' + k + ': ' + v)
+            ];
+            if (chain) {
+              lines.push(
+                '',
+                '### Audit chain head',
+                '',
+                '- rows: ' + chain.count,
+                '- last id: ' + chain.lastId,
+                '- at: ' + chain.at,
+                '- head: ' + chain.head
+              );
+            } else {
+              lines.push('', 'Audit chain head: not available (roadmap D migration pending).');
+            }
+            require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
           "
 
-      - name: Upload backup artifact
+      - name: Encrypt the backup
+        env:
+          KICKOFF_BACKUP_PASSPHRASE: ${{ secrets.KICKOFF_BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$KICKOFF_BACKUP_PASSPHRASE" ]; then
+            echo "::error::The KICKOFF_BACKUP_PASSPHRASE repository secret is not set. Add it (a long random passphrase kept in a password manager) and re-run; this job refuses to upload an unencrypted backup."
+            exit 1
+          fi
+          node tools/backup-crypt.js encrypt backup.json backup.kob
+
+      - name: Check the encrypted backup decrypts
+        env:
+          KICKOFF_BACKUP_PASSPHRASE: ${{ secrets.KICKOFF_BACKUP_PASSPHRASE }}
+        run: |
+          node tools/backup-crypt.js decrypt backup.kob backup-check.json
+          cmp backup.json backup-check.json
+          rm -f backup-check.json
+
+      - name: Remove the plaintext backup
+        run: rm -f backup.json
+
+      - name: Upload encrypted backup artifact
         uses: actions/upload-artifact@v4
         with:
           name: kickoff-backup-${{ github.run_number }}
-          path: backup.json
+          path: backup.kob
           retention-days: 90
           if-no-files-found: error
