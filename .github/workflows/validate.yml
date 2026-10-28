@@ -68,6 +68,9 @@ jobs:
       - name: Test Arabic names, licence numbers and birth dates (task L)
         run: npm run test:profile-fields
 
+      - name: Test team crests and icon safety (task I)
+        run: npm run test:team-icons
+
       - name: Test squad import parser (xlsx/csv)
         run: npm run test:squad-import
 

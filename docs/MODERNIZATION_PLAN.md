@@ -652,6 +652,8 @@ This closes the open acceptance items in `SECURITY_AUDIT.md` SEC-03 (dry-run sum
 - Keep the CSP's `img-src` to this origin plus the project's storage host; no hotlinking.
 - Photos of players are personal data; make them opt-in and see 22.11 first.
 
+> **Decision (2026-10-27, team crest half):** the crest is stored **inline in the database** in `teams.icon` instead of in Storage. The browser fits the chosen file into 128×128 and re-encodes it, which strips EXIF; the database only accepts a PNG/JPEG/WebP data URL of at most 100000 characters, so the CSP stays `img-src 'self' data:` and no bucket, storage host or orphan object exists. A JSON/CSV backup carries the image with the league, which a Storage URL would not (it would keep pointing at the old project after a restore), and the read-only local mode still works. The accepted cost is roughly 10 KB per club on each page load. Player photos remain deferred to J: personal data, consent and retention need answers first.
+
 ### 22.11 J — Privacy and retention
 
 - Document what personal data the site publishes (names, shirt numbers, goals and cards) and who may request correction or removal.

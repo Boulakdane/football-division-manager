@@ -27,6 +27,8 @@ function teamFromRow(row) {
     name: row.name,
     // Task L: optional Arabic name. Absent on a pre-L project.
     nameAr: row.name_ar || null,
+    // Task I: optional crest as a small data URL. Absent on a pre-I project.
+    icon: row.icon || null,
     code: row.code,
     color: row.color,
     divisionId: row.division_id || 'd1'
@@ -101,6 +103,7 @@ function toDbPayload(data) {
       id: team.id,
       name: team.name,
       name_ar: team.nameAr || null,
+      icon: team.icon || null,
       code: team.code || 'TBD',
       color: team.color || '#16a34a',
       division_id: team.divisionId || 'd1'

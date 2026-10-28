@@ -1,7 +1,7 @@
-id,name,nameAr,code,color
-t1,Spartan FC,سبارتان,SFC,#3b82f6
-t2,Titan United,تايتان يونايتد,TTN,#10b981
-t3,Phoenix Rovers,,PHX,#f59e0b
-t4,Vanguard Athletic,,VNG,#ef4444
-t5,Atlas Warriors,أطلس واريورز,ATL,#8b5cf6
-t6,Coastal Sharks,,CSH,#06b6d4
+id,name,nameAr,icon,code,color
+t1,Spartan FC,سبارتان,"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAvElEQVR42u3bsRHCMBBEUVdBUbRJoUtIwjAYJFknveDHnnmZ7dvj9rgfOzfyYTlZeYA0rgxAOjctQAY3DUAu7jKATNZQgEzaEIBMXleAFKkLQIrVFCBFawKQ4v0FkEX6CSCLBeAMQBYNwDcAWTwAnwCySQDeAWSzAAAA8ALIpgEAAAAAAAAAAAAAsDuAt0EAAAD4KgzAjxEAfo4CcCABwJGUMzmHkk5lHUs7lzeYMJkxmjKbM5w0nTWeXr0nmIz1xrmkf+AAAAAASUVORK5CYII=",SFC,#3b82f6
+t2,Titan United,تايتان يونايتد,,TTN,#10b981
+t3,Phoenix Rovers,,,PHX,#f59e0b
+t4,Vanguard Athletic,,,VNG,#ef4444
+t5,Atlas Warriors,أطلس واريورز,,ATL,#8b5cf6
+t6,Coastal Sharks,,,CSH,#06b6d4

@@ -36,6 +36,11 @@ accounts live in a free [Supabase](https://supabase.com) project.
 - **Player licence & birth date** — optional per player, unique when set, and visible
   to admins only: they live in a separate `player_profiles` table that anonymous
   visitors cannot read. They travel with the admin JSON backup and CSV export.
+- **Club crests** — each team can carry an optional crest. The browser downscales it
+  to 128px and re-encodes it (which strips EXIF), and only a PNG/JPEG/WebP data URL
+  is saved, so no file host is involved: the crest shows in the standings, fixtures,
+  top scorers, live entry and squads, travels with the JSON/CSV backup, and clubs
+  without one keep the coloured marker.
 - **Trilingual UI** — English, French and Arabic, with automatic RTL layout for Arabic.
 - **Real accounts & roles** — Supabase Auth with email + password. Spectators browse
   without an account; only users with the `admin` role can add, edit or delete.
@@ -141,7 +146,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
     ├── drop-stored-totals-migration.sql # Drop players.goals / yellow / red; v_player_stats is the only total
     ├── scorer-role-migration.sql    # Scorer role, match officials and the narrow live-entry RPCs (roadmap B)
     ├── divisions-migration.sql      # Division 1 / Division 2: seeded tiers, team and fixture divisions (roadmap K)
-    └── arabic-names-and-license-migration.sql # Optional Arabic names, admin-only licence number and birth date (task L)
+    ├── arabic-names-and-license-migration.sql # Optional Arabic names, admin-only licence number and birth date (task L)
+    └── team-icons-migration.sql     # Optional inline club crest, type and size checked (task I)
 ```
 
 Scripts are loaded in dependency order in `index.html`:
@@ -267,6 +273,13 @@ plus Supabase.
 >    `v_player_stats` exposes `name_ar` only. Safe to re-run; run it development
 >    first, then production. The app keeps working without it: the Arabic name
 >    simply stays empty and the licence fields are hidden.
+> 16. [`supabase/team-icons-migration.sql`](supabase/team-icons-migration.sql) — task I.
+>    Adds the optional `teams.icon` column and a check constraint that only accepts
+>    a PNG/JPEG/WebP data URL of at most 100000 characters (no SVG, no `http(s)`
+>    hotlink, no script URI), and re-creates `list_deleted()` / `replace_all_data()`
+>    so the trash and a full import carry the crest. Run it after step 15 and
+>    development first. The app keeps working without it: the icon picker then
+>    reports that the database update is missing instead of losing the image.
 >
 > Alternatively, re-run the full [`supabase/schema.sql`](supabase/schema.sql); it is
 > idempotent and creates anything that is missing. It does **not** add the new `CHECK`

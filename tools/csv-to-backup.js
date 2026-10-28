@@ -207,6 +207,16 @@ function optionalText(record, field, fileName, maxLength) {
   return raw;
 }
 
+/** Optional team crest: only a small PNG/JPEG/WebP data URL, never a URL. */
+function checkIcon(record, fileName) {
+  const raw = record.icon;
+  if (raw === undefined || raw === '') return null;
+  if (raw.length > 100000 || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(raw)) {
+    fail(`${fileName}:${record.__line} - "icon" must be a PNG/JPEG/WebP data URL of at most 100000 characters.`);
+  }
+  return raw;
+}
+
 /** Optional birth date: YYYY-MM-DD between 1900-01-01 and 2100-12-31. */
 function checkBirthDate(record, fileName) {
   const value = checkDate(record.birthDate, 'birthDate', fileName, record);
@@ -274,6 +284,7 @@ const teams = teamRows.map(record => {
     id,
     name,
     nameAr: optionalText(record, 'nameAr', 'teams.csv', 100),
+    icon: checkIcon(record, 'teams.csv'),
     code,
     color: color.toLowerCase(),
     divisionId: checkDivision(record, 'teams.csv', 'd1')

@@ -32,6 +32,9 @@ let NAMES_AR_READY = false;
 /** True once public.player_profiles exists and the signed-in user may read it. */
 let PROFILES_READY = false;
 
+/** True once teams have the optional icon column (task I). */
+let TEAM_ICONS_READY = false;
+
 /** Totals are always non-negative whole numbers, whatever the project answers. */
 function numberOrZero(value) {
   const n = Number(value);
@@ -78,6 +81,8 @@ function mapTeam(row) {
     id: row.id,
     name: row.name,
     nameAr: row.name_ar || null,
+    // A small data URL (task I). Absent on a pre-I project.
+    icon: row.icon || null,
     code: row.code,
     color: row.color,
     divisionId: row.division_id || 'd1'
@@ -187,13 +192,15 @@ function seasonToRow(season) {
   };
 }
 
-function teamToRow(team, includeNameAr = NAMES_AR_READY) {
+function teamToRow(team, includeNameAr = NAMES_AR_READY, includeIcon = TEAM_ICONS_READY) {
   const row = { id: team.id, name: team.name, code: team.code, color: team.color };
   // Omitted until the divisions migration has run in the project.
   if (team.divisionId && appState && appState.divisionsReady) row.division_id = team.divisionId;
   // Omitted until the task L migration has run: PostgREST rejects an unknown
   // column on a direct write. The value is sent as null so an admin can clear it.
   if (includeNameAr) row.name_ar = team.nameAr || null;
+  // Same rule for the task I icon: null clears it.
+  if (includeIcon) row.icon = team.icon || null;
   return row;
 }
 
@@ -339,6 +346,7 @@ async function refreshData() {
     PLAYERS_ARCHIVE_READY = true;
     NAMES_AR_READY = true;
     PROFILES_READY = false;
+    TEAM_ICONS_READY = true;
     appState = normalizeState(DEFAULT_DATA);
     appState.seasonsReady = true;
     appState.eventsReady = true;
@@ -452,6 +460,16 @@ async function refreshData() {
   if (!NAMES_AR_READY && teamRows.length === 0 && playerRows.length === 0) {
     const probe = await db.from('teams').select('name_ar').limit(1);
     NAMES_AR_READY = !probe.error;
+  }
+
+  // Task I: teams gained an optional icon column. Same rule, so a direct team
+  // save never sends an unknown column to a project that has not migrated.
+  TEAM_ICONS_READY = teamRows.some(row =>
+    Object.prototype.hasOwnProperty.call(row, 'icon')
+  );
+  if (!TEAM_ICONS_READY && teamRows.length === 0) {
+    const probe = await db.from('teams').select('icon').limit(1);
+    TEAM_ICONS_READY = !probe.error;
   }
 
   // Player profiles are optional until the task L migration is run, and only
@@ -952,7 +970,7 @@ function buildAtomicImportPayload(data) {
   const fallbackSeason = seasons.find(season => season.isActive) || seasons[0];
   return {
     seasons: seasons.map(seasonToRow),
-    teams: (Array.isArray(data.teams) ? data.teams : []).map(team => teamToRow(team, true)),
+    teams: (Array.isArray(data.teams) ? data.teams : []).map(team => teamToRow(team, true, true)),
     players: (Array.isArray(data.players) ? data.players : []).map(player => playerImportRow(player)),
     matches: (Array.isArray(data.matches) ? data.matches : []).map(match => matchToRow({
       ...match,

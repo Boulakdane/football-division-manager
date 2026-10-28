@@ -70,6 +70,47 @@ function playerDisplayName(player) {
   return bilingualName(player.name, player.nameAr || player.name_ar);
 }
 
+/**
+ * The stored club crest (a small data URL) or an empty string. Only the image
+ * types the uploader produces are accepted, so a hand-edited backup cannot
+ * smuggle an external URL or a script URI into an <img src>.
+ */
+function teamIconSrc(team) {
+  const src = team && team.icon ? String(team.icon) : '';
+  return /^data:image\/(png|jpeg|webp);base64,/.test(src) ? src : '';
+}
+
+/** A crest image, or '' when the club has none. */
+function teamIconHtml(team, size, extraClass) {
+  const src = teamIconSrc(team);
+  if (!src) return '';
+  const px = toInt(size, 20);
+  return `<img src="${esc(src)}" alt="${esc(teamDisplayName(team))}" width="${px}" height="${px}" loading="lazy" decoding="async" class="rounded-full object-contain bg-slate-900 ring-1 ring-slate-700/70 shrink-0 ${extraClass || ''}" style="width:${px}px;height:${px}px">`;
+}
+
+/**
+ * Inline marker before a club name: the crest when there is one, otherwise the
+ * colour dot the tables always had, so a club without an icon looks unchanged.
+ */
+function teamMarkerHtml(team, size) {
+  const px = toInt(size, 20);
+  const src = teamIconSrc(team);
+  if (src) return teamIconHtml(team, px);
+  return `<span class="w-3 h-3 rounded-full shrink-0" style="background-color:${esc((team && team.color) || '#22c55e')}"></span>`;
+}
+
+/**
+ * The round badge on fixture cards and squad headers: the crest, or the
+ * existing coloured circle with the club code.
+ */
+function teamCrestHtml(team, size, extraClass) {
+  const px = toInt(size, 32);
+  const src = teamIconSrc(team);
+  if (src) return teamIconHtml(team, px, extraClass);
+  const color = (team && team.color) || '#334155';
+  return `<span class="rounded-full flex items-center justify-center font-bold text-xs shadow shrink-0 ${extraClass || ''}" style="width:${px}px;height:${px}px;background-color:${esc(color)};color:${esc(contrastTextColor(color))}">${esc((team && team.code) || '?')}</span>`;
+}
+
 /** Format a stored ISO date (YYYY-MM-DD) for the active language. */
 function formatIsoDate(value) {
   if (!value) return '';
@@ -343,6 +384,8 @@ const CLICK_ACTIONS = {
   'new-team': () => openTeamModal(),
   'edit-team': el => editTeam(el.dataset.id),
   'delete-team': el => deleteTeam(el.dataset.id),
+  'choose-team-icon': () => chooseTeamIcon(),
+  'clear-team-icon': () => clearTeamIcon(),
   'new-player': el => openPlayerModal(el.dataset.team),
   'edit-player': el => editPlayer(el.dataset.id),
   'delete-player': el => deletePlayer(el.dataset.id),
@@ -381,6 +424,7 @@ const CHANGE_ACTIONS = {
   'update-event': el => updateMatchEvent(el.dataset.id, el.dataset.field, el.value),
   'import-file': (el, event) => importData(event),
   'squad-file': (el, event) => handleSquadFile(event),
+  'team-icon': (el, event) => handleTeamIconFile(event),
   'mfa-require': el => toggleRequireMfa(el),
   'live-team': el => { liveEntrySide = el.value === 'away' ? 'away' : 'home'; renderLiveEntry(); },
   'user-role': el => changeUserRole(el.dataset.id, el.value),
@@ -896,7 +940,7 @@ function renderTopScorers() {
   list.innerHTML = rows.map((row, index) => `
     <div class="flex items-center gap-3 px-4 py-2.5">
       <span class="w-5 shrink-0 text-center text-[11px] font-bold text-slate-500">${index + 1}</span>
-      <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color:${esc(row.team.color || '#22c55e')}"></span>
+      ${teamMarkerHtml(row.team, 18)}
       <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-200">${esc(playerDisplayName(row.player))}</span>
       <span class="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-500">${esc(row.team.code)}</span>
       <span class="w-8 shrink-0 text-end text-sm font-extrabold tabular-nums text-white">${row.goals}</span>
@@ -940,7 +984,7 @@ function renderStandings() {
         </td>
         <td class="py-3 px-4 font-semibold text-white">
           <span class="flex items-center gap-2.5">
-            <span class="w-3 h-3 rounded-full shrink-0" style="background-color:${esc(s.team.color || '#22c55e')}"></span>
+            ${teamMarkerHtml(s.team, 20)}
             <span class="truncate max-w-[140px] sm:max-w-none">${esc(teamDisplayName(s.team))}</span>
             <span class="text-[10px] text-slate-400 font-normal uppercase hidden sm:inline">(${esc(s.team.code)})</span>
           </span>
@@ -1226,7 +1270,7 @@ function renderFixtures() {
 
         <div class="grid grid-cols-7 items-center gap-2 my-2 text-center">
           <div class="col-span-3 flex flex-col items-center">
-            <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 shadow" style="background-color:${esc(home.color || '#334155')};color:${esc(contrastTextColor(home.color || '#334155'))}">${esc(home.code || 'H')}</span>
+            ${teamCrestHtml(home, 32, 'mb-1')}
             <span class="font-semibold text-sm text-white truncate max-w-full">${esc(teamDisplayName(home))}</span>
           </div>
           <div class="col-span-1 flex flex-col items-center justify-center">
@@ -1234,7 +1278,7 @@ function renderFixtures() {
             ${liveSteppers}
           </div>
           <div class="col-span-3 flex flex-col items-center">
-            <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 shadow" style="background-color:${esc(away.color || '#334155')};color:${esc(contrastTextColor(away.color || '#334155'))}">${esc(away.code || 'A')}</span>
+            ${teamCrestHtml(away, 32, 'mb-1')}
             <span class="font-semibold text-sm text-white truncate max-w-full">${esc(teamDisplayName(away))}</span>
           </div>
         </div>
@@ -1412,9 +1456,15 @@ function renderLiveEntry() {
 
   body.innerHTML = `
     <div class="flex items-center justify-between gap-3 rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2">
-      <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white">${esc(teamDisplayName(home))}</span>
+      <span class="min-w-0 flex-1 flex items-center gap-1.5 text-sm font-semibold text-white">
+        ${teamCrestHtml(home, 24)}
+        <span class="min-w-0 truncate">${esc(teamDisplayName(home))}</span>
+      </span>
       <span class="shrink-0 text-lg font-extrabold tracking-wider text-white">${esc(score)}</span>
-      <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white text-end">${esc(teamDisplayName(away))}</span>
+      <span class="min-w-0 flex-1 flex items-center justify-end gap-1.5 text-sm font-semibold text-white">
+        <span class="min-w-0 truncate">${esc(teamDisplayName(away))}</span>
+        ${teamCrestHtml(away, 24)}
+      </span>
     </div>
     <p class="text-[11px] text-slate-500 leading-relaxed">${esc(t('liveEntryHint'))}</p>
     <ol class="space-y-0.5 rounded-xl bg-slate-950/40 border border-slate-800 px-3 py-2">${eventRows}</ol>
@@ -1531,7 +1581,9 @@ function renderTeamsView() {
       <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl overflow-hidden shadow-sm flex flex-col">
         <div class="bg-slate-900/80 p-4 border-b border-slate-700 flex justify-between items-center gap-2">
           <div class="flex items-center gap-3 min-w-0">
-            <div class="w-2 h-8 rounded-full shrink-0" style="background-color:${esc(team.color || '#22c55e')}"></div>
+            ${teamIconSrc(team)
+              ? teamIconHtml(team, 40)
+              : `<div class="w-2 h-8 rounded-full shrink-0" style="background-color:${esc(team.color || '#22c55e')}"></div>`}
             <div class="min-w-0">
               <h3 class="font-bold text-base text-white truncate">${esc(teamDisplayName(team))}</h3>
               <p class="text-xs text-slate-400">${totalSquad} ${esc(t('lblPlayers'))} • ${esc(team.code)} • <span class="text-pitch-400">${esc(divisionLabel(team.divisionId))}</span></p>
@@ -1998,6 +2050,145 @@ async function deleteMatch(matchId) {
 /* ---------------------------------------------------------------
  * 8. TEAM MODAL (add / edit / delete)
  * --------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------
+ * 8a. TEAM ICON (task I)
+ *     The chosen file is decoded, fitted into a 128px square and
+ *     re-encoded in the browser before it is saved. Re-encoding
+ *     strips EXIF (including any GPS position), refuses SVG by
+ *     MIME type and keeps the row small enough for the database
+ *     check constraint. The image only ever leaves the device as
+ *     that row, so no bucket and no new CSP origin are needed.
+ * --------------------------------------------------------------- */
+const TEAM_ICON_MAX_INPUT_BYTES = 5 * 1024 * 1024;
+const TEAM_ICON_MAX_SIDE = 4096;
+const TEAM_ICON_SIZE = 128;
+const TEAM_ICON_MAX_LENGTH = 100000;
+
+/** Pending icon for the open team modal: a data URL, or null. */
+let teamIconDraft = null;
+let teamIconBusy = false;
+
+function teamIconError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+/** Decode a File into an ImageBitmap (preferred) or an HTMLImageElement. */
+function decodeTeamIconFile(file) {
+  if (typeof createImageBitmap === 'function') {
+    return createImageBitmap(file, { imageOrientation: 'from-image' });
+  }
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(teamIconError('decode')); };
+    image.src = url;
+  });
+}
+
+/** Validate, resize and re-encode a picked file. Returns a small data URL. */
+async function prepareTeamIcon(file) {
+  const type = file && file.type ? file.type : '';
+  if (!/^image\/(png|jpeg|webp)$/.test(type)) throw teamIconError('type');
+  if (file.size > TEAM_ICON_MAX_INPUT_BYTES) throw teamIconError('size');
+
+  let bitmap;
+  try {
+    bitmap = await decodeTeamIconFile(file);
+  } catch (err) {
+    throw teamIconError('decode');
+  }
+
+  try {
+    const width = bitmap.width;
+    const height = bitmap.height;
+    if (!width || !height) throw teamIconError('decode');
+    if (width > TEAM_ICON_MAX_SIDE || height > TEAM_ICON_MAX_SIDE) throw teamIconError('size');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = TEAM_ICON_SIZE;
+    canvas.height = TEAM_ICON_SIZE;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw teamIconError('decode');
+
+    // Fit the whole crest inside the square instead of cropping its edges.
+    const scale = Math.min(TEAM_ICON_SIZE / width, TEAM_ICON_SIZE / height);
+    const drawWidth = Math.max(1, Math.round(width * scale));
+    const drawHeight = Math.max(1, Math.round(height * scale));
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(
+      bitmap,
+      Math.round((TEAM_ICON_SIZE - drawWidth) / 2),
+      Math.round((TEAM_ICON_SIZE - drawHeight) / 2),
+      drawWidth,
+      drawHeight
+    );
+
+    // WebP keeps the payload tiny; older Safari falls back to PNG.
+    let dataUrl = canvas.toDataURL('image/webp', 0.85);
+    if (!/^data:image\/webp;base64,/.test(dataUrl)) {
+      dataUrl = canvas.toDataURL('image/png');
+    }
+    if (!/^data:image\/(png|jpeg|webp);base64,/.test(dataUrl) || dataUrl.length > TEAM_ICON_MAX_LENGTH) {
+      throw teamIconError('size');
+    }
+    return dataUrl;
+  } finally {
+    if (typeof bitmap.close === 'function') bitmap.close();
+  }
+}
+
+function renderTeamIconPreview() {
+  const box = document.getElementById('team-icon-preview');
+  const remove = document.getElementById('team-icon-remove');
+  if (!box) return;
+  if (teamIconBusy) {
+    box.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 text-slate-400 animate-spin"></i>';
+  } else if (teamIconDraft) {
+    box.innerHTML = `<img src="${esc(teamIconDraft)}" alt="" class="w-full h-full object-contain">`;
+  } else {
+    box.innerHTML = '<i data-lucide="image" class="w-5 h-5 text-slate-600"></i>';
+  }
+  if (remove) remove.classList.toggle('hidden', !teamIconDraft || teamIconBusy);
+  refreshIcons();
+}
+
+async function handleTeamIconFile(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  input.value = ''; // allow choosing the same file again
+  if (!file) return;
+
+  teamIconBusy = true;
+  renderTeamIconPreview();
+  try {
+    teamIconDraft = await prepareTeamIcon(file);
+  } catch (err) {
+    const code = err && err.code;
+    alert(t(code === 'type'
+      ? 'alertIconType'
+      : code === 'size' ? 'alertIconTooLarge' : 'alertIconFailed'));
+  } finally {
+    teamIconBusy = false;
+    renderTeamIconPreview();
+  }
+}
+
+function chooseTeamIcon() {
+  const input = document.getElementById('team-icon');
+  if (input) input.click();
+}
+
+function clearTeamIcon() {
+  teamIconDraft = null;
+  const input = document.getElementById('team-icon');
+  if (input) input.value = '';
+  renderTeamIconPreview();
+}
+
 /** Fill the division select and hide it until the divisions migration has run. */
 function prepareTeamDivisionField(selectedId) {
   const wrap = document.getElementById('team-division-wrap');
@@ -2017,6 +2208,8 @@ function openTeamModal() {
   document.getElementById('team-id').value = '';
   document.getElementById('team-color').value = '#16a34a';
   document.getElementById('team-modal-title').textContent = t('modalTeamTitle');
+  teamIconDraft = null;
+  renderTeamIconPreview();
   prepareTeamDivisionField(null);
   openModal('modal-team');
 }
@@ -2032,6 +2225,8 @@ function editTeam(teamId) {
   document.getElementById('team-code').value = team.code || '';
   document.getElementById('team-color').value = team.color || '#16a34a';
   document.getElementById('team-modal-title').textContent = t('modalTeamEditTitle');
+  teamIconDraft = teamIconSrc(team) || null;
+  renderTeamIconPreview();
   prepareTeamDivisionField(team.divisionId);
   openModal('modal-team');
 }
@@ -2048,6 +2243,7 @@ async function saveTeam(e) {
     id: id || uid('t'),
     name: document.getElementById('team-name').value.trim(),
     nameAr: document.getElementById('team-name-ar').value.trim() || null,
+    icon: teamIconDraft,
     code: document.getElementById('team-code').value.trim().toUpperCase(),
     color: document.getElementById('team-color').value,
     divisionId
@@ -2059,6 +2255,18 @@ async function saveTeam(e) {
   }
   if (teamData.nameAr && teamData.nameAr.length > 100) {
     alert(t('alertNameArTooLong'));
+    return;
+  }
+  // The image is prepared before the save button is used; this only guards a
+  // click that lands while a large file is still being decoded.
+  if (teamIconBusy) {
+    alert(t('alertIconProcessing'));
+    return;
+  }
+  // Before the task I migration a direct write cannot carry the column, so
+  // fail loudly instead of silently saving the club without its new crest.
+  if (teamData.icon && !TEAM_ICONS_READY) {
+    alert(t('alertIconMigration'));
     return;
   }
 
@@ -2986,9 +3194,10 @@ function openTrashModal() {
   renderTrash();
 }
 
-function renderTrashItem(kind, id, label, meta) {
+function renderTrashItem(kind, id, label, meta, iconHtml) {
   return `
     <div class="flex items-center gap-3 p-3 bg-slate-800/40 border border-slate-800 rounded-lg">
+      ${iconHtml || ''}
       <div class="min-w-0 flex-1">
         <p class="text-slate-200 font-medium break-words">${esc(label)}</p>
         <p class="text-[11px] text-slate-500 mt-0.5 break-words">${esc(meta)}</p>
@@ -3046,7 +3255,7 @@ function renderTrash() {
           `${team.matchCount || 0} ${t('trashFixtures')}`,
           `${t('trashDeletedAt')} ${auditTime(team.deletedAt)}`
         ].join(' · ');
-        return renderTrashItem('team', team.id, label, meta);
+        return renderTrashItem('team', team.id, label, meta, teamIconHtml({ name, icon: team.icon }, 32));
       })));
 
       sections.push(renderTrashSection('trashMatches', matches.map(match => {
