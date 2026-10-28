@@ -120,6 +120,12 @@ async function run() {
     await exec(derivedSql);
     await exec(derivedSql);
 
+    // Roadmap F: the fixture plan and reschedule functions must install and
+    // re-run on a project that predates them.
+    const fixturesSql = fs.readFileSync(path.join(ROOT, 'supabase/fixtures-migration.sql'), 'utf8');
+    await exec(fixturesSql);
+    await exec(fixturesSql);
+
     // Data-quality constraints reject malformed rows even for a direct table
     // write, not just through the UI or an RPC.
     await expectError(

@@ -18,6 +18,7 @@
     "test:profile-fields": "node tools/test-profile-fields.js",
     "test:team-icons": "node tools/test-team-icons.js",
     "test:merge-import": "node tools/test-merge-import.js",
+    "test:fixtures": "node tools/test-fixtures.js",
     "test:audit-chain": "node tools/test-audit-chain.js",
     "test:backup-crypt": "node tools/test-backup-crypt.js",
     "test:export-chain-head": "node tools/test-export-chain-head.js",

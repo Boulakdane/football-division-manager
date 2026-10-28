@@ -74,6 +74,9 @@ jobs:
       - name: Test merge import, preview and idempotency (roadmap H)
         run: npm run test:merge-import
 
+      - name: Test the fixture generator and reschedule helper (roadmap F)
+        run: npm run test:fixtures
+
       - name: Test the tamper-evident audit chain (roadmap D)
         run: npm run test:audit-chain
 
