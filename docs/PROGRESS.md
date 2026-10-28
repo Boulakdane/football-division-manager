@@ -23,7 +23,7 @@
 | CSV bulk entry and admin exports | ✅ Done | Five-file workflow including `events.csv` |
 | JSON backup and restore | ✅ Done | Full replacement; development round-trip and production no-op import passed |
 | Atomic full-data import | ✅ Deployed and live-tested in both environments | Patched RPC invoked successfully in development and production; no-op imports kept each data hash unchanged and did not use the fallback |
-| Merge import with a diff preview | ✅ Merged in #29, migrated in both environments and round-trip tested in development | `import_preview` shows the per-table diff before writing; `import_merge` upserts in one transaction with an idempotency key and checksum; `replace_all_data` stays for disaster recovery behind MFA and a typed `REPLACE` |
+| Merge import with a diff preview | ✅ Merged in #29, migrated in both environments; round trip and NULL fix re-verified in development | `import_preview` shows the per-table diff before writing; `import_merge` upserts in one transaction with an idempotency key and checksum; `replace_all_data` stays for disaster recovery behind MFA and a typed `REPLACE` |
 | Bilingual names and admin-only player profiles | ✅ Merged in #24 and migrated in both environments | Optional `teams.name_ar` / `players.name_ar`; licence and birth date in the admin-only `player_profiles` table |
 | Team crests | ✅ Merged in #25 and migrated in both environments | Optional `teams.icon` data URL; PNG/JPEG/WebP only, no SVG, no new origin |
 | Structured match events | ✅ Deployed, migrated and tested | Goals/cards with minutes, player dropdowns; RPCs and live production UI flow tested |
@@ -974,6 +974,9 @@ Run in this order in both projects, development first, then production:
 2. `supabase/team-icons-migration.sql` (depends on L)
 3. `supabase/merge-import-migration.sql` (depends on L and I)
 
+The merge-import file was re-run on the same day after the NULL/empty-string fix described
+below; it is idempotent and changes no data by itself.
+
 ### Read-only evidence after the migrations
 | Check | Development | Production |
 |---|---|---|
@@ -1016,8 +1019,21 @@ back. The database confirmed it: `m7–m9.scorers_text` went from `NULL` to `""`
 of `tools/test-merge-import.js` sends the browser payload (empty strings, not the test-only
 `null` mapping) and asserts that the preview stays unchanged and the merge keeps `NULL`.
 
+### Re-verified after the fix (development, 2026-10-28)
+The maintainer re-applied the updated, idempotent `merge-import-migration.sql` to development
+and production, then the same admin round trip was repeated in development:
+
+1. Preview of a fresh export: **0 added, 0 changed, 0 removed**, same checksum `c56cb503…`,
+   `rpc/import_preview` 200; the fixtures row was 9 unchanged instead of 3 changed.
+2. Merge with a fresh key: `rpc/import_merge` 200, toast “Backup merged: 0 added, 0 changed,
+   0 removed.”
+3. Database read afterwards: `m7–m9.scorers_text` is `NULL` again, with `datetime` and `venue`
+   unchanged.
+4. A second preview stayed **0/0/0**, and replaying the applied request returned
+   `replayed: true`, `runId 3`, totals `0/0/0` and 25 unchanged rows.
+
+Production received the same updated file but has no admin round trip; its verification is the
+read-only drift monitor and the anonymous probes above.
+
 ### Still open
-- Re-apply the updated, idempotent `supabase/merge-import-migration.sql` to development, then
-  production. After that, a preview of a fresh development export should be `0/0/0` and the
-  next merge should put `m7–m9.scorers_text` back to `NULL`.
 - Task J (player photos) stays deferred with the other privacy work.

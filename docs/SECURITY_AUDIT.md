@@ -190,7 +190,8 @@ stores the checksum, the key and the result, and `import_merge` rejects a payloa
 checksum and a fresh key, and reports a replay instead of applying twice. Applied to
 development and production on 2026-10-28. A real admin preview/merge round trip in
 development found and fixed one NULL-versus-empty-string mismatch in the match text fields;
-re-run the updated, idempotent migration to pick up the fix.
+the updated migration was re-applied to both projects and re-verified in development
+(preview 0/0/0, merge keeps NULL, replay returns `runId 3`).
 
 ### SEC-04 — Third-party CDN and font dependency
 
