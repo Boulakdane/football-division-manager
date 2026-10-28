@@ -1010,3 +1010,57 @@ async function dbReplaceAll(data) {
     throw error;
   }
 }
+
+/** True when the single-transaction import and the new merge import can run. */
+function atomicImportReady() {
+  return Boolean(appState && appState.seasonsReady && appState.eventsReady);
+}
+
+function mergeImportMigrationError() {
+  const error = new Error(
+    'Merge import is unavailable: run supabase/merge-import-migration.sql, then reload.'
+  );
+  error.code = 'MERGE_IMPORT_MIGRATION_REQUIRED';
+  return error;
+}
+
+/**
+ * Compare a backup with the live data without writing anything. Admin only.
+ * Returns the per-table diff and the checksum import_merge() will verify.
+ */
+async function dbImportPreview(data, removeMissing) {
+  assertBackend();
+  if (!atomicImportReady()) throw mergeImportMigrationError();
+
+  const { data: result, error } = await db.rpc('import_preview', {
+    p_data: buildAtomicImportPayload(data),
+    p_remove_missing: Boolean(removeMissing)
+  });
+  if (error) {
+    if (isMissingFunction(error)) throw mergeImportMigrationError();
+    throw error;
+  }
+  return result;
+}
+
+/**
+ * Upsert a backup in one transaction. The idempotency key and the checksum of
+ * the preview make a retry harmless: the second call returns the stored result.
+ * Admin only; the database is the security boundary.
+ */
+async function dbImportMerge(data, idempotencyKey, removeMissing, expectedChecksum) {
+  assertBackend();
+  if (!atomicImportReady()) throw mergeImportMigrationError();
+
+  const { data: result, error } = await db.rpc('import_merge', {
+    p_data: buildAtomicImportPayload(data),
+    p_idempotency_key: String(idempotencyKey || ''),
+    p_remove_missing: Boolean(removeMissing),
+    p_expected_checksum: expectedChecksum || null
+  });
+  if (error) {
+    if (isMissingFunction(error)) throw mergeImportMigrationError();
+    throw error;
+  }
+  return result;
+}

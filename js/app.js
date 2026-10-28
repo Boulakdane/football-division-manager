@@ -121,7 +121,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad', 'modal-live', 'modal-users'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad', 'modal-live', 'modal-users', 'modal-import'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -383,6 +383,11 @@ const CLICK_ACTIONS = {
   'export-standings': () => exportStandingsCsv(),
   'export-fixtures': () => exportFixturesCsv(),
   'export-squads': () => exportSquadsCsv(),
+  'import-open': () => openImportModal(),
+  'import-choose-file': () => chooseImportFile(),
+  'import-apply': () => applyImportMerge(),
+  'import-replace-open': () => openImportReplace(),
+  'import-replace-confirm': () => confirmImportReplace(),
   'reset-data': () => resetData(),
 
   'new-season': () => openSeasonModal(),
@@ -401,7 +406,8 @@ const CHANGE_ACTIONS = {
   'render-fixtures': () => renderFixtures(),
   'match-team-change': () => onMatchTeamChange(),
   'update-event': el => updateMatchEvent(el.dataset.id, el.dataset.field, el.value),
-  'import-file': (el, event) => importData(event),
+  'import-file': (el, event) => handleImportFile(event),
+  'import-remove-missing': el => toggleImportRemoveMissing(el),
   'squad-file': (el, event) => handleSquadFile(event),
   'team-icon': (el, event) => handleTeamIconFile(event),
   'mfa-require': el => toggleRequireMfa(el),
@@ -421,7 +427,8 @@ const CHANGE_ACTIONS = {
 const INPUT_ACTIONS = {
   search: () => renderTeamsView(),
   'update-goal-hint': () => updateMatchGoalHint(),
-  'update-event': el => updateMatchEvent(el.dataset.id, el.dataset.field, el.value)
+  'update-event': el => updateMatchEvent(el.dataset.id, el.dataset.field, el.value),
+  'import-replace-word': el => onImportReplaceInput(el)
 };
 
 const SUBMIT_ACTIONS = {
@@ -464,6 +471,7 @@ const MFA_GATED_ACTIONS = new Set([
   'new-season', 'activate-season', 'delete-season',
   'restore-team', 'restore-match', 'restore-season',
   'audit-log', 'trash-open',
+  'import-open', 'import-apply', 'import-replace-confirm',
   'reset-data'
 ]);
 
@@ -3465,34 +3473,403 @@ function validateImport(data) {
   return normalizeState(data);
 }
 
-function importData(event) {
-  const file = event.target.files[0];
-  event.target.value = ''; // allow re-importing the same file
+/* ---------- merge import (roadmap H) ---------- */
+
+const IMPORT_REPLACE_WORD = 'REPLACE';
+const IMPORT_MAX_BYTES = 10 * 1024 * 1024;
+const IMPORT_ENTITIES = [
+  ['seasons', 'importEntitySeasons'],
+  ['teams', 'importEntityTeams'],
+  ['players', 'importEntityPlayers'],
+  ['matches', 'importEntityMatches'],
+  ['events', 'importEntityEvents']
+];
+const IMPORT_DETAIL_GROUPS = [
+  ['addedItems', 'importDetailsAdded'],
+  ['changedItems', 'importDetailsChanged'],
+  ['removedItems', 'importDetailsRemoved']
+];
+
+const importState = {
+  data: null,
+  fileName: '',
+  removeMissing: false,
+  preview: null,
+  checksum: '',
+  idempotencyKey: '',
+  replaceWord: '',
+  replaceReady: false,
+  busy: false
+};
+
+function importFormatCount(value) {
+  return new Intl.NumberFormat(currentLang).format(Number(value) || 0);
+}
+
+/** A fresh idempotency key per previewed upload; a retry of the same preview reuses it. */
+function importIdempotencyKey() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return 'import-' + crypto.randomUUID();
+  }
+  return 'import-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+}
+
+function chooseImportFile() {
+  if (importState.busy) return;
+  const input = document.getElementById('import-merge-file');
+  if (input) input.click();
+}
+
+function openImportModal() {
+  resetImportState();
+  openModal('modal-import');
+}
+
+function setImportError(message) {
+  const el = document.getElementById('import-error');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('hidden', !message);
+}
+
+function setImportBusy(busy) {
+  importState.busy = Boolean(busy);
+  const apply = document.getElementById('import-apply');
+  if (apply) apply.disabled = importState.busy || !importState.preview;
+  const checkbox = document.getElementById('import-remove-missing');
+  if (checkbox) {
+    checkbox.disabled = importState.busy;
+    checkbox.checked = importState.removeMissing;
+  }
+  const confirm = document.getElementById('import-replace-confirm');
+  if (confirm) confirm.disabled = importState.busy || !importState.replaceReady;
+  const file = document.getElementById('import-merge-file');
+  if (file) file.disabled = importState.busy;
+}
+
+function resetImportState() {
+  importState.data = null;
+  importState.fileName = '';
+  importState.removeMissing = false;
+  importState.preview = null;
+  importState.checksum = '';
+  importState.idempotencyKey = '';
+  importState.replaceWord = '';
+  importState.replaceReady = false;
+  importState.busy = false;
+
+  const name = document.getElementById('import-file-name');
+  if (name) name.textContent = '';
+  const input = document.getElementById('import-replace-word');
+  if (input) input.value = '';
+  const panel = document.getElementById('import-replace-panel');
+  if (panel) panel.classList.add('hidden');
+  setImportError('');
+  renderImportPreview();
+}
+
+function readImportFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = event => resolve(String((event.target && event.target.result) || ''));
+    reader.onerror = () => reject(new Error(t('importReadError')));
+    reader.readAsText(file);
+  });
+}
+
+async function handleImportFile(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  input.value = ''; // allow choosing the same file again
   if (!file) return;
-  if (!confirm(t('confirmImport'))) return;
 
-  // Replace-all is destructive; download the current state before reading the
-  // new file. This is synchronous with the user gesture, so browsers allow it.
-  exportData();
+  setImportError('');
+  importState.data = null;
+  importState.preview = null;
+  importState.checksum = '';
+  importState.idempotencyKey = '';
+  importState.removeMissing = false;
+  importState.replaceReady = false;
+  importState.fileName = file.name;
+  const name = document.getElementById('import-file-name');
+  if (name) name.textContent = file.name;
+  const panel = document.getElementById('import-replace-panel');
+  if (panel) panel.classList.add('hidden');
+  renderImportPreview();
 
-  const reader = new FileReader();
-  reader.onload = async function (e) {
+  if (file.size > IMPORT_MAX_BYTES) {
+    setImportError(t('importFileTooLarge'));
+    return;
+  }
+
+  setImportBusy(true);
+  try {
+    const text = await readImportFile(file);
+    let parsed;
     try {
-      const imported = validateImport(JSON.parse(e.target.result));
-      if (!imported) throw new Error('Invalid schema');
-      if ((imported.matchEvents || []).length && !appState.eventsReady) {
-        alert(t('matchEventsImportBlocked'));
-        return;
-      }
-
-      await dbReplaceAll(imported);
-      await refreshData();
-      renderApp();
+      parsed = JSON.parse(text);
     } catch (err) {
-      alert(t('alertImportError'));
+      throw new Error(t('importInvalidFile'));
     }
-  };
-  reader.readAsText(file);
+    const data = validateImport(parsed);
+    if (!data) throw new Error(t('importInvalidFile'));
+    if ((data.matchEvents || []).length && !appState.eventsReady) {
+      throw new Error(t('matchEventsImportBlocked'));
+    }
+    importState.data = data;
+    await refreshImportPreview();
+  } catch (err) {
+    setImportError(importErrorMessage(err));
+    renderImportPreview();
+  } finally {
+    setImportBusy(false);
+  }
+}
+
+/**
+ * Compare the chosen backup with the live data. Nothing is written; the RPC is
+ * read-only and returns the counts, the capped entity lists and the checksum
+ * that import_merge() verifies before applying.
+ */
+async function refreshImportPreview() {
+  if (!importState.data) return;
+  setImportError('');
+  importState.preview = null;
+  importState.checksum = '';
+  importState.idempotencyKey = '';
+  setImportBusy(true);
+  renderImportPreview();
+  try {
+    const preview = await dbImportPreview(importState.data, importState.removeMissing);
+    importState.preview = preview;
+    importState.checksum = preview && preview.checksum ? preview.checksum : '';
+    importState.idempotencyKey = importIdempotencyKey();
+  } catch (err) {
+    setImportError(importErrorMessage(err));
+  } finally {
+    setImportBusy(false);
+    renderImportPreview();
+  }
+}
+
+function toggleImportRemoveMissing(el) {
+  if (importState.busy) {
+    el.checked = importState.removeMissing;
+    return;
+  }
+  importState.removeMissing = Boolean(el.checked);
+  refreshImportPreview();
+}
+
+/** Every live row is changed, unchanged or removed; added rows do not exist yet. */
+function importLiveRowCount(preview) {
+  if (!preview || !preview.tables) return 0;
+  return Object.values(preview.tables).reduce((sum, table) =>
+    sum +
+    (Number(table.changed) || 0) +
+    (Number(table.unchanged) || 0) +
+    (Number(table.removed) || 0), 0);
+}
+
+function renderImportReplaceCount() {
+  const panel = document.getElementById('import-replace-panel');
+  const el = document.getElementById('import-replace-count');
+  if (!panel || !el || panel.classList.contains('hidden')) return;
+  // Without a preview (e.g. the merge migration is missing) the count is unknown.
+  el.textContent = importState.preview
+    ? t('importReplaceCount').replace('{n}', importFormatCount(importLiveRowCount(importState.preview)))
+    : '';
+}
+
+function renderImportPreview() {
+  const previewEl = document.getElementById('import-preview');
+  if (!previewEl) return;
+  const preview = importState.preview;
+  previewEl.classList.toggle('hidden', !preview);
+
+  const replaceOpen = document.getElementById('import-replace-open');
+  // Keep disaster recovery reachable from a parsed file even when the merge
+  // migration has not been applied yet.
+  if (replaceOpen) replaceOpen.classList.toggle('hidden', !preview && !importState.data);
+  const summaryEl = document.getElementById('import-summary');
+  const body = document.getElementById('import-diff-body');
+  const details = document.getElementById('import-diff-details');
+  const checksumEl = document.getElementById('import-checksum');
+  if (body) body.replaceChildren();
+  if (details) details.replaceChildren();
+
+  if (!preview) {
+    if (summaryEl) summaryEl.textContent = '';
+    if (checksumEl) checksumEl.textContent = '';
+    setImportBusy(importState.busy);
+    return;
+  }
+
+  const totals = preview.totals || {};
+  if (summaryEl) {
+    summaryEl.textContent = t('importSummary')
+      .replace('{added}', importFormatCount(totals.added))
+      .replace('{changed}', importFormatCount(totals.changed))
+      .replace('{removed}', importFormatCount(totals.removed));
+  }
+
+  if (body) {
+    const colours = { added: 'text-emerald-300', changed: 'text-amber-300', removed: 'text-rose-300', unchanged: 'text-slate-500' };
+    for (const [key, labelKey] of IMPORT_ENTITIES) {
+      const diff = preview.tables && preview.tables[key];
+      if (!diff) continue;
+      const row = document.createElement('tr');
+      const nameCell = document.createElement('td');
+      nameCell.className = 'py-1 text-slate-300';
+      nameCell.textContent = t(labelKey);
+      row.appendChild(nameCell);
+      for (const field of ['added', 'changed', 'removed', 'unchanged']) {
+        const cell = document.createElement('td');
+        const count = Number(diff[field]) || 0;
+        cell.className = 'py-1 text-end tabular-nums ' + (count ? colours[field] : 'text-slate-600');
+        cell.textContent = importFormatCount(count);
+        row.appendChild(cell);
+      }
+      body.appendChild(row);
+    }
+  }
+
+  if (details) {
+    for (const [key, labelKey] of IMPORT_ENTITIES) {
+      const diff = preview.tables && preview.tables[key];
+      if (!diff) continue;
+      const hasItems = IMPORT_DETAIL_GROUPS.some(([field]) =>
+        Array.isArray(diff[field]) && diff[field].length > 0
+      );
+      if (!hasItems) continue;
+
+      const box = document.createElement('details');
+      box.className = 'rounded-lg bg-slate-800/40 border border-slate-700 px-2.5 py-1.5';
+      const title = document.createElement('summary');
+      title.className = 'cursor-pointer text-slate-300';
+      title.textContent = t(labelKey);
+      box.appendChild(title);
+
+      for (const [field, groupKey] of IMPORT_DETAIL_GROUPS) {
+        const items = Array.isArray(diff[field]) ? diff[field] : [];
+        if (!items.length) continue;
+        const line = document.createElement('p');
+        line.className = 'mt-1 leading-relaxed';
+        const label = document.createElement('span');
+        label.className = 'text-slate-300';
+        label.textContent = t(groupKey) + ': ';
+        line.appendChild(label);
+        const names = items.slice(0, 10).map(item => (item && (item.label || item.id)) || '?');
+        line.appendChild(document.createTextNode(names.join(', ') + (items.length > 10 ? ' …' : '')));
+        box.appendChild(line);
+      }
+      details.appendChild(box);
+    }
+  }
+
+  if (checksumEl) {
+    checksumEl.textContent = preview.checksum
+      ? t('importChecksum').replace('{hash}', preview.checksum)
+      : '';
+  }
+  renderImportReplaceCount();
+  setImportBusy(importState.busy);
+}
+
+function refreshImportIfOpen() {
+  const modal = document.getElementById('modal-import');
+  if (!modal || modal.classList.contains('hidden') || importState.busy) return;
+  renderImportPreview();
+}
+
+async function applyImportMerge() {
+  if (!importState.data || !importState.preview || importState.busy) return;
+  setImportBusy(true);
+  setImportError('');
+  try {
+    const result = await dbImportMerge(
+      importState.data,
+      importState.idempotencyKey,
+      importState.removeMissing,
+      importState.checksum
+    );
+    await refreshData();
+    renderApp();
+    closeModal('modal-import');
+    if (result && result.replayed) {
+      showToast(t('importReplayToast'));
+    } else {
+      showToast(importResultMessage(result));
+    }
+    resetImportState();
+  } catch (err) {
+    setImportError(importErrorMessage(err));
+  } finally {
+    setImportBusy(false);
+  }
+}
+
+function importResultMessage(result) {
+  const totals = (result && result.totals) || {};
+  return t('importApplied')
+    .replace('{added}', importFormatCount(totals.added))
+    .replace('{changed}', importFormatCount(totals.changed))
+    .replace('{removed}', importFormatCount(totals.removed));
+}
+
+function importErrorMessage(err) {
+  if (err && err.code === 'MERGE_IMPORT_MIGRATION_REQUIRED') return t('importMigrationError');
+  const message = String((err && err.message) || err || '').trim();
+  if (/changed after the preview/i.test(message)) return t('importStalePreview');
+  if (/already used for a different backup/i.test(message)) return t('importKeyReused');
+  if (/Only admins/i.test(message) || /permission denied/i.test(message)) return t('importAdminOnly');
+  return message || t('alertImportError');
+}
+
+function openImportReplace() {
+  if (!importState.data || importState.busy) return;
+  const panel = document.getElementById('import-replace-panel');
+  if (!panel) return;
+  panel.classList.remove('hidden');
+  importState.replaceWord = '';
+  importState.replaceReady = false;
+  renderImportReplaceCount();
+  const input = document.getElementById('import-replace-word');
+  if (input) {
+    input.value = '';
+    input.focus({ preventScroll: true });
+  }
+  setImportBusy(false);
+}
+
+function onImportReplaceInput(el) {
+  importState.replaceWord = el.value;
+  importState.replaceReady = el.value.trim() === IMPORT_REPLACE_WORD;
+  const confirm = document.getElementById('import-replace-confirm');
+  if (confirm) confirm.disabled = importState.busy || !importState.replaceReady;
+}
+
+/**
+ * Disaster recovery: replace everything. Still available, but behind MFA at the
+ * dispatcher and a typed confirmation here; the current data is downloaded first.
+ */
+async function confirmImportReplace() {
+  if (!importState.data || !importState.replaceReady || importState.busy) return;
+  setImportBusy(true);
+  setImportError('');
+  try {
+    exportData();
+    await dbReplaceAll(importState.data);
+    await refreshData();
+    renderApp();
+    closeModal('modal-import');
+    showToast(t('importReplaced'));
+    resetImportState();
+  } catch (err) {
+    setImportError(importErrorMessage(err));
+  } finally {
+    setImportBusy(false);
+  }
 }
 
 async function resetData() {

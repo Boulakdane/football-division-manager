@@ -770,7 +770,33 @@ async function run() {
       const freshImport = (await fq("select action, summary from public.audit_log order by id desc limit 1"))[0];
       assert.strictEqual(freshImport.action, 'IMPORT');
       assert(/0 teams, 0 players/.test(freshImport.summary), freshImport.summary);
-      console.log('OK fresh schema.sql install includes the audit log');
+
+      // Roadmap H: schema.sql alone also ships the merge import and its table.
+      const importFns = await fq(`
+        select proname from pg_proc
+        where proname in ('import_preview', 'import_merge')
+        order by proname
+      `);
+      assert.deepStrictEqual(
+        importFns.map(row => row.proname),
+        ['import_merge', 'import_preview'],
+        'fresh schema includes the merge import functions'
+      );
+      assert(
+        (await fq("select 1 from pg_class where relname = 'import_runs'"))[0],
+        'fresh schema includes the import_runs table'
+      );
+      await fexec('set role authenticated');
+      const freshPreview = (await fq(
+        'select public.import_preview($1::jsonb, false) as r',
+        [freshPayload]
+      ))[0].r;
+      await fexec('reset role');
+      assert.strictEqual(freshPreview.ok, true);
+      assert.strictEqual(freshPreview.totals.added, 0);
+      assert.strictEqual(freshPreview.totals.changed, 0);
+      assert.strictEqual(freshPreview.totals.removed, 0);
+      console.log('OK fresh schema.sql install includes the merge import');
     } finally {
       await fresh.close();
     }

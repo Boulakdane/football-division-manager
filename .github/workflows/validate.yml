@@ -71,6 +71,9 @@ jobs:
       - name: Test team crests and icon safety (task I)
         run: npm run test:team-icons
 
+      - name: Test merge import, preview and idempotency (roadmap H)
+        run: npm run test:merge-import
+
       - name: Test squad import parser (xlsx/csv)
         run: npm run test:squad-import
 

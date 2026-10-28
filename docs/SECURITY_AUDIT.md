@@ -150,11 +150,21 @@ CI      ──push──► GitHub Pages
 2. ✅ Add `pg_advisory_xact_lock` so two admins cannot import concurrently.
 3. ✅ Validate payload shape, exactly one active season, and event-to-fixture/team/player
    relationships server-side. Broader value-range `CHECK` constraints remain SEC-07.
-4. ❌ Add a dry-run mode that returns counts and a diff summary before commit.
-5. ❌ Store an import checksum/idempotency key and a “last import” record.
-6. ❌ Require a fresh JSON backup download before the replacement, and keep the previous
-   snapshot for rollback.
-7. ❌ Show a clear confirmation with counts of rows to be deleted.
+4. ✅ Add a dry-run mode that returns counts and a diff summary before commit. Done in the
+   roadmap H PR: `import_preview(payload, remove_missing)` returns per-table
+   added/changed/removed/unchanged counts plus a capped entity list and writes nothing.
+   **Migration not yet applied.**
+5. ✅ Store an import checksum/idempotency key and a “last import” record. Done in the
+   roadmap H PR: `import_runs` stores the SHA-256 checksum, the idempotency key and the
+   stored result, so a retry returns `replayed: true` and a key reused for a different
+   payload is rejected. **Migration not yet applied.**
+6. ✅ Require a fresh JSON backup download before the replacement, and keep the previous
+   snapshot for rollback. The replace-all panel still calls `exportData()` before
+   `replace_all_data`, and the merge mode now means a full replacement is no longer the
+   normal bulk path.
+7. ✅ Show a clear confirmation with counts of rows to be deleted. The dialog shows the
+   per-table diff and the live-row count (`changed + unchanged + removed`) before the merge,
+   and replace-all stays behind step-up MFA plus a typed `REPLACE`.
 
 **Acceptance criteria:**
 
@@ -164,7 +174,20 @@ CI      ──push──► GitHub Pages
 - ✅ No-op imports in development and production preserved the pre/post SHA-256
   hashes and used only `replace_all_data`, with no client fallback.
 - ✅ Concurrent imports are serialized by the advisory lock.
-- ❌ The admin sees a dry-run summary before commit.
+- ✅ The admin sees a dry-run summary before commit (and a fresh preview whenever
+  “remove missing rows” changes). PGlite and browser tests cover it; the hosted
+  projects still need `supabase/merge-import-migration.sql`.
+
+**Merge follow-up (roadmap H, migration not yet applied):**
+[`supabase/merge-import-migration.sql`](../supabase/merge-import-migration.sql) adds
+`import_preview(payload, remove_missing)` and
+`import_merge(payload, idempotency_key, remove_missing, expected_checksum)`. The merge
+upserts by id in one transaction and only soft-deletes missing seasons/teams/matches and
+archives missing players when the box is ticked; it never hard-deletes. `import_runs`
+stores the checksum, the key and the result, and `import_merge` rejects a payload whose
+`expected_checksum` no longer matches the preview. The dialog loads the diff, sends the
+checksum and a fresh key, and reports a replay instead of applying twice. Apply the
+migration to development, then production.
 
 ### SEC-04 — Third-party CDN and font dependency
 
