@@ -15,6 +15,9 @@
 --     imported match (events).
 --   * import_runs stores the SHA-256 checksum and the idempotency key, so a
 --     retried upload returns the stored result instead of applying twice.
+--   * For the nullable match text fields (datetime, venue, scorers_text), a
+--     stored NULL and a payload '' mean the same "no value": the preview
+--     normalises both sides and the merge writes NULL back.
 --
 -- replace_all_data() stays available for disaster recovery. The UI keeps it
 -- behind MFA and a typed confirmation.
@@ -730,9 +733,11 @@ begin
       'homeScore', coalesce(mt.home_score, 0),
       'awayScore', coalesce(mt.away_score, 0),
       'status', coalesce(mt.status, 'SCHEDULED'),
-      'datetime', mt.datetime,
-      'venue', mt.venue,
-      'scorersText', mt.scorers_text,
+      -- The app maps an absent database value to '' in its own model, so the
+      -- preview treats NULL and '' as the same "no value" on both sides.
+      'datetime', nullif(mt.datetime, ''),
+      'venue', nullif(mt.venue, ''),
+      'scorersText', nullif(mt.scorers_text, ''),
       'eventsCounted', coalesce(mt.events_counted, true),
       'deleted', false
     )
@@ -756,9 +761,9 @@ begin
       'homeScore', m.home_score,
       'awayScore', m.away_score,
       'status', m.status,
-      'datetime', m.datetime,
-      'venue', m.venue,
-      'scorersText', m.scorers_text,
+      'datetime', nullif(m.datetime, ''),
+      'venue', nullif(m.venue, ''),
+      'scorersText', nullif(m.scorers_text, ''),
       'eventsCounted', m.events_counted,
       'deleted', m.deleted_at is not null
     ),
@@ -1022,9 +1027,9 @@ begin
          coalesce(mt.home_score, 0),
          coalesce(mt.away_score, 0),
          coalesce(mt.status, 'SCHEDULED'),
-         mt.datetime,
-         mt.venue,
-         mt.scorers_text,
+         nullif(mt.datetime, ''),
+         nullif(mt.venue, ''),
+         nullif(mt.scorers_text, ''),
          coalesce(mt.events_counted, true)
   from jsonb_to_recordset(v_matches) as mt(
     id text, season_id text, division_id text, round int, home_id text, away_id text,
