@@ -409,6 +409,7 @@ the updated migration was re-applied to both projects and re-verified in develop
 - ✅ Test decryption inside the workflow on every run, then delete the plaintext.
 - ✅ Test wrong-passphrase and tamper rejection without a database (`npm run test:backup-crypt`).
 - ✅ Add the `KICKOFF_BACKUP_PASSPHRASE` repository secret (2026-10-28); the repository contains no copy of the passphrase.
+- ✅ Move the only plaintext copy out of the shared temp folder and delete it there (2026-10-29); the repository still contains no copy, so only the stored copy plus the repository secret remain.
 - ⬜ Copy the artifacts somewhere the Supabase/GitHub administrator cannot rewrite (private repository, release asset or encrypted object store) and define retention. GitHub artifacts are off Supabase but remain deletable by a repository admin.
 - ⬜ Schedule the quarterly restore from that off-site copy; keep `.gitignore` rules for local backups.
 
@@ -452,7 +453,7 @@ the updated migration was re-applied to both projects and re-verified in develop
 - Match-event RPCs revoke `PUBLIC`/`anon` execute.
 - Team/match deletion and match-event writes are RPC-only; direct destructive policies are dropped and write/delete grants are revoked from `authenticated`.
 - `save_match` and `replace_all_data` use shared advisory lock `748291`.
-- `create_fixtures` and `shift_fixture_rounds` are admin-only, take the same advisory lock, re-validate every row (division derived from the home club, real calendar dates, one home leg per pairing), and refuse `replace_existing` when a fixture has a result, an event or a live status.
+- `create_fixtures` and `shift_fixture_rounds` are admin-only, take the same advisory lock, re-validate every row (division derived from the home club, real calendar dates, one home leg per pairing), and refuse `replace_existing` when a fixture has a result, an event or a live status. `supabase/fixtures-migration.sql` is applied in development and production (2026-10-29); both functions answer an anonymous probe with `42501 permission denied for function`, so `anon` cannot execute them.
 - `players` hard deletion is blocked while events reference the player.
 - `profiles` has no client update policy; role promotion requires SQL.
 - Signups are disabled server-side.
