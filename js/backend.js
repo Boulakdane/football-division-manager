@@ -1064,3 +1064,61 @@ async function dbImportMerge(data, idempotencyKey, removeMissing, expectedChecks
   }
   return result;
 }
+
+/* ---------- roadmap F: fixture plan + reschedule ---------- */
+
+/** Explain a missing roadmap-F function instead of showing a raw PostgREST error. */
+function fixturesMigrationError() {
+  const error = new Error(
+    'Fixture generation is unavailable: run supabase/fixtures-migration.sql, then reload.'
+  );
+  error.code = 'FIXTURES_MIGRATION_REQUIRED';
+  return error;
+}
+
+/**
+ * Insert a whole fixture plan in one transaction. The database re-validates
+ * every row, derives the division from the clubs and refuses to replace a
+ * fixture that already has a result or an event. Admin only.
+ */
+async function dbCreateFixtures(plan) {
+  assertBackend();
+  const { data, error } = await db.rpc('create_fixtures', {
+    p_payload: {
+      season_id: plan.seasonId,
+      replace_existing: Boolean(plan.replaceExisting),
+      matches: (plan.matches || []).map(match => ({
+        ...(match.id ? { id: match.id } : {}),
+        round: match.round,
+        home_id: match.homeId,
+        away_id: match.awayId,
+        datetime: match.datetime || null,
+        venue: match.venue || null
+      }))
+    }
+  });
+  if (error) {
+    if (isMissingFunction(error)) throw fixturesMigrationError();
+    throw error;
+  }
+  return data;
+}
+
+/**
+ * Move the unplayed fixtures of one division from a round onwards. Returns
+ * the number of moved fixtures and the new first/last date.
+ */
+async function dbShiftFixtureRounds(seasonId, divisionId, fromRound, days) {
+  assertBackend();
+  const { data, error } = await db.rpc('shift_fixture_rounds', {
+    p_season_id: seasonId,
+    p_division_id: divisionId,
+    p_from_round: fromRound,
+    p_days: days
+  });
+  if (error) {
+    if (isMissingFunction(error)) throw fixturesMigrationError();
+    throw error;
+  }
+  return data;
+}

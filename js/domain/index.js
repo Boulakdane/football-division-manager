@@ -13,6 +13,13 @@ import {
   formatEventMinute,
   summarizeEventsForText
 } from './standings.js';
+import {
+  buildRoundRobin,
+  dateKeyToUtc,
+  formatDateKey,
+  generateFixtures,
+  shiftRounds
+} from './schedule.js';
 
 const KickOffDomain = {
   esc,
@@ -21,7 +28,12 @@ const KickOffDomain = {
   contrastTextColor,
   calculateStandings,
   formatEventMinute,
-  summarizeEventsForText
+  summarizeEventsForText,
+  buildRoundRobin,
+  dateKeyToUtc,
+  formatDateKey,
+  generateFixtures,
+  shiftRounds
 };
 
 globalThis.KickOffDomain = KickOffDomain;
@@ -43,6 +55,11 @@ export {
   contrastTextColor,
   calculateStandings,
   formatEventMinute,
-  summarizeEventsForText
+  summarizeEventsForText,
+  buildRoundRobin,
+  dateKeyToUtc,
+  formatDateKey,
+  generateFixtures,
+  shiftRounds
 };
 export default KickOffDomain;
