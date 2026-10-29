@@ -121,7 +121,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad', 'modal-live', 'modal-users', 'modal-import'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad', 'modal-live', 'modal-users', 'modal-import', 'modal-generate', 'modal-shift'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -359,6 +359,10 @@ const CLICK_ACTIONS = {
   'bump-score': el => bumpScore(el.dataset.id, el.dataset.side, Number(el.dataset.delta)),
   'live-entry': el => openLiveEntry(el.dataset.id),
   'remove-live-event': el => removeLiveEvent(el.dataset.id),
+  'generate-fixtures': () => openGenerateModal(),
+  'generate-save': () => saveGeneratedFixtures(),
+  'shift-fixtures': () => openShiftModal(),
+  'shift-apply': () => applyFixtureShift(),
 
   'new-team': () => openTeamModal(),
   'edit-team': el => editTeam(el.dataset.id),
@@ -443,7 +447,9 @@ const SUBMIT_ACTIONS = {
   'reset-password': (el, event) => saveRecoveredPassword(event),
   'mfa-verify': (el, event) => handleMfaVerifySubmit(event),
   'mfa-enroll-verify': (el, event) => handleMfaEnrollSubmit(event),
-  'save-live-event': (el, event) => saveLiveEvent(event)
+  'save-live-event': (el, event) => saveLiveEvent(event),
+  'generate-preview': (el, event) => previewGeneratedFixtures(event),
+  'shift-preview': (el, event) => previewFixtureShift(event)
 };
 
 /** Walk up from the event target to the nearest element declaring `attr`. */
@@ -471,6 +477,7 @@ const MFA_GATED_ACTIONS = new Set([
   'new-season', 'activate-season', 'delete-season',
   'restore-team', 'restore-match', 'restore-season',
   'audit-log', 'trash-open',
+  'generate-fixtures', 'generate-save', 'shift-fixtures', 'shift-apply',
   'import-open', 'import-apply', 'import-replace-confirm',
   'reset-data'
 ]);
@@ -3882,6 +3889,486 @@ async function resetData() {
   } catch (err) {
     alert(t('alertSaveFailed'));
   }
+}
+
+/* ---------------------------------------------------------------
+ * 10b. FIXTURE GENERATOR + RESCHEDULE (roadmap F)
+ *      The plan is built in js/domain/schedule.js and previewed
+ *      here. public.create_fixtures() and shift_fixture_rounds()
+ *      are the only write paths, and each takes one transaction.
+ * --------------------------------------------------------------- */
+
+const FIXTURE_WARNING_KEYS = {
+  ODD_TEAMS: 'generateWarnOddTeams',
+  BLACKOUT_MOVED: 'generateWarnBlackout',
+  SLOTS_REUSED: 'generateWarnSlots',
+  BALANCE_UNREPAIRED: 'generateWarnBalance'
+};
+
+const fixturePlanState = { plan: null, skipped: 0, busy: false };
+const fixtureShiftState = { preview: null, busy: false };
+
+/** Pairing key that ignores which club is at home. */
+function fixturePairKey(match) {
+  return [String(match.homeId), String(match.awayId)].sort().join('|');
+}
+
+/** Live fixtures of the active season in the division on screen. */
+function activeDivisionMatches() {
+  const divisionId = viewedDivisionId();
+  return activeMatches().filter(match => (match.divisionId || 'd1') === divisionId);
+}
+
+/** A sensible first matchday: the season start if it is still ahead, else today. */
+function fixtureStartDateDefault() {
+  const today = localDateKey(new Date());
+  const season = getSeason(appState.activeSeasonId);
+  const start = season && /^\d{4}-\d{2}-\d{2}$/.test(season.startDate) ? season.startDate : '';
+  return start && start > today ? start : today;
+}
+
+function fixtureDateTimeLabel(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return isNaN(date.getTime())
+    ? String(value)
+    : date.toLocaleString(currentLang, {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+}
+
+/** Map a rejected generate/shift call to a translated, actionable message. */
+function fixturePlanErrorMessage(error) {
+  if (error && error.code === 'FIXTURES_MIGRATION_REQUIRED') return t('fixturesMigration');
+  const message = String((error && error.message) || error || '');
+  if (/Only admins|permission denied/i.test(message)) return t('fixturesAdminOnly');
+  if (/Only unplayed, empty fixtures can be replaced/i.test(message)) return t('generateReplaceBlocked');
+  if (/pairing already has a fixture/i.test(message)) return t('generatePairingExists');
+  if (/Only unplayed fixtures can be rescheduled/i.test(message)) return t('shiftPlayedBlockedGeneric');
+  if (/active season/i.test(message)) return t('alertArchiveReadOnly');
+  return t('generateSaveFailed');
+}
+
+/* ---------- generator ---------- */
+
+function openGenerateModal() {
+  if (!canEditMatches()) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+  if (!BACKEND_READY) {
+    alert(t('fixturesBackendRequired'));
+    return;
+  }
+  if (appState.seasonsReady && !appState.activeSeasonId) {
+    alert(t('alertNoActiveSeason'));
+    return;
+  }
+  if (divisionTeams().length < 2) {
+    alert(t('alertMinDivisionTeams'));
+    openTeamModal();
+    return;
+  }
+
+  resetFixturePlan();
+  const division = document.getElementById('generate-division');
+  if (division) division.textContent = divisionLabel(viewedDivisionId());
+  const season = getSeason(appState.activeSeasonId);
+  const seasonName = document.getElementById('generate-season');
+  if (seasonName) seasonName.textContent = season ? season.name : '';
+  const start = document.getElementById('generate-start');
+  if (start) start.value = fixtureStartDateDefault();
+  openModal('modal-generate');
+}
+
+function resetFixturePlan() {
+  fixturePlanState.plan = null;
+  fixturePlanState.skipped = 0;
+  fixturePlanState.busy = false;
+  const form = document.getElementById('form-generate');
+  if (form) form.reset();
+  setGenerateError('');
+  setGenerateBusy(false);
+  renderGeneratePreview();
+}
+
+function setGenerateError(message) {
+  const el = document.getElementById('generate-error');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('hidden', !message);
+}
+
+function setGenerateBusy(busy) {
+  fixturePlanState.busy = Boolean(busy);
+  const save = document.getElementById('generate-save');
+  if (save) save.disabled = fixturePlanState.busy || !fixturePlanState.plan;
+  const submit = document.querySelector('#form-generate button[type="submit"]');
+  if (submit) submit.disabled = fixturePlanState.busy;
+}
+
+function renderGeneratePreview() {
+  const preview = document.getElementById('generate-preview');
+  if (!preview) return;
+  const plan = fixturePlanState.plan;
+  preview.classList.toggle('hidden', !plan);
+
+  const summary = document.getElementById('generate-summary');
+  const skipped = document.getElementById('generate-skipped');
+  const warnings = document.getElementById('generate-warnings');
+  const list = document.getElementById('generate-list');
+  if (summary) summary.textContent = '';
+  if (skipped) {
+    skipped.textContent = '';
+    skipped.classList.add('hidden');
+  }
+  if (warnings) {
+    warnings.replaceChildren();
+    warnings.classList.add('hidden');
+  }
+  if (list) list.replaceChildren();
+  setGenerateBusy(fixturePlanState.busy);
+  if (!plan) return;
+
+  const first = plan.matches[0];
+  const last = plan.matches[plan.matches.length - 1];
+  if (summary) {
+    summary.textContent = t('generateSummary')
+      .replace('{matches}', String(plan.matches.length))
+      .replace('{rounds}', String(plan.rounds))
+      .replace('{first}', formatIsoDate(first.datetime.slice(0, 10)))
+      .replace('{last}', formatIsoDate(last.datetime.slice(0, 10)));
+  }
+
+  if (skipped && fixturePlanState.skipped > 0) {
+    skipped.textContent = t('generateSkippedExisting')
+      .replace('{count}', String(fixturePlanState.skipped));
+    skipped.classList.remove('hidden');
+  }
+
+  if (warnings && plan.warnings && plan.warnings.length) {
+    for (const code of plan.warnings) {
+      const key = FIXTURE_WARNING_KEYS[code];
+      if (!key) continue;
+      const item = document.createElement('li');
+      item.textContent = t(key);
+      warnings.appendChild(item);
+    }
+    warnings.classList.toggle('hidden', warnings.childElementCount === 0);
+  }
+
+  if (!list) return;
+  const byRound = new Map();
+  for (const match of plan.matches) {
+    if (!byRound.has(match.round)) byRound.set(match.round, []);
+    byRound.get(match.round).push(match);
+  }
+  for (const [round, matches] of [...byRound.entries()].sort((a, b) => a[0] - b[0])) {
+    const box = document.createElement('div');
+    box.className = 'rounded-lg border border-slate-700 bg-slate-800/40 p-2';
+    const heading = document.createElement('p');
+    heading.className = 'text-[11px] font-semibold text-slate-300';
+    heading.textContent = t('generateRoundHeading')
+      .replace('{round}', String(round))
+      .replace('{date}', formatIsoDate(matches[0].datetime.slice(0, 10)));
+    box.appendChild(heading);
+    for (const match of matches) {
+      const row = document.createElement('p');
+      row.className = 'text-[11px] text-slate-400 mt-0.5 break-words';
+      const time = match.datetime ? match.datetime.slice(11, 16) : '';
+      const venue = match.venue ? ` · ${match.venue}` : '';
+      row.textContent = `${teamDisplayName(getTeam(match.homeId))} – ${teamDisplayName(getTeam(match.awayId))} · ${time}${venue}`;
+      box.appendChild(row);
+    }
+    list.appendChild(box);
+  }
+}
+
+function previewGeneratedFixtures(event) {
+  event.preventDefault();
+  if (fixturePlanState.busy) return;
+  if (!canEditMatches()) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+
+  const domain = globalThis.KickOffDomain;
+  if (!domain || typeof domain.generateFixtures !== 'function') {
+    setGenerateError(t('generateUnavailable'));
+    return;
+  }
+
+  const teamIds = divisionTeams().map(team => team.id);
+  if (teamIds.length < 2) {
+    setGenerateError(t('alertMinDivisionTeams'));
+    return;
+  }
+
+  const replaceExisting = Boolean(document.getElementById('generate-replace').checked);
+  const options = {
+    teamIds,
+    doubleRound: Boolean(document.getElementById('generate-double').checked),
+    startDate: document.getElementById('generate-start').value,
+    intervalDays: Number(document.getElementById('generate-interval').value),
+    kickoffTimes: document.getElementById('generate-times').value,
+    venues: document.getElementById('generate-venues').value,
+    blackoutDates: document.getElementById('generate-blackout').value,
+    minRestDays: Number(document.getElementById('generate-rest').value),
+    maxConsecutive: Number(document.getElementById('generate-max').value)
+  };
+
+  let plan;
+  try {
+    plan = domain.generateFixtures(options);
+  } catch (error) {
+    console.error('KickOff Division: could not build the fixture plan.', error);
+    fixturePlanState.plan = null;
+    fixturePlanState.skipped = 0;
+    setGenerateError(t('generateInvalid'));
+    renderGeneratePreview();
+    return;
+  }
+
+  let matches = plan.matches;
+  let skipped = 0;
+  if (!replaceExisting) {
+    // The RPC refuses a pairing that already has a fixture. Skip those here so
+    // an admin can fill the gaps without replacing the games already played.
+    const existing = new Set(activeDivisionMatches().map(fixturePairKey));
+    matches = plan.matches.filter(match => !existing.has(fixturePairKey(match)));
+    skipped = plan.matches.length - matches.length;
+  }
+
+  if (!matches.length) {
+    fixturePlanState.plan = null;
+    fixturePlanState.skipped = skipped;
+    setGenerateError(t('generateNothingNew'));
+    renderGeneratePreview();
+    return;
+  }
+
+  fixturePlanState.plan = {
+    seasonId: appState.activeSeasonId,
+    replaceExisting,
+    rounds: new Set(matches.map(match => match.round)).size,
+    warnings: plan.warnings,
+    matches
+  };
+  fixturePlanState.skipped = skipped;
+  setGenerateError('');
+  renderGeneratePreview();
+}
+
+async function saveGeneratedFixtures() {
+  const plan = fixturePlanState.plan;
+  if (!plan || fixturePlanState.busy) return;
+  if (!canEditMatches()) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+
+  setGenerateBusy(true);
+  setGenerateError('');
+  try {
+    const result = await dbCreateFixtures(plan);
+    const created = result && Number(result.created) ? Number(result.created) : plan.matches.length;
+    closeModal('modal-generate');
+    await refreshData();
+    renderApp();
+    showToast(t('generateSaved').replace('{count}', String(created)));
+    resetFixturePlan();
+  } catch (error) {
+    console.error('KickOff Division: could not save the fixture plan.', error);
+    setGenerateError(fixturePlanErrorMessage(error));
+    setGenerateBusy(false);
+  }
+}
+
+function refreshFixturePlanIfOpen() {
+  const modal = document.getElementById('modal-generate');
+  if (!modal || modal.classList.contains('hidden')) return;
+  renderGeneratePreview();
+}
+
+/* ---------- reschedule helper ---------- */
+
+function openShiftModal() {
+  if (!canEditMatches()) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+  if (!BACKEND_READY) {
+    alert(t('fixturesBackendRequired'));
+    return;
+  }
+  if (appState.seasonsReady && !appState.activeSeasonId) {
+    alert(t('alertNoActiveSeason'));
+    return;
+  }
+
+  resetFixtureShift();
+  const division = document.getElementById('shift-division');
+  if (division) division.textContent = divisionLabel(viewedDivisionId());
+
+  // Start at the first round that has no result yet.
+  const played = activeDivisionMatches()
+    .filter(match => match.status !== 'SCHEDULED' || toInt(match.homeScore) > 0 || toInt(match.awayScore) > 0)
+    .map(match => toInt(match.round));
+  const from = document.getElementById('shift-from');
+  if (from) from.value = String(played.length ? Math.max(...played) + 1 : 1);
+  openModal('modal-shift');
+}
+
+function resetFixtureShift() {
+  fixtureShiftState.preview = null;
+  fixtureShiftState.busy = false;
+  const form = document.getElementById('form-shift');
+  if (form) form.reset();
+  setShiftError('');
+  setShiftBusy(false);
+  renderShiftPreview();
+}
+
+function setShiftError(message) {
+  const el = document.getElementById('shift-error');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('hidden', !message);
+}
+
+function setShiftBusy(busy) {
+  fixtureShiftState.busy = Boolean(busy);
+  const apply = document.getElementById('shift-apply');
+  if (apply) apply.disabled = fixtureShiftState.busy || !fixtureShiftState.preview;
+  const submit = document.querySelector('#form-shift button[type="submit"]');
+  if (submit) submit.disabled = fixtureShiftState.busy;
+}
+
+function renderShiftPreview() {
+  const preview = document.getElementById('shift-preview');
+  if (!preview) return;
+  const state = fixtureShiftState.preview;
+  preview.classList.toggle('hidden', !state);
+
+  const summary = document.getElementById('shift-summary');
+  const list = document.getElementById('shift-list');
+  if (list) list.replaceChildren();
+  setShiftBusy(fixtureShiftState.busy);
+  if (!state) {
+    if (summary) summary.textContent = '';
+    return;
+  }
+
+  if (summary) {
+    summary.textContent = t('shiftSummary')
+      .replace('{count}', String(state.matches.length))
+      .replace('{first}', fixtureDateTimeLabel(state.matches[0].datetime))
+      .replace('{last}', fixtureDateTimeLabel(state.matches[state.matches.length - 1].datetime));
+  }
+
+  if (!list) return;
+  for (const match of state.matches) {
+    const row = document.createElement('p');
+    row.className = 'break-words';
+    row.textContent = `${teamDisplayName(getTeam(match.homeId))} – ${teamDisplayName(getTeam(match.awayId))} · ${fixtureDateTimeLabel(match.datetime)}`;
+    list.appendChild(row);
+  }
+}
+
+function previewFixtureShift(event) {
+  event.preventDefault();
+  if (fixtureShiftState.busy) return;
+  if (!canEditMatches()) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+
+  const from = Number(document.getElementById('shift-from').value);
+  const days = Number(document.getElementById('shift-days').value);
+  if (!Number.isInteger(from) || from < 1 || from > 1000) {
+    setShiftError(t('shiftInvalidRound'));
+    return;
+  }
+  if (!Number.isInteger(days) || days === 0 || Math.abs(days) > 365) {
+    setShiftError(t('shiftInvalidDays'));
+    return;
+  }
+
+  const affected = activeDivisionMatches().filter(match => toInt(match.round) >= from);
+  if (!affected.length) {
+    setShiftError(t('shiftNoFixtures'));
+    fixtureShiftState.preview = null;
+    renderShiftPreview();
+    return;
+  }
+
+  const blocked = affected.filter(match =>
+    match.status !== 'SCHEDULED' || toInt(match.homeScore) > 0 || toInt(match.awayScore) > 0
+  );
+  if (blocked.length) {
+    setShiftError(t('shiftPlayedBlocked').replace('{count}', String(blocked.length)));
+    fixtureShiftState.preview = null;
+    renderShiftPreview();
+    return;
+  }
+
+  const domain = globalThis.KickOffDomain;
+  if (!domain || typeof domain.shiftRounds !== 'function') {
+    setShiftError(t('generateUnavailable'));
+    return;
+  }
+
+  let shifted;
+  try {
+    shifted = domain.shiftRounds(affected, from, days);
+  } catch (error) {
+    console.error('KickOff Division: could not build the reschedule preview.', error);
+    setShiftError(t('shiftInvalidDays'));
+    return;
+  }
+
+  fixtureShiftState.preview = {
+    seasonId: appState.activeSeasonId,
+    divisionId: viewedDivisionId(),
+    from,
+    days,
+    matches: shifted.matches
+      .filter(match => toInt(match.round) >= from)
+      .sort((a, b) => (a.round - b.round) || a.datetime.localeCompare(b.datetime))
+  };
+  setShiftError('');
+  renderShiftPreview();
+}
+
+async function applyFixtureShift() {
+  const state = fixtureShiftState.preview;
+  if (!state || fixtureShiftState.busy) return;
+  if (!canEditMatches()) {
+    alert(t('alertArchiveReadOnly'));
+    return;
+  }
+
+  setShiftBusy(true);
+  setShiftError('');
+  try {
+    const result = await dbShiftFixtureRounds(state.seasonId, state.divisionId, state.from, state.days);
+    const moved = result && Number(result.shifted) ? Number(result.shifted) : state.matches.length;
+    closeModal('modal-shift');
+    await refreshData();
+    renderApp();
+    showToast(t('shiftApplied').replace('{count}', String(moved)));
+    resetFixtureShift();
+  } catch (error) {
+    console.error('KickOff Division: could not reschedule the fixtures.', error);
+    setShiftError(fixturePlanErrorMessage(error));
+    setShiftBusy(false);
+  }
+}
+
+function refreshFixtureShiftIfOpen() {
+  const modal = document.getElementById('modal-shift');
+  if (!modal || modal.classList.contains('hidden')) return;
+  renderShiftPreview();
 }
 
 /* ---------------------------------------------------------------
