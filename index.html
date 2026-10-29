@@ -365,6 +365,14 @@
             <i data-lucide="link" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline" data-i18n="btnShareView">Copy link</span>
           </button>
 
+          <button data-action="generate-fixtures" class="admin-only season-write px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
+            <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i> <span data-i18n="btnGenerateFixtures">Generate</span>
+          </button>
+
+          <button data-action="shift-fixtures" class="admin-only season-write px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
+            <i data-lucide="calendar-clock" class="w-3.5 h-3.5"></i> <span data-i18n="btnRescheduleFixtures">Reschedule</span>
+          </button>
+
           <button data-action="new-match" class="admin-only season-write px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i> <span data-i18n="btnLogMatch">Log Match</span>
           </button>
@@ -1205,6 +1213,137 @@
       </div>
 
       <button type="button" id="import-replace-open" data-action="import-replace-open" class="hidden text-[11px] text-rose-300 hover:text-rose-200 underline underline-offset-2 self-start" data-i18n="importReplaceOpen">Replace all data instead</button>
+    </div>
+  </div>
+
+  <!-- MODAL: GENERATE FIXTURES (roadmap F) -->
+  <div id="modal-generate" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="calendar-plus" class="w-5 h-5 text-pitch-400"></i> <span data-i18n="generateTitle">Generate fixtures</span>
+        </h3>
+        <button type="button" data-action="close-modal" data-modal="modal-generate" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <p class="text-[11px] text-slate-400 leading-relaxed" data-i18n="generateHint">Build a round-robin schedule for the clubs in the division you are viewing. Nothing is written until you review the preview and save it.</p>
+
+      <p class="text-xs text-slate-400">
+        <span data-i18n="generateDivision">Division</span>
+        <span id="generate-division" class="ms-1 font-semibold text-white"></span>
+        <span id="generate-season" class="ms-2 text-[11px] text-slate-500"></span>
+      </p>
+
+      <form id="form-generate" data-submit="generate-preview" class="flex-1 min-h-0 overflow-y-auto space-y-3 pe-1">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="generate-start" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblFirstMatchday">First matchday</label>
+            <input type="date" id="generate-start" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
+          </div>
+          <div>
+            <label for="generate-interval" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblIntervalDays">Days between matchdays</label>
+            <input type="number" id="generate-interval" min="1" max="365" value="7" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
+          </div>
+          <div>
+            <label for="generate-times" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblKickoffTimes">Kick-off times</label>
+            <input type="text" id="generate-times" value="15:00" autocomplete="off" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500" data-i18n-ph="generateTimesHint" placeholder="15:00, 17:30">
+          </div>
+          <div>
+            <label for="generate-venues" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblGenVenues">Venues (optional)</label>
+            <input type="text" id="generate-venues" autocomplete="off" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500" data-i18n-ph="generateVenuesHint" placeholder="Main Field, Pitch 2">
+          </div>
+          <div class="sm:col-span-2">
+            <label for="generate-blackout" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblBlackoutDates">Blackout dates (optional)</label>
+            <input type="text" id="generate-blackout" autocomplete="off" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500" data-i18n-ph="generateBlackoutHint" placeholder="2026-12-25, 2027-01-01">
+          </div>
+          <div>
+            <label for="generate-rest" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblMinRestDays">Minimum rest days</label>
+            <input type="number" id="generate-rest" min="0" max="365" value="0" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
+          </div>
+          <div>
+            <label for="generate-max" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblMaxConsecutive">Max consecutive home or away games</label>
+            <input type="number" id="generate-max" min="1" max="10" value="2" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
+          </div>
+        </div>
+
+        <label class="flex items-start gap-2 text-xs text-slate-300 cursor-pointer">
+          <input type="checkbox" id="generate-double" class="mt-0.5 accent-pitch-500">
+          <span>
+            <span data-i18n="lblDoubleRound">Double round-robin</span>
+            <span class="block text-[10px] text-slate-500 leading-relaxed" data-i18n="generateDoubleHint">Two legs against every club, one at each ground.</span>
+          </span>
+        </label>
+
+        <label class="flex items-start gap-2 text-xs text-slate-300 cursor-pointer">
+          <input type="checkbox" id="generate-replace" class="mt-0.5 accent-rose-500">
+          <span>
+            <span data-i18n="lblReplaceExisting">Replace this division's unplayed fixtures</span>
+            <span class="block text-[10px] text-slate-500 leading-relaxed" data-i18n="generateReplaceHint">Off by default: fixtures for pairings that already exist are skipped. On: the current unplayed fixtures go to the trash, and the save is refused if any has a result or an event.</span>
+          </span>
+        </label>
+
+        <p id="generate-error" class="hidden text-xs text-rose-400" role="alert"></p>
+
+        <div id="generate-preview" class="hidden space-y-2 border-t border-slate-800 pt-3">
+          <p id="generate-summary" class="text-xs font-semibold text-white"></p>
+          <p id="generate-skipped" class="hidden text-[11px] text-amber-300 leading-relaxed"></p>
+          <ul id="generate-warnings" class="hidden list-disc list-inside text-[11px] text-amber-300 leading-relaxed"></ul>
+          <div id="generate-list" class="space-y-2 max-h-64 overflow-y-auto pe-1"></div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-800">
+          <button type="button" data-action="close-modal" data-modal="modal-generate" class="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
+          <button type="submit" class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-semibold" data-i18n="btnPreviewPlan">Preview plan</button>
+        </div>
+      </form>
+
+      <button type="button" id="generate-save" data-action="generate-save" disabled class="w-full px-4 py-2 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold" data-i18n="btnSavePlan">Save fixtures</button>
+    </div>
+  </div>
+
+  <!-- MODAL: RESCHEDULE LATER ROUNDS (roadmap F) -->
+  <div id="modal-shift" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full max-h-[92vh] flex flex-col p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="calendar-clock" class="w-5 h-5 text-sky-400"></i> <span data-i18n="shiftTitle">Reschedule later rounds</span>
+        </h3>
+        <button type="button" data-action="close-modal" data-modal="modal-shift" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <p class="text-[11px] text-slate-400 leading-relaxed" data-i18n="shiftHint">Move the dates of the unplayed fixtures from one round onwards, for example after a postponement. Kick-off times stay the same and played fixtures are never touched.</p>
+
+      <p class="text-xs text-slate-400">
+        <span data-i18n="generateDivision">Division</span>
+        <span id="shift-division" class="ms-1 font-semibold text-white"></span>
+      </p>
+
+      <form id="form-shift" data-submit="shift-preview" class="flex-1 min-h-0 overflow-y-auto space-y-3 pe-1">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="shift-from" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblFromRound">From round</label>
+            <input type="number" id="shift-from" min="1" max="1000" value="1" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
+          </div>
+          <div>
+            <label for="shift-days" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblShiftDays">Days to move (negative moves earlier)</label>
+            <input type="number" id="shift-days" min="-365" max="365" value="7" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-pitch-500">
+          </div>
+        </div>
+
+        <p id="shift-error" class="hidden text-xs text-rose-400" role="alert"></p>
+
+        <div id="shift-preview" class="hidden space-y-2 border-t border-slate-800 pt-3">
+          <p id="shift-summary" class="text-xs font-semibold text-white"></p>
+          <div id="shift-list" class="space-y-1 max-h-56 overflow-y-auto text-[11px] text-slate-400 pe-1"></div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-800">
+          <button type="button" data-action="close-modal" data-modal="modal-shift" class="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
+          <button type="submit" class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-semibold" data-i18n="btnPreviewShift">Preview shift</button>
+        </div>
+      </form>
+
+      <button type="button" id="shift-apply" data-action="shift-apply" disabled class="w-full px-4 py-2 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold" data-i18n="btnApplyShift">Apply shift</button>
     </div>
   </div>
 

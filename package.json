@@ -11,7 +11,7 @@
     "test:add-players": "node tools/test-add-players.js",
     "test:derived-stats": "node tools/test-derived-stats.js",
     "test:drop-totals": "node tools/test-drop-totals.js",
-    "test:domain": "node --test js/domain/format.test.js js/domain/standings.test.js",
+    "test:domain": "node --test js/domain/format.test.js js/domain/standings.test.js js/domain/schedule.test.js",
     "test:standings-dual": "node tools/test-domain-standings.js",
     "test:scorer-role": "node tools/test-scorer-role.js",
     "test:divisions": "node tools/test-divisions.js",
