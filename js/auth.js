@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   KickOff Division — authentication & UI roles
+   Mzab League — authentication & UI roles
    Uses Supabase Auth (email + password). Spectators browse without
    an account; only profiles with role = 'admin' get write controls.
    Actual write protection is enforced by Row Level Security in
@@ -184,7 +184,7 @@ async function applySession(session) {
     try {
       await refreshOfficials();
     } catch (err) {
-      console.error('KickOff Division: could not load match officials.', err);
+      console.error('Mzab League: could not load match officials.', err);
     }
   }
 

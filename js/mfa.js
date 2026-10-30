@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   KickOff Division — admin two-factor authentication (TOTP)
+   Mzab League — admin two-factor authentication (TOTP)
    Enrolment and verification use Supabase Auth MFA. The database
    only trusts admin sessions whose JWT carries aal = aal2 once the
    requirement is enabled (see supabase/mfa-migration.sql).
@@ -177,7 +177,7 @@ async function startMfaEnrollment() {
 
   const { data, error } = await db.auth.mfa.enroll({
     factorType: 'totp',
-    friendlyName: 'KickOff Division admin'
+    friendlyName: 'Mzab League admin'
   });
   if (error || !data || !data.totp) {
     setMfaError(t('mfaSaveFailed'));
@@ -301,7 +301,7 @@ async function handleMfaVerifySubmit(event) {
       try {
         await refreshOfficials();
       } catch (err) {
-        console.error('KickOff Division: could not load match officials.', err);
+        console.error('Mzab League: could not load match officials.', err);
       }
     }
     showToast(t('mfaVerified'));
