@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Validate a KickOff Division JSON backup before trusting it for a restore.
+ * Validate a Mzab League JSON backup before trusting it for a restore.
  *
  * Usage:
  *   node tools/validate-backup.js backups/prod-backup-2026-10-24.json

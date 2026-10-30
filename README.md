@@ -1,4 +1,4 @@
-# ⚽ KickOff Division
+# ⚽ Mzab League
 
 A lightweight, responsive league manager for local football divisions and amateur
 tournaments. The frontend is pure HTML/CSS/JS hosted free on GitHub Pages; data and

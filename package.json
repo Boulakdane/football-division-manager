@@ -2,7 +2,7 @@
   "name": "kickoff-division",
   "version": "3.11.0",
   "private": true,
-  "description": "KickOff Division — zero-server football league manager",
+  "description": "Mzab League — zero-server football league manager",
   "scripts": {
     "serve": "node tools/serve.js",
     "build:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --minify",

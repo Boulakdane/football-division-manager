@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Convert a KickOff Division JSON backup into the five CSV files used by
+ * Convert a Mzab League JSON backup into the five CSV files used by
  * tools/csv-to-backup.js.
  *
  * Usage:

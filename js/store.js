@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   KickOff Division — data store
+   Mzab League — data store
    Holds the in-memory league state and the demo dataset. Real data
    is loaded from Supabase in js/backend.js.
    --------------------------------------------------------------- */

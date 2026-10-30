@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   KickOff Division — backend configuration
+   Mzab League — backend configuration
    Two independent Supabase projects are recommended:
 
    PRODUCTION  → real league data, used by GitHub Pages

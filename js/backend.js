@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   KickOff Division — Supabase data layer
+   Mzab League — Supabase data layer
    Loads league data for everyone (public read) and exposes write
    helpers used by the admin UI. Authorization is enforced by
    Postgres Row Level Security, not by this file.
@@ -52,7 +52,7 @@ function initBackend() {
       }
     });
   } catch (err) {
-    console.error('KickOff Division: could not initialise Supabase.', err);
+    console.error('Mzab League: could not initialise Supabase.', err);
     BACKEND_READY = false;
     db = null;
   }
@@ -872,6 +872,19 @@ async function dbCreateSeason(name, startDate, endDate) {
   });
   if (error) throw error;
   return id;
+}
+
+/** Rename a season (a dedication label; fixtures and results are untouched).
+ *  RLS only lets admins update seasons and the audit trigger records the change. */
+async function dbRenameSeason(seasonId, name) {
+  assertBackend();
+  const { data, error } = await db
+    .from('seasons')
+    .update({ name: String(name || '').trim() })
+    .eq('id', seasonId)
+    .select('id, name');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Season cannot be renamed');
 }
 
 /** Make an existing season active again (atomic database function). */

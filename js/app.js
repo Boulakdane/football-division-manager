@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   KickOff Division — application logic
+   Mzab League — application logic
    Rendering, navigation, standings calculation, modals, CRUD and
    JSON import/export. Depends on js/i18n.js and js/store.js.
    --------------------------------------------------------------- */
@@ -121,7 +121,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-guide', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad', 'modal-live', 'modal-users', 'modal-import', 'modal-generate', 'modal-shift'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-season-rename', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad', 'modal-live', 'modal-users', 'modal-import', 'modal-generate', 'modal-shift'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -381,7 +381,6 @@ const CLICK_ACTIONS = {
   'add-event': el => addMatchEvent(el.dataset.side, el.dataset.type),
   'remove-event': el => removeMatchEvent(el.dataset.id),
 
-  guide: () => openGuideModal(),
   'data-menu': el => toggleDataMenu(el),
   'export-json': () => exportData(),
   'export-standings': () => exportStandingsCsv(),
@@ -395,6 +394,7 @@ const CLICK_ACTIONS = {
   'reset-data': () => resetData(),
 
   'new-season': () => openSeasonModal(),
+  'rename-season': () => openSeasonRenameModal(),
   'activate-season': () => activateViewedSeason(),
   'delete-season': () => deleteViewedSeason(),
 
@@ -439,6 +439,7 @@ const SUBMIT_ACTIONS = {
   'save-match': (el, event) => saveMatch(event),
   'save-team': (el, event) => saveTeam(event),
   'save-season': (el, event) => saveSeason(event),
+  'rename-season': (el, event) => saveSeasonRename(event),
   'save-player': (el, event) => savePlayer(event),
   login: (el, event) => handleLogin(event),
   signup: (el, event) => handleSignup(event),
@@ -474,7 +475,7 @@ const MFA_GATED_ACTIONS = new Set([
   'new-player', 'edit-player', 'delete-player', 'restore-player',
   'squad-import-confirm',
   'add-event', 'remove-event',
-  'new-season', 'activate-season', 'delete-season',
+  'new-season', 'activate-season', 'delete-season', 'rename-season',
   'restore-team', 'restore-match', 'restore-season',
   'audit-log', 'trash-open',
   'generate-fixtures', 'generate-save', 'shift-fixtures', 'shift-apply',
@@ -750,6 +751,8 @@ function renderSeasonBar() {
   }
 
   const viewed = viewedSeason();
+  const renameBtn = document.getElementById('btn-rename-season');
+  if (renameBtn) renameBtn.classList.toggle('hidden', !viewed);
   const readOnly = isSeasonReadOnly();
   document.body.classList.toggle('season-readonly', readOnly);
 
@@ -2708,6 +2711,67 @@ async function saveSeason(e) {
   }
 }
 
+function openSeasonRenameModal() {
+  if (!appState.seasonsReady) return;
+  if (typeof isAdmin !== 'function' || !isAdmin()) return;
+  if (!BACKEND_READY) {
+    alert(t(authUnavailableKey()));
+    return;
+  }
+
+  const season = viewedSeason();
+  if (!season) return;
+
+  document.getElementById('form-season-rename').reset();
+  document.getElementById('season-rename-id').value = season.id;
+  const input = document.getElementById('season-rename-name');
+  input.value = season.name || '';
+
+  openModal('modal-season-rename');
+  input.focus();
+  input.select();
+}
+
+async function saveSeasonRename(e) {
+  e.preventDefault();
+
+  if (typeof isAdmin !== 'function' || !isAdmin()) return;
+
+  const seasonId = document.getElementById('season-rename-id').value;
+  const season = (appState.seasons || []).find(item => item.id === seasonId);
+  const name = document.getElementById('season-rename-name').value.trim();
+
+  if (!season) return;
+  if (!name) {
+    alert(t('alertSeasonName'));
+    return;
+  }
+  if (name.length > 100) {
+    alert(t('alertSeasonNameTooLong'));
+    return;
+  }
+  if (name === season.name) {
+    closeModal('modal-season-rename');
+    return;
+  }
+
+  const button = e.target.querySelector('button[type="submit"]');
+  button.disabled = true;
+
+  try {
+    await dbRenameSeason(season.id, name);
+    closeModal('modal-season-rename');
+    await refreshData();
+    hideDataError();
+    renderApp();
+    showToast(t('seasonRenamed'));
+  } catch (err) {
+    alert(t('alertSeasonRenameFailed'));
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function activateViewedSeason() {
   if (typeof isAdmin !== 'function' || !isAdmin() || !BACKEND_READY) return;
 
@@ -2759,10 +2823,6 @@ async function deleteViewedSeason() {
 /* ---------------------------------------------------------------
  * 10. DATA: export / import / reset & misc UI
  * --------------------------------------------------------------- */
-function openGuideModal() {
-  openModal('modal-guide');
-}
-
 /* ---------- activity log (admin) ---------- */
 
 const AUDIT_ACTION_KEYS = {
@@ -2914,7 +2974,7 @@ function renderAuditLog() {
       list.innerHTML = entries.map(renderAuditEntry).join('');
     })
     .catch(error => {
-      console.error('KickOff Division: could not load the activity log.', error);
+      console.error('Mzab League: could not load the activity log.', error);
       list.innerHTML = `<p class="py-6 text-center text-rose-400">${esc(t('auditError'))}</p>`;
     });
 }
@@ -2980,7 +3040,7 @@ function openUsersModal() {
       renderUsersModal();
     })
     .catch(err => {
-      console.error('KickOff Division: could not load users.', err);
+      console.error('Mzab League: could not load users.', err);
       usersModalState = { loading: false, users: [], error: 'usersLoadFailed', matchId: '', draft: new Set() };
       renderUsersModal();
     });
@@ -3085,7 +3145,7 @@ async function changeUserRole(userId, role) {
     renderUsersModal();
     showToast(t('usersRoleSaved'));
   } catch (err) {
-    console.error('KickOff Division: could not change the role.', err);
+    console.error('Mzab League: could not change the role.', err);
     alert(t('alertRoleFailed'));
     renderUsersModal();
   }
@@ -3103,7 +3163,7 @@ async function saveOfficials() {
     renderUsersModal();
     showToast(t('usersOfficialsSaved'));
   } catch (err) {
-    console.error('KickOff Division: could not save the officials.', err);
+    console.error('Mzab League: could not save the officials.', err);
     alert(t('alertOfficialsFailed'));
   }
 }
@@ -3207,7 +3267,7 @@ function renderTrash() {
       list.innerHTML = sections.join('');
     })
     .catch(error => {
-      console.error('KickOff Division: could not load the deleted items.', error);
+      console.error('Mzab League: could not load the deleted items.', error);
       list.innerHTML = `<p class="py-6 text-center text-rose-400">${esc(t('trashError'))}</p>`;
     });
 }
@@ -4121,7 +4181,7 @@ function previewGeneratedFixtures(event) {
   try {
     plan = domain.generateFixtures(options);
   } catch (error) {
-    console.error('KickOff Division: could not build the fixture plan.', error);
+    console.error('Mzab League: could not build the fixture plan.', error);
     fixturePlanState.plan = null;
     fixturePlanState.skipped = 0;
     setGenerateError(t('generateInvalid'));
@@ -4178,7 +4238,7 @@ async function saveGeneratedFixtures() {
     showToast(t('generateSaved').replace('{count}', String(created)));
     resetFixturePlan();
   } catch (error) {
-    console.error('KickOff Division: could not save the fixture plan.', error);
+    console.error('Mzab League: could not save the fixture plan.', error);
     setGenerateError(fixturePlanErrorMessage(error));
     setGenerateBusy(false);
   }
@@ -4322,7 +4382,7 @@ function previewFixtureShift(event) {
   try {
     shifted = domain.shiftRounds(affected, from, days);
   } catch (error) {
-    console.error('KickOff Division: could not build the reschedule preview.', error);
+    console.error('Mzab League: could not build the reschedule preview.', error);
     setShiftError(t('shiftInvalidDays'));
     return;
   }
@@ -4359,7 +4419,7 @@ async function applyFixtureShift() {
     showToast(t('shiftApplied').replace('{count}', String(moved)));
     resetFixtureShift();
   } catch (error) {
-    console.error('KickOff Division: could not reschedule the fixtures.', error);
+    console.error('Mzab League: could not reschedule the fixtures.', error);
     setShiftError(fixturePlanErrorMessage(error));
     setShiftBusy(false);
   }
@@ -4385,7 +4445,7 @@ window.addEventListener('DOMContentLoaded', async function () {
 
   if (!BACKEND_READY) {
     // Configuration missing, malformed, or the Supabase CDN failed to load.
-    console.warn('KickOff Division: running in read-only demo mode (Supabase not configured).');
+    console.warn('Mzab League: running in read-only demo mode (Supabase not configured).');
     applyUrlState();
   } else {
     try {

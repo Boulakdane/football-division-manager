@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="KickOff Division — lightweight, zero-server football league management for local divisions.">
+  <meta name="description" content="Mzab League — lightweight, zero-server football league management for local divisions.">
   <meta name="theme-color" content="#020617">
   <meta name="color-scheme" content="dark">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <!-- Every asset is served from this origin; the only outbound calls are Supabase Auth/REST. -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <meta property="og:title" content="KickOff Division — League Manager">
+  <meta property="og:title" content="Mzab League — League Manager">
   <meta property="og:description" content="Standings, fixtures, results and squads for local football divisions. Free, fast and shareable.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://boulakdane.github.io/football-division-manager/">
   <meta name="twitter:card" content="summary">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <title>KickOff Division — League Manager</title>
+  <title>Mzab League — League Manager</title>
 
   <!-- Fonts: Inter (EN/FR) + Cairo (AR), self-hosted variable woff2 -->
   <link rel="preload" href="fonts/inter-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
@@ -70,7 +70,7 @@
           </div>
           <div>
             <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              <span data-i18n="appTitle">KickOff Division</span>
+              <span data-i18n="appTitle">Mzab League</span>
               <span class="text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.11.0</span>
             </h1>
             <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Football League Management</p>
@@ -120,11 +120,6 @@
           <button data-action="new-match" class="admin-only season-write px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
             <i data-lucide="plus-circle" class="w-4 h-4"></i>
             <span class="hidden sm:inline" data-i18n="btnLogMatch">Log Match</span>
-          </button>
-
-          <!-- Free Hosting Guide -->
-          <button data-action="guide" class="hidden sm:inline-flex p-2 text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 rounded-lg transition" title="Free Hosting Guide" aria-label="Free Hosting Guide">
-            <i data-lucide="cloud-lightning" class="w-4 h-4"></i>
           </button>
 
           <!-- Data Settings Dropdown -->
@@ -227,6 +222,10 @@
 
       <button id="btn-new-season" data-action="new-season" class="admin-only px-3 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition">
         <i data-lucide="plus" class="w-3.5 h-3.5"></i> <span data-i18n="btnNewSeason">New season</span>
+      </button>
+
+      <button id="btn-rename-season" data-action="rename-season" class="admin-only hidden px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition">
+        <i data-lucide="pencil-line" class="w-3.5 h-3.5"></i> <span data-i18n="btnRenameSeason">Rename season</span>
       </button>
 
       <button id="btn-activate-season" data-action="activate-season" class="admin-only hidden px-3 py-1.5 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition">
@@ -406,10 +405,8 @@
   <!-- FOOTER -->
   <footer class="bg-slate-950 border-t border-slate-800/80 py-4 mt-auto">
     <div class="max-w-7xl mx-auto px-4 text-center sm:flex sm:justify-between sm:items-center text-xs text-slate-400">
-      <p data-i18n="footerText">© KickOff Division — Zero-server architecture, 100% free hosting on GitHub Pages</p>
+      <p data-i18n="footerText">© Mzab League — Zero-server architecture, 100% free hosting on GitHub Pages</p>
       <div class="mt-2 sm:mt-0 flex justify-center space-x-4 rtl:space-x-reverse">
-        <button data-action="guide" class="hover:text-slate-300 transition" data-i18n="btnFreeHosting">Free Hosting Guide</button>
-        <span class="admin-only">•</span>
         <button data-action="reset-data" class="admin-only hover:text-slate-300 transition" data-i18n="btnReset">Reset Sample Data</button>
       </div>
     </div>
@@ -631,6 +628,35 @@
     </div>
   </div>
 
+  <!-- MODAL: RENAME A SEASON -->
+  <div id="modal-season-rename" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="pencil-line" class="w-4 h-4 text-pitch-400"></i>
+          <span data-i18n="renameSeasonTitle">Rename this season</span>
+        </h3>
+        <button data-action="close-modal" data-modal="modal-season-rename" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <form id="form-season-rename" data-submit="rename-season" class="space-y-4">
+        <p class="text-xs text-slate-400 leading-relaxed" data-i18n="renameSeasonDesc">Give the season the name it should carry, for example the person it is dedicated to. Fixtures and results do not change.</p>
+
+        <input type="hidden" id="season-rename-id" value="">
+        <div>
+          <label class="text-xs font-medium text-slate-400 block mb-1" for="season-rename-name" data-i18n="lblSeasonName">Season name</label>
+          <input type="text" id="season-rename-name" required maxlength="100" placeholder="2027 Season"
+                 class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-pitch-500">
+        </div>
+
+        <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
+          <button type="button" data-action="close-modal" data-modal="modal-season-rename" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-pitch-600 hover:bg-pitch-500 disabled:opacity-60 text-white rounded-lg text-xs font-semibold" data-i18n="btnSaveSeasonName">Save name</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- MODAL: ADD / EDIT PLAYER -->
   <div id="modal-player" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -760,43 +786,6 @@
       <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
         <button type="button" data-action="close-modal" data-modal="modal-squad" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium" data-i18n="btnCancel">Cancel</button>
         <button type="button" id="squad-import-btn" data-action="squad-import-confirm" disabled class="px-4 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="squadImport">Add players</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL: FREE HOSTING & DEPLOYMENT GUIDE -->
-  <div id="modal-guide" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 shadow-2xl space-y-5">
-      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <i data-lucide="cloud-lightning" class="w-5 h-5 text-amber-400"></i> <span data-i18n="btnFreeHosting">Free Hosting Guide</span>
-        </h3>
-        <button data-action="close-modal" data-modal="modal-guide" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
-      </div>
-
-      <div class="space-y-4 text-xs text-slate-300 leading-relaxed">
-        <div class="bg-amber-400/10 border border-amber-400/20 p-3.5 rounded-xl">
-          <p class="font-bold text-amber-300 text-sm mb-1" data-i18n="guideHeading">💡 How to host this web app 100% free</p>
-          <p data-i18n="guideSub">KickOff Division runs entirely in the browser — no servers, no domains, no databases to pay for.</p>
-        </div>
-
-        <div class="border border-slate-800 bg-slate-950/60 p-4 rounded-xl space-y-2">
-          <h4 class="font-bold text-sm text-pitch-400 flex items-center gap-1.5">
-            <i data-lucide="rocket" class="w-4 h-4"></i> <span data-i18n="guideStep1Title">Step 1: Free hosting with GitHub Pages</span>
-          </h4>
-          <p data-i18n="guideStep1Desc">Upload the project files into a public GitHub repository, then open Settings → Pages and select the main branch.</p>
-        </div>
-
-        <div class="border border-slate-800 bg-slate-950/60 p-4 rounded-xl space-y-2">
-          <h4 class="font-bold text-sm text-blue-400 flex items-center gap-1.5">
-            <i data-lucide="database" class="w-4 h-4"></i> <span data-i18n="guideStep2Title">Step 2: Offline data &amp; backups</span>
-          </h4>
-          <p data-i18n="guideStep2Desc">All teams, players and results are saved automatically in your browser's LocalStorage. Export a JSON backup at any time.</p>
-        </div>
-      </div>
-
-      <div class="flex justify-end pt-2 border-t border-slate-800">
-        <button data-action="close-modal" data-modal="modal-guide" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold" data-i18n="btnGotIt">Got it</button>
       </div>
     </div>
   </div>

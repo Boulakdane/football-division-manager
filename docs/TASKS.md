@@ -24,6 +24,7 @@ Lanes: `DB` database/security · `FE` frontend · `DOC` docs/process (see COORDI
 | — | X3 | Import a squad from Excel/CSV into a team (preview, validation, one atomic add) | DB then FE | Done | claude | merged in #10 | — | Shipped: EN/FR/AR template, row-by-row preview, admin-only atomic `add_players()`. Migration applied to development and production; import live-tested in development |
 | — | X1 | Pin GitHub Actions to commit SHAs | DB | Open | — | — | — | Security audit item; Dependabot keeps them current |
 | 11 | X4 | Count events saved on upcoming fixtures (`events_counted = false`) | DB | Done | opencode | merged in #11 | - | Data repair + PGlite test; applied to development and production and verified in the UI. Re-run after importing an older backup |
+| 12 | X5 | Rename the app to Mzab League and let admins rename a season (dedications) | FE | In review | opencode | opencode/mzab-season-rename | — | Product rename EN/FR "Mzab League", AR "البطولة المحلية للفرق المزابية"; admin "Rename season" writes `seasons.name` through the existing RLS policy (no migration); the Free Hosting Guide button and dialog are removed. E2E `season-rename.spec.js` added |
 
 ## How to add a task
 
