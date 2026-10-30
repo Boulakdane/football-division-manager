@@ -217,9 +217,9 @@
       <span id="division-switcher" class="hidden flex items-center gap-1.5 ms-2 ps-2 border-s border-slate-700">
         <span class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
           <i data-lucide="layers" class="w-4 h-4 text-pitch-400"></i>
-          <span data-i18n="divisionLabel">Division</span>
+          <span data-i18n="divisionLabel">Group</span>
         </span>
-        <select id="division-select" data-change="division" aria-label="Division"
+        <select id="division-select" data-change="division" aria-label="Group"
                 class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-pitch-500 min-w-[8rem]"></select>
       </span>
 
@@ -575,9 +575,9 @@
         </div>
 
         <div id="team-division-wrap" class="hidden">
-          <label for="team-division" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblDivision">Division</label>
+          <label for="team-division" class="text-xs font-medium text-slate-400 block mb-1" data-i18n="lblDivision">Group</label>
           <select id="team-division" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-pitch-500"></select>
-          <p class="text-[10px] text-slate-500 mt-1" data-i18n="hintTeamDivisionLocked">A team with fixtures in the active season can only change division between seasons.</p>
+          <p class="text-[10px] text-slate-500 mt-1" data-i18n="hintTeamDivisionLocked">A team with fixtures in the active season can only change group between seasons.</p>
         </div>
 
         <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
@@ -1226,10 +1226,10 @@
         <button type="button" data-action="close-modal" data-modal="modal-generate" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
 
-      <p class="text-[11px] text-slate-400 leading-relaxed" data-i18n="generateHint">Build a round-robin schedule for the clubs in the division you are viewing. Nothing is written until you review the preview and save it.</p>
+      <p class="text-[11px] text-slate-400 leading-relaxed" data-i18n="generateHint">Build a round-robin schedule for the clubs in the group you are viewing. Nothing is written until you review the preview and save it.</p>
 
       <p class="text-xs text-slate-400">
-        <span data-i18n="generateDivision">Division</span>
+        <span data-i18n="generateDivision">Group</span>
         <span id="generate-division" class="ms-1 font-semibold text-white"></span>
         <span id="generate-season" class="ms-2 text-[11px] text-slate-500"></span>
       </p>
@@ -1277,7 +1277,7 @@
         <label class="flex items-start gap-2 text-xs text-slate-300 cursor-pointer">
           <input type="checkbox" id="generate-replace" class="mt-0.5 accent-rose-500">
           <span>
-            <span data-i18n="lblReplaceExisting">Replace this division's unplayed fixtures</span>
+            <span data-i18n="lblReplaceExisting">Replace this group's unplayed fixtures</span>
             <span class="block text-[10px] text-slate-500 leading-relaxed" data-i18n="generateReplaceHint">Off by default: fixtures for pairings that already exist are skipped. On: the current unplayed fixtures go to the trash, and the save is refused if any has a result or an event.</span>
           </span>
         </label>
@@ -1314,7 +1314,7 @@
       <p class="text-[11px] text-slate-400 leading-relaxed" data-i18n="shiftHint">Move the dates of the unplayed fixtures from one round onwards, for example after a postponement. Kick-off times stay the same and played fixtures are never touched.</p>
 
       <p class="text-xs text-slate-400">
-        <span data-i18n="generateDivision">Division</span>
+        <span data-i18n="generateDivision">Group</span>
         <span id="shift-division" class="ms-1 font-semibold text-white"></span>
       </p>
 

@@ -75,7 +75,7 @@ test('the generator previews a whole plan and saves the RPC payload', async ({ p
 
   await page.locator('[data-action="generate-fixtures"]').click();
   await expect(page.locator('#modal-generate')).toBeVisible();
-  await expect(page.locator('#generate-division')).toHaveText('Division 1');
+  await expect(page.locator('#generate-division')).toHaveText('Group 1');
 
   await page.locator('#generate-start').fill('2026-08-08');
   await page.locator('#generate-times').fill('15:00, 17:30');
