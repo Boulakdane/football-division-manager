@@ -400,6 +400,8 @@ const CLICK_ACTIONS = {
 
   'clear-filters': () => clearFixtureFilters(),
   'clear-search': () => clearPlayerSearch(),
+  'export-calendar': () => exportVisibleCalendar(),
+  'export-team-calendar': el => exportTeamCalendar(el.dataset.team),
   'copy-link': () => copyViewLink()
 };
 
@@ -1522,19 +1524,24 @@ function renderTeamsView() {
               <p class="text-xs text-slate-400">${totalSquad} ${esc(t('lblPlayers'))} • ${esc(team.code)} • <span class="text-pitch-400">${esc(divisionLabel(team.divisionId))}</span></p>
             </div>
           </div>
-          <div class="admin-only flex items-center gap-2 shrink-0">
-            <button data-action="import-squad" data-team="${esc(team.id)}" class="p-1.5 text-slate-500 hover:text-pitch-400 rounded transition" aria-label="${esc(t('btnImportSquad'))}" title="${esc(t('btnImportSquad'))}">
-              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+          <div class="flex items-center gap-2 shrink-0">
+            <button data-action="export-team-calendar" data-team="${esc(team.id)}" class="p-1.5 text-slate-500 hover:text-pitch-400 rounded transition" aria-label="${esc(t('btnCalendarTeam').replace('{team}', teamDisplayName(team)))}" title="${esc(t('btnCalendarTeam').replace('{team}', teamDisplayName(team)))}">
+              <i data-lucide="calendar-plus" class="w-4 h-4"></i>
             </button>
-            <button data-action="new-player" data-team="${esc(team.id)}" class="px-2.5 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-xs font-medium flex items-center gap-1 transition">
-              <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddPlayer'))}
-            </button>
-            <button data-action="edit-team" data-id="${esc(team.id)}" class="p-1.5 text-slate-500 hover:text-white rounded transition" aria-label="${esc(t('editAction'))}" title="${esc(t('editAction'))}">
-              <i data-lucide="edit-3" class="w-4 h-4"></i>
-            </button>
-            <button data-action="delete-team" data-id="${esc(team.id)}" class="p-1.5 text-slate-500 hover:text-rose-400 rounded transition" aria-label="${esc(t('ariaDeleteTeam'))}" title="${esc(t('ariaDeleteTeam'))}">
-              <i data-lucide="trash-2" class="w-4 h-4"></i>
-            </button>
+            <div class="admin-only flex items-center gap-2 shrink-0">
+              <button data-action="import-squad" data-team="${esc(team.id)}" class="p-1.5 text-slate-500 hover:text-pitch-400 rounded transition" aria-label="${esc(t('btnImportSquad'))}" title="${esc(t('btnImportSquad'))}">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              </button>
+              <button data-action="new-player" data-team="${esc(team.id)}" class="px-2.5 py-1.5 bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 border border-pitch-500/30 rounded-lg text-xs font-medium flex items-center gap-1 transition">
+                <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddPlayer'))}
+              </button>
+              <button data-action="edit-team" data-id="${esc(team.id)}" class="p-1.5 text-slate-500 hover:text-white rounded transition" aria-label="${esc(t('editAction'))}" title="${esc(t('editAction'))}">
+                <i data-lucide="edit-3" class="w-4 h-4"></i>
+              </button>
+              <button data-action="delete-team" data-id="${esc(team.id)}" class="p-1.5 text-slate-500 hover:text-rose-400 rounded transition" aria-label="${esc(t('ariaDeleteTeam'))}" title="${esc(t('ariaDeleteTeam'))}">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -3468,6 +3475,110 @@ function buildSquadsCsvRows() {
 
 function exportSquadsCsv() {
   downloadCsv(`kickoff_squads_${csvSeasonSuffix()}.csv`, buildSquadsCsvRows());
+}
+
+/* ---------- calendar export (.ics) ---------- */
+
+/* buildCalendar() lives in js/domain/ics.js (published on globalThis). */
+
+function downloadIcs(filename, text) {
+  const blob = new Blob([text], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function icsFileSlug(value) {
+  return String(value == null ? '' : value)
+    .replace(/[^\w-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+/** Map one fixture to the plain event object the domain builder expects. */
+function calendarEventForMatch(match) {
+  const homeName = teamDisplayName(getTeam(match.homeId)) || String(match.homeId || '');
+  const awayName = teamDisplayName(getTeam(match.awayId)) || String(match.awayId || '');
+  const finished = match.status === 'FINISHED' && match.homeScore != null && match.awayScore != null;
+  const season = viewedSeason();
+
+  const summary = finished
+    ? `${homeName} ${toInt(match.homeScore)}–${toInt(match.awayScore)} ${awayName}`
+    : `${homeName} ${t('calendarVersus')} ${awayName}`;
+
+  const description = [
+    `${divisionLabel(match.divisionId)} · ${t('lblRound')} ${toInt(match.round)}`,
+    season && season.name ? season.name : '',
+    match.venue ? `${t('lblVenue')}: ${match.venue}` : '',
+    finished ? `${t('lblStatus')}: ${t('optFinished')}` : ''
+  ].filter(Boolean).join('\n');
+
+  return {
+    uid: `match-${match.id}@mzab-league.github.io`,
+    start: match.datetime || '',
+    summary,
+    description,
+    location: match.venue || ''
+  };
+}
+
+/** Build the .ics for the given fixtures and hand it to the browser. */
+function exportCalendar(matches, label) {
+  const domain = globalThis.KickOffDomain;
+  if (!domain || typeof domain.buildCalendar !== 'function') return;
+
+  const season = viewedSeason();
+  const name = [t('appTitle'), season && season.name, label].filter(Boolean).join(' — ');
+  const result = domain.buildCalendar({
+    name,
+    events: (matches || []).map(calendarEventForMatch)
+  });
+
+  if (!result.written) {
+    showToast(t('calendarNoFixtures'));
+    return;
+  }
+
+  const seasonSlug = icsFileSlug(season && season.name) || 'season';
+  downloadIcs(`mzab_league_${seasonSlug}_${icsFileSlug(label) || 'fixtures'}.ics`, result.text);
+
+  // Counts are left out on purpose: "1 fixtures" would be wrong in English and
+  // the number is visible in the calendar anyway. The skipped hint only says
+  // that some fixtures had no date, which is the part a supporter cannot see.
+  showToast(t('calendarSaved') + (result.skipped ? ' ' + t('calendarSkipped') : ''));
+}
+
+function sortForCalendar(matches) {
+  return matches.slice().sort((a, b) =>
+    (a.round - b.round) || (a.datetime || '').localeCompare(b.datetime || '')
+  );
+}
+
+/** Export exactly what the fixtures view is showing (division + filters). */
+function exportVisibleCalendar() {
+  const roundFilter = document.getElementById('filter-round');
+  const statusFilter = document.getElementById('filter-status');
+  const round = roundFilter ? roundFilter.value : 'ALL';
+  const status = statusFilter ? statusFilter.value : 'ALL';
+
+  let matches = visibleMatches();
+  if (round !== 'ALL') matches = matches.filter(match => String(match.round) === round);
+  if (status !== 'ALL') matches = matches.filter(match => match.status === status);
+
+  exportCalendar(sortForCalendar(matches), divisionLabel(viewedDivisionId()));
+}
+
+/** Export one club's fixtures from the season and division being viewed. */
+function exportTeamCalendar(teamId) {
+  const team = getTeam(teamId);
+  if (!team) return;
+  const matches = visibleMatches()
+    .filter(match => match.homeId === teamId || match.awayId === teamId);
+  exportCalendar(sortForCalendar(matches), teamDisplayName(team));
 }
 
 /**

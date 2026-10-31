@@ -525,7 +525,13 @@ const I18N = {
     shiftInvalidDays: "Choose a shift between 1 and 365 days.",
     shiftPlayedBlocked: "{count} fixtures in that range already started or have a result. Choose a later round.",
     shiftPlayedBlockedGeneric: "Only unplayed fixtures can be rescheduled.",
-    shiftApplied: "{count} fixtures rescheduled."
+    shiftApplied: "{count} fixtures rescheduled.",
+    btnCalendar: "Add to calendar",
+    btnCalendarTeam: "Add {team} fixtures to your calendar",
+    calendarVersus: "vs",
+    calendarSaved: "Calendar file ready.",
+    calendarNoFixtures: "No dated fixtures to add yet.",
+    calendarSkipped: "Fixtures without a date were skipped."
   },
   fr: {
     appTitle: "Mzab League",
@@ -1047,7 +1053,13 @@ const I18N = {
     shiftInvalidDays: "Choisissez un décalage entre 1 et 365 jours.",
     shiftPlayedBlocked: "{count} matchs de cette plage ont déjà commencé ou ont un résultat. Choisissez une journée plus tardive.",
     shiftPlayedBlockedGeneric: "Seuls les matchs non joués peuvent être reprogrammés.",
-    shiftApplied: "{count} matchs reprogrammés."
+    shiftApplied: "{count} matchs reprogrammés.",
+    btnCalendar: "Ajouter au calendrier",
+    btnCalendarTeam: "Ajouter les matchs de {team} à votre calendrier",
+    calendarVersus: "vs",
+    calendarSaved: "Fichier calendrier prêt.",
+    calendarNoFixtures: "Aucun match daté à ajouter pour le moment.",
+    calendarSkipped: "Les matchs sans date ont été ignorés."
   },
   ar: {
     appTitle: "البطولة المحلية للفرق المزابية",
@@ -1568,7 +1580,13 @@ const I18N = {
     shiftInvalidDays: "اختر إزاحة بين 1 و365 يوماً.",
     shiftPlayedBlocked: "{count} مباراة في هذا النطاق بدأت أو لديها نتيجة. اختر جولة لاحقة.",
     shiftPlayedBlockedGeneric: "يمكن إعادة جدولة المباريات غير الملعوبة فقط.",
-    shiftApplied: "تمت إعادة جدولة {count} مباراة."
+    shiftApplied: "تمت إعادة جدولة {count} مباراة.",
+    btnCalendar: "أضف إلى التقويم",
+    btnCalendarTeam: "أضف مباريات {team} إلى تقويمك",
+    calendarVersus: "ضد",
+    calendarSaved: "ملف التقويم جاهز.",
+    calendarNoFixtures: "لا توجد مباريات مؤرخة لإضافتها بعد.",
+    calendarSkipped: "تم تجاهل المباريات التي ليس لها تاريخ."
   }
 };
 

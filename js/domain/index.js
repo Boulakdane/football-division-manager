@@ -20,6 +20,7 @@ import {
   generateFixtures,
   shiftRounds
 } from './schedule.js';
+import { buildCalendar } from './ics.js';
 
 const KickOffDomain = {
   esc,
@@ -33,7 +34,8 @@ const KickOffDomain = {
   dateKeyToUtc,
   formatDateKey,
   generateFixtures,
-  shiftRounds
+  shiftRounds,
+  buildCalendar
 };
 
 globalThis.KickOffDomain = KickOffDomain;
@@ -60,6 +62,7 @@ export {
   dateKeyToUtc,
   formatDateKey,
   generateFixtures,
-  shiftRounds
+  shiftRounds,
+  buildCalendar
 };
 export default KickOffDomain;
