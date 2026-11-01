@@ -70,8 +70,8 @@
 - **أدوات CSV** — تصدير ترتيب الموسم الحالي ومبارياته وتشكيلاته، أو بناء دوري كامل من
   خمسة ملفات CSV، أو تحويل نسخة JSON الاحتياطية إلى ملفات CSV قابلة للتحرير.
 - **استيراد التشكيلة** — يمكن لكل فريق تعبئة قالب Excel/CSV بلغتين؛ ويعاين المشرف كل
-  صف ثم يضيف التشكيلة كاملة في خطوة ذرّية واحدة. يوجد مثال معبأ
-  (`examples/squad-example.xlsx`) مرتبط من نافذة الاستيراد.
+  صف ثم يضيف التشكيلة كاملة في خطوة ذرّية واحدة. يوجد مثال معبأ لكل لغة
+  (`examples/squad-example-en|fr|ar.xlsx`) وتنزّل النافذة نسخة اللغة المعروضة.
 - **اختصارات النتيجة المباشرة** — المباريات في حالة `LIVE` تحصل على أزرار `+` في بطاقة
   المباراة.
 - **وضع عرض توضيحي للقراءة فقط** — قبل إعداد Supabase يعرض الموقع الدوري النموذجي مع
@@ -298,7 +298,8 @@ gratuit.
   une sauvegarde JSON en fichiers CSV modifiables.
 - **Import d'effectif** — chaque club peut remplir un modèle Excel/CSV bilingue ; l'admin
   prévisualise chaque ligne puis ajoute tout l'effectif en une seule transaction. Un
-  exemple rempli (`examples/squad-example.xlsx`) est lié depuis la fenêtre d'import.
+  exemple rempli existe par langue (`examples/squad-example-en|fr|ar.xlsx`) et la fenêtre
+  télécharge celui de la langue affichée.
 - **Raccourcis de score en direct** — les matchs à l'état `LIVE` affichent des boutons `+`
   sur la fiche du match.
 - **Mode démo en lecture seule** — tant que Supabase n'est pas configuré, le site montre
@@ -523,7 +524,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
   editable CSV files.
 - **Squad import** - each team can fill a bilingual Excel/CSV template; the admin
   previews every row and adds the whole squad in one atomic step. A filled example
-  (`examples/squad-example.xlsx`) is linked from the import dialog.
+  ships per language (`examples/squad-example-en|fr|ar.xlsx`) and the dialog downloads
+  the one for the language on screen.
 - **Live score shortcuts** — matches in `LIVE` state get `+` buttons on the fixture card.
 - **Read-only demo mode** — until Supabase is configured, the site shows the sample
   league with all write controls hidden and a banner explaining how to connect it.
@@ -567,8 +569,12 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   └── examples/              # Template seasons/teams/players/matches/events CSV files
 ├── examples/
 │   ├── README.md              # Squad import columns, accepted values and limits
-│   ├── squad-example.xlsx     # Filled, importable squad example (3 players)
-│   └── squad-example.csv      # Same rows as plain CSV
+│   ├── squad-example-en.xlsx  # Filled, importable squad example (4 players, EN headers)
+│   ├── squad-example-fr.xlsx  # Same rows with French headers (';' CSV twin)
+│   ├── squad-example-ar.xlsx  # Same rows with Arabic headers
+│   ├── squad-example-en.csv   # Plain-CSV twin of each .xlsx
+│   ├── squad-example-fr.csv
+│   └── squad-example-ar.csv
 ├── docs/
 │   ├── PROGRESS.md            # Current status, blockers and release checklist
 │   ├── SECURITY_AUDIT.md      # Findings, threat model and remediation plan
