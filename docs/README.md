@@ -2,6 +2,7 @@
 
 | Document | Purpose |
 |---|---|
+| [../README.md](../README.md) | Project overview, features, setup and deployment — Arabic, French, English |
 | [PROGRESS.md](PROGRESS.md) | Current release status, completed work, blockers and release checklist |
 | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Threat model, findings, remediation plan and verification steps |
 | [MODERNIZATION_PLAN.md](MODERNIZATION_PLAN.md) | Phased roadmap and sophisticated technical/product changes |
@@ -17,6 +18,10 @@
 
 ## Documentation rules
 
+- User-facing docs (`README.md`, `data/README.md`, `examples/README.md`, `SECURITY.md`) are
+  trilingual in the same file: Arabic first, then French, then English. Change all three
+  sections in the same commit. `docs/` stays English because it targets maintainers and
+  agents.
 - Update `PROGRESS.md` when a milestone ships or a blocker changes.
 - Re-run the security review before every production release and after any RLS/RPC change.
 - Keep the modernization plan honest: move items between phases instead of pretending they are done.

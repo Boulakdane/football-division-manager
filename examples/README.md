@@ -1,5 +1,114 @@
 # Squad import examples
 
+[العربية](#العربية) · [Français](#français) · [English](#english)
+
+---
+
+## العربية
+
+ملفات جاهزة للاستخدام في **الفرق واللاعبون → (بطاقة الفريق) → استيراد التشكيلة**.
+
+| الملف | استخدمه عندما |
+|---|---|
+| `squad-example.xlsx` | تريد ملف Excel معبأًا لتحريره: ثلاثة لاعبين وكل الأعمدة. |
+| `squad-example.csv` | تفضّل ملفًا نصيًا بسيطًا (يفتح في Excel أيضًا). نفس اللاعبين الثلاثة. |
+
+ينزّل التطبيق الملفين من نافذة الاستيراد:
+
+- **تنزيل مثال معبأ (Excel)** → `squad-example.xlsx`
+- **تنزيل القالب (CSV)** → قالب فارغ بصف عناوين فقط، مترجم إلى اللغة الحالية.
+
+### الأعمدة
+
+العمود **Name** وحده مطلوب. يمكن حذف أي عمود آخر بالكامل ما دام **Name** موجودًا.
+يبحث التطبيق عن صف العناوين في أول 15 صفًا، لذا لا مشكلة في وجود سطر عنوان فوقه.
+
+| العمود | مطلوب | القيم المقبولة |
+|---|---|---|
+| `Name` | نعم | الاسم الكامل، من 1 إلى 60 حرفًا. ويُقبل أيضًا `Nom` و`Player` و`الاسم`. |
+| `Arabic Name` | لا | الكتابة العربية، تُعرض عندما يكون التطبيق بالعربية. |
+| `Position` | لا | `GK` أو `DEF` أو `MID` أو `FWD`، أو كلمة بالإنجليزية أو الفرنسية أو العربية: `Goalkeeper`، `Gardien`، `حارس`، `Defender`، `Défenseur`، `Attaquant`، `Milieu`… |
+| `Number` | لا | رقم القميص، من 1 إلى 99. الأصفار البادئة مقبولة (`04` تصبح `4`). |
+| `Licence` | لا | رقم الرخصة، حتى 50 حرفًا، ويجب أن يكون فريدًا داخل الملف. |
+| `Birth date` | لا | `YYYY-MM-DD` أو `D/M/YYYY`، بين 1900-01-01 واليوم. |
+| `Goals` | لا | عدد صحيح للأهداف المسجّلة في الموسم الحالي. |
+| `Yellow` | لا | عدد صحيح للبطاقات الصفراء. |
+| `Red` | لا | عدد صحيح للبطاقات الحمراء. |
+
+### ما يحدث عند الاستيراد
+
+1. يُفحص كل صف أولًا؛ **لا يُكتب أي شيء** قبل الضغط على *إضافة اللاعبين*.
+2. اللاعب الموجود أصلًا في التشكيلة (بالاسم نفسه) يُتخطى ولا يُكرر.
+3. رقم القميص المستخدم مسبقًا **تحذير** فقط: يمكن استيراد الصف رغم ذلك.
+4. الاسم الفارغ، أو المركز غير المعروف، أو رقم خارج 1–99، أو رخصة مكررة، أو تاريخ
+   ميلاد غير صالح، أو رقم غير مقروء: **خطأ** يمنع الاستيراد كله حتى يُصحح الصف أو
+   يُحذف.
+5. الحد الأقصى 100 لاعب و2000 صف في الملف الواحد.
+
+### نصائح لجدول البيانات
+
+- أبقِ البيانات في الورقة الأولى؛ اسم الورقة لا يهم.
+- لا تدمج الخلايا ولا تضف مجاميع فرعية ولا تترك خلايا عناوين فارغة وسط الصف.
+- إذا لم يُحمّل الملف، أعد حفظه بصيغة **.xlsx** (لا .xls) أو صدّره بصيغة **CSV UTF-8**.
+
+---
+
+## Français
+
+Fichiers prêts à l'emploi pour **Équipes & Joueurs → (fiche de l'équipe) → importer l'effectif**.
+
+| Fichier | À utiliser quand |
+|---|---|
+| `squad-example.xlsx` | Vous voulez un fichier Excel déjà rempli à modifier : trois joueurs, toutes les colonnes. |
+| `squad-example.csv` | Vous préférez un fichier texte simple (il s'ouvre aussi dans Excel). Les trois mêmes joueurs. |
+
+L'application télécharge ces fichiers depuis la fenêtre d'import :
+
+- **Télécharger un exemple rempli (Excel)** → `squad-example.xlsx`
+- **Télécharger le modèle (CSV)** → un modèle vide avec seulement la ligne d'en-tête, traduit dans la langue courante.
+
+### Colonnes
+
+Seul **Name** est obligatoire. Une colonne peut être supprimée entièrement tant que
+**Name** est présent. La ligne d'en-tête est cherchée dans les 15 premières lignes : une
+ligne de titre au-dessus ne gêne pas.
+
+| Colonne | Obligatoire | Valeurs acceptées |
+|---|---|---|
+| `Name` | oui | Nom complet, 1 à 60 caractères. `Nom`, `Player` et `الاسم` fonctionnent aussi. |
+| `Arabic Name` | non | Écriture arabe, affichée quand l'application est en arabe. |
+| `Position` | non | `GK`, `DEF`, `MID` ou `FWD`, ou un mot en anglais, français ou arabe : `Goalkeeper`, `Gardien`, `حارس`, `Defender`, `Défenseur`, `Attaquant`, `Milieu`… |
+| `Number` | non | Numéro de maillot, 1 à 99. Les zéros initiaux sont acceptés (`04` devient `4`). |
+| `Licence` | non | Numéro de licence, 50 caractères maximum, unique dans le fichier. |
+| `Birth date` | non | `YYYY-MM-DD` ou `D/M/YYYY`, entre 1900-01-01 et aujourd'hui. |
+| `Goals` | non | Nombre entier de buts déjà marqués cette saison. |
+| `Yellow` | non | Nombre entier de cartons jaunes. |
+| `Red` | non | Nombre entier de cartons rouges. |
+
+### Ce qui se passe à l'import
+
+1. Chaque ligne est vérifiée d'abord ; **rien n'est écrit** avant de cliquer sur
+   *Ajouter les joueurs*.
+2. Un joueur déjà présent dans l'effectif (même nom) est ignoré, pas dupliqué.
+3. Un numéro de maillot déjà pris est un **avertissement** : la ligne peut quand même
+   être importée.
+4. Un nom vide, un poste inconnu, un numéro hors 1–99, une licence en double, une date de
+   naissance invalide ou un nombre illisible est une **erreur** : tout l'import est
+   bloqué jusqu'à correction ou suppression de la ligne.
+5. Le maximum est de 100 joueurs et 2000 lignes par fichier.
+
+### Conseils pour le tableur
+
+- Gardez les données sur la première feuille ; le nom de la feuille n'a pas d'importance.
+- Ne fusionnez pas de cellules, n'ajoutez pas de sous-totaux et ne laissez pas de cellules
+  d'en-tête vides au milieu de la ligne.
+- Si un fichier ne se charge pas, réenregistrez-le en **.xlsx** (pas .xls) ou exportez-le
+  en **CSV UTF-8**.
+
+---
+
+## English
+
 Ready-to-use files for **Teams → (team card) → import squad**.
 
 | File | Use it when |
@@ -11,7 +120,7 @@ Both files are downloaded by the app from the import dialog:
 * **Download filled example (Excel)** → `squad-example.xlsx`
 * **Download template (CSV)** → an empty template with only the header row, translated to the current language.
 
-## Columns
+### Columns
 
 Only **Name** is required. A column can be left out entirely, as long as **Name** is present.
 The header row is looked for in the first 15 rows, so a title line above it is fine.
@@ -28,7 +137,7 @@ The header row is looked for in the first 15 rows, so a title line above it is f
 | `Yellow` | no | Whole number of yellow cards. |
 | `Red` | no | Whole number of red cards. |
 
-## What happens on import
+### What happens on import
 
 1. Every row is checked first; **nothing is written** before you press *Add players*.
 2. A player already in the squad (same name) is skipped, not duplicated.
@@ -38,7 +147,7 @@ The header row is looked for in the first 15 rows, so a title line above it is f
    until the row is fixed or removed.
 5. The maximum is 100 players and 2000 rows per file.
 
-## Spreadsheet tips
+### Spreadsheet tips
 
 * Keep the data on the first sheet; the sheet name does not matter.
 * Do not merge cells, add subtotals or leave blank header cells in the middle of the row.
