@@ -44,6 +44,9 @@ admin-only write. English, French and Arabic (RTL). See `README.md` and `docs/`.
   `index.html` or `js/`, run `npm run build:css` and commit the result (CI checks it).
 - Every user-facing string goes in `js/i18n.js` in **all three** languages (EN/FR/AR).
   Use logical CSS properties (`ms-`, `me-`, `text-start`) so RTL keeps working.
+- User-facing docs (`README.md`, `data/README.md`, `examples/README.md`, `SECURITY.md`) are
+  trilingual in the same file — Arabic, then French, then English — and the three sections
+  move together. `docs/` stays English.
 - Dates and numbers: use `Intl`; never concatenate translated fragments.
 - Keep functions small and pure where possible; domain logic must not touch the DOM.
 - Match the style of the surrounding file (2-space indent, single quotes, semicolons).

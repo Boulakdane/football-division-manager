@@ -1,10 +1,465 @@
 # ⚽ Mzab League
 
+[العربية](#العربية) · [Français](#français) · [English](#english)
+
+---
+
+## العربية
+
+مدير بطولة خفيف ومتجاوب للدوريات المحلية وبطولات الهواة. الواجهة مكتوبة بـ HTML وCSS وJavaScript فقط وتُستضاف مجانًا على GitHub Pages، أما البيانات والحسابات فتعيش في مشروع [Supabase](https://supabase.com) مجاني.
+
+> هذا القسم بالعربية، ثم الفرنسية، ثم الإنجليزية في الملف نفسه. خطوات التثبيت التقني وتطبيق ملفات الترحيل والنشر مكتوبة بالإنجليزية في [قسم English](#english) أدناه، لأنها أوامر ومفاتيح لا تُترجم.
+
+### الميزات
+
+- **ترتيب تلقائي** — النقاط، الفوز/التعادل/الخسارة، الأهداف المسجّلة والمستقبلة،
+  فارق الأهداف، النقاط لكل مباراة، وآخر 5 نتائج. يُعاد حساب الجدول في الحال كلما
+  تغيّرت نتيجة.
+- **المباريات والنتائج** — برمجة الجولات، وتسجيل النتائج المباشرة، وإنهاء المباريات.
+  تُرفض المباريات المكررة في الجولة نفسها. تُبرز أقرب مباراة قادمة، ويمكن مسح مرشحات
+  الجولة والحالة بنقرة واحدة.
+- **الأهداف والبطاقات بالدقائق** — سجّل كل هدف وبطاقة صفراء وحمراء لصالح لاعب من
+  الفريق الصحيح مع الدقيقة. تعرض بطاقة كل مباراة خطًا زمنيًا مرتبًا وملخصًا للأهداف
+  والبطاقات.
+- **روابط قابلة للمشاركة** — التبويب النشط والموسم والمرشحات والبحث في التشكيلة تبقى
+  في الرابط، فيعيد الرابط المنسوخ فتح ما كنت تشاهده تمامًا. زر **نسخ الرابط** يفعل ذلك
+  عنك.
+- **أفضل الهدافين** — لوحة في أسفل جدول الترتيب ترتّب أفضل خمسة هدافين مع أنديتهم
+  ومجموع أهدافهم، ضمن القسم المختار في المبدّل.
+- **مواسم متعددة** — أنشئ موسمًا جديدًا، وبدّل بين الموسم النشط والمواسم المؤرشفة،
+  واحفظ كل جدول ومباراة سابقة. المواسم المؤرشفة للقراءة فقط في الواجهة وفي قاعدة
+  البيانات حتى يعيد المشرف تنشيطها.
+- **قسمان (درجتان)** — الدرجة الأولى والدرجة الثانية في الموسم نفسه، لكل منهما أنديتها
+  وجداولها ومبارياتها. مبدّل يضبط الترتيب والمباريات والتشكيلات وبطاقة الهدافين، ويُحفظ
+  في الرابط. ينتمي النادي إلى درجة واحدة ويمكن نقله بين المواسم، وتبقى كل مباراة في
+  الدرجة التي لُعبت فيها.
+- **الفرق والتشكيلات** — أنشئ الأندية وعدّلها، وأضف اللاعبين مع المراكز وأرقام القمصان
+  والأهداف والبطاقات الصفراء والحمراء. يمكن أرشفة اللاعبين الذين لديهم سجل واستعادتهم
+  دون فقدان أحداثهم.
+- **أسماء بلغتين** — يمكن للأندية واللاعبين حمل اسم عربي اختياري إلى جانب الاسم
+  اللاتيني المطلوب. يُعرض الاثنان في كل مكان (اللاتيني أولًا بالإنجليزية والفرنسية،
+  والعربي أولًا في الواجهة العربية)، ويطابق البحث أيًا من الحرفين.
+- **رخصة اللاعب وتاريخ الميلاد** — اختياريان لكل لاعب، وفريدان عند ضبطهما، ومرئيان
+  للمشرفين فقط: يُخزّنان في جدول `player_profiles` منفصل لا يستطيع الزائر المجهول
+  قراءته. ينتقلان مع نسخة JSON الاحتياطية وتصدير CSV.
+- **شعارات الأندية** — يمكن لكل فريق حمل شعار اختياري. يصغّره المتصفح إلى 128 بكسل
+  ويعيد ترميزه (مما يزيل بيانات EXIF)، ويُحفظ فقط كـ data URL بصيغة PNG/JPEG/WebP، فلا
+  حاجة إلى مستضيف ملفات: يظهر الشعار في الترتيب والمباريات والهدافين والإدخال المباشر
+  والتشكيلات، وينتقل مع نسخة JSON/CSV، وتبقى للأندية التي لا شعار لها علامتها الملوّنة.
+- **واجهة بثلاث لغات** — الإنجليزية والفرنسية والعربية، مع اتجاه RTL تلقائي للعربية.
+- **حسابات وأدوار حقيقية** — Supabase Auth بالبريد الإلكتروني وكلمة المرور. يتصفّح
+  المتفرجون دون حساب؛ ولا يضيف أو يعدّل أو يحذف إلا المستخدمون ذوو دور `admin`.
+- **صلاحيات تفرضها قاعدة البيانات** — يمنع PostgreSQL عبر Row Level Security أي كتابة
+  من غير المشرفين حتى لو عبثوا بالصفحة أو استدعوا الـ API مباشرة.
+- **المصادقة الثنائية** — يمكن للمشرفين تسجيل أي تطبيق TOTP. وعند تفعيل الشرط ترفض
+  قاعدة البيانات الكتابة من جلسات كلمة المرور وحدها (`aal1`)، فلا تكفي كلمة مرور مسروقة
+  لتغيير الدوري.
+- **استعادة الحساب والخروج التلقائي** — اطلب رابط إعادة تعيين كلمة المرور من نافذة
+  الدخول؛ وإعادة التعيين الناجحة تُخرج كل الجلسات القائمة. تنتهي الجلسات المسجّلة بعد
+  30 دقيقة دون نشاط.
+- **الخروج من كل الأجهزة** — يمكن للمشرفين إبطال كل رموز التحديث، بما في ذلك على أجهزة
+  أخرى، من قائمة الإعدادات.
+- **بيانات مشتركة** — يرى كل زائر الدوري نفسه من أي جهاز.
+- **سجل النشاط** — يرى المشرفون آخر 50 تغييرًا (إضافة، تعديل، حذف، استعادة، استيراد
+  وتغييرات أمنية) مع من قام بها ومتى والقيم قبل وبعد. السجل للإضافة فقط وغير مرئي
+  للمتفرجين وللمستخدمين المسجّلين الآخرين. وهو مربوط بسلسلة تجزئة، والنسخة الاحتياطية
+  اليومية تسجّل رأس السلسلة، فيصبح أي تعديل أو حذف للسجل لاحقًا قابلًا للكشف.
+- **المحذوفات حديثًا** — تنتقل الفرق والمباريات والمواسم إلى سلة مهملات بدلًا من
+  تدميرها؛ ويمكن للمشرفين استعادتها مع تشكيلتها وأحداثها وإجمالياتها سليمة.
+- **نسخة احتياطية JSON** — تصدير/استيراد كل البيانات من قائمة إعدادات المشرف.
+- **أدوات CSV** — تصدير ترتيب الموسم الحالي ومبارياته وتشكيلاته، أو بناء دوري كامل من
+  خمسة ملفات CSV، أو تحويل نسخة JSON الاحتياطية إلى ملفات CSV قابلة للتحرير.
+- **استيراد التشكيلة** — يمكن لكل فريق تعبئة قالب Excel/CSV بلغتين؛ ويعاين المشرف كل
+  صف ثم يضيف التشكيلة كاملة في خطوة ذرّية واحدة. يوجد مثال معبأ
+  (`examples/squad-example.xlsx`) مرتبط من نافذة الاستيراد.
+- **اختصارات النتيجة المباشرة** — المباريات في حالة `LIVE` تحصل على أزرار `+` في بطاقة
+  المباراة.
+- **وضع عرض توضيحي للقراءة فقط** — قبل إعداد Supabase يعرض الموقع الدوري النموذجي مع
+  إخفاء كل أدوات الكتابة ولافتة تشرح كيفية ربطه.
+
+### الأدوار والصلاحيات
+
+| الإجراء | زائر (بلا حساب) | حساب مشاهد | حساب مسجّل نتائج | حساب مشرف |
+|---|---|---|---|---|
+| عرض الترتيب والمباريات والتشكيلات | ✅ | ✅ | ✅ | ✅ |
+| إضافة هدف/بطاقة إلى مباراة مباشرة أو اليوم مسندة إليه | ❌ | ❌ | ✅ | ✅ (أي مباراة) |
+| التراجع عن ذلك الحدث (15 دقيقة) | ❌ | ❌ | ✅ | ✅ (بلا حد زمني) |
+| إضافة/تعديل/حذف الفرق واللاعبين والمباريات | ❌ | ❌ | ❌ | ✅ |
+| إنشاء المواسم/تبديل الموسم النشط | ❌ | ❌ | ❌ | ✅ |
+| حذف موسم مؤرشف فارغ | ❌ | ❌ | ❌ | ✅ |
+| إدارة الحسابات والأدوار ومسؤولي المباريات | ❌ | ❌ | ❌ | ✅ |
+| نقل نادٍ إلى الدرجة الأخرى (بين المواسم) | ❌ | ❌ | ❌ | ✅ |
+| عرض جداول ومباريات الموسم المؤرشف | ✅ | ✅ | ✅ | ✅ |
+| استيراد/إعادة ضبط البيانات، وتصدير نسخة احتياطية | ❌ | ❌ | ❌ | ✅ |
+
+يحصل الزائر والمشاهد على واجهة للقراءة فقط. ويحصل مسجّل النتائج على نافذة **الإدخال
+المباشر** فقط، وللمباريات التي أسندها إليه مشرف من **المستخدمون والأدوار**؛ وتبقى
+النافذة متاحة ما دامت المباراة مباشرة أو مقررة اليوم في الموسم النشط. الفرض الحقيقي في
+`supabase/schema.sql`: الدالة `public.is_admin()` تتحقق من `profiles.role = 'admin'`
+لصاحب `auth.uid()`، وكل سياسات RLS واستدعاءات RPC الإدارية تمر عبرها. لا يحقق مسجّل
+النتائج شرط `is_admin()` أبدًا: مسار الكتابة الوحيد المتاح له هو `record_live_event()` و
+`remove_live_event()`، وهما يعيدان التحقق من الدور والإسناد والموسم النشط ونافذة
+المباراة على الخادم.
+
+### إدخال بيانات دوري كامل عبر CSV
+
+لدوري كامل، تحرير خمسة ملفات CSV أسرع من إدخال كل مباراة في المتصفح. انسخ القوالب من
+[`data/examples/`](data/examples)، وحرّر النسخ في `data/`، ثم شغّل:
+
+```powershell
+node tools/csv-to-backup.js
+```
+
+يتحقق هذا من البيانات ويكتب `backups/kickoff-import-YYYY-MM-DD.json`، ثم تستورده من
+**استيراد نسخة احتياطية (JSON)**. يطلب الاستيراد التأكيد وينزّل الدوري الحالي كنسخة
+أمان قبل استبدال أي شيء. راجع [`data/README.md`](data/README.md) لمرجع الأعمدة. جرّب
+الاستيراد في مشروع التطوير أولًا — فالاستيراد يستبدل كل الفرق واللاعبين والمواسم
+والمباريات وأحداثها في قاعدة البيانات المتصلة.
+
+إذا كانت لديك نسخة JSON جاهزة وتريد تحريرها في جدول بيانات، ولّد ملفات CSV الخمسة منها:
+
+```powershell
+node tools/backup-to-csv.js backups/kickoff-backup-YYYY-MM-DD.json data --force
+```
+
+ترفض الأداة الكتابة فوق ملفات CSV الموجودة ما لم تُمرّر `--force`، فلا تستبدل بيانات
+الدوري الحقيقية عن غير قصد.
+
+### استيراد تشكيلة من Excel (فريق واحد في كل مرة)
+
+هذه أسرع طريقة لجمع تشكيلات أندية كثيرة: أرسل لكل نادٍ ملفًا واحدًا، ثم استورده في
+الفريق المطابق.
+
+1. افتح **الفرق واللاعبون**، وابحث عن الفريق واضغط زر جدول البيانات
+   (**استيراد التشكيلة من Excel**). اضغط **تنزيل القالب (CSV)** للحصول على ملف فارغ
+   باللغة الحالية. القوالب الفرنسية تستخدم `;` حتى يفتحها Excel في الإعدادات الفرنسية
+   بشكل صحيح؛ والإنجليزية والعربية تستخدمان `,`. ويمكنك بدلًا من ذلك تنزيل مثال معبأ
+   من **تنزيل مثال معبأ (Excel)**.
+2. الأعمدة هي **Name** و**Position** (مثل `GK`/`DEF`/`MID`/`FWD` أو `Goalkeeper`
+   و`Défenseur` و`حارس`…) و**Number** (1–99)، واختياريًا **Goals** و**Yellow**
+   و**Red**. يمكن أن يكون صف العناوين تحت صف عنوان، ويعمل `.xlsx` وCSV معًا (أما
+   `.xls` القديم فيجب حفظه بصيغة `.xlsx`).
+3. اختر الملف. تعرض المعاينة كل صف مع حالته: *جاهز*، *جاهز (مع ملاحظة)*، *تم تخطيه*
+   (موجود في التشكيلة) أو *خطأ*. يبقى زر الاستيراد معطّلًا ما دام أي صف فيه خطأ؛ وأرقام
+   القمصان المستخدمة من زميل هي تحذير فقط.
+4. اضغط **إضافة اللاعبين**. تُدرج كل الصفوف في معاملة واحدة عبر `add_players()`،
+   بحد أقصى 100 لاعب في كل استيراد، ويظهر سطر `IMPORT` واحد في سجل النشاط. لا يتغير
+   شيء آخر في الدوري.
+
+تعيد قاعدة البيانات فحص كل صف، فلا يمكن لملف محرّر يدويًا تجاوز التحقق. إذا أبلغ
+التطبيق أن الترحيل ناقص، شغّل
+[`supabase/add-players-migration.sql`](supabase/add-players-migration.sql) أولًا.
+
+### ملاحظات وحماية
+
+- الصلاحيات يفرضها **Row Level Security** لا الأزرار المخفية. يمكن للمشاهد فتح أدوات
+  المطوّر واستدعاء الـ API، لكن PostgreSQL يرفض الكتابة.
+- مفتاح anon عام بطبيعته. أما مفتاح `service_role` فيتجاوز RLS — أبقِه خارج المستودع
+  وخارج المتصفح.
+- مشاريع Supabase المجانية **تتوقف بعد نحو 7 أيام من الخمول**. افتح لوحة التحكم
+  واستعد المشروع لإيقاظه؛ ويعرض التطبيق لافتة «تعذّر تحميل البيانات» مع زر **إعادة
+  المحاولة** أثناء تعذّر الوصول إلى الخادم.
+- كلمات المرور تديرها Supabase Auth (مُجزّأة ولا تُخزّن في هذا المستودع). استخدم كلمة
+  مرور قوية وفريدة لحساب المشرف. روابط الاستعادة تُستخدم مرة واحدة وتنتهي حسب إعدادات
+  المشروع، وإعادة التعيين الناجحة تُخرج كل الجلسات.
+- يمكن للمشرفين إضافة عامل ثانٍ من نوع TOTP. وللتفعيل تتحقق قاعدة البيانات من مستوى
+  ضمان الـ JWT (`aal2`) داخل `is_admin()`، لا الواجهة فقط. الشرط اختياري ولا يُلغى إلا
+  من جلسة موثّقة.
+- الخروج التلقائي بعد 30 دقيقة شبكة أمان في المتصفح، ولا يُبطل رمزًا نُسخ خارج
+  المتصفح؛ تبقى صلاحية JWT وبوابة MFA وRLS هي الضوابط على الخادم. استخدم **الخروج من
+  كل الأجهزة** (أو **نسيت كلمة المرور**) لإبطال كل رموز التحديث عند الشك في اختراق.
+- لا تُحمّل أي ملفات JavaScript أو CSS أو خطوط من طرف ثالث وقت التشغيل. وسم CSP في
+  الصفحة يقيّد كل توجيه على هذا النطاق، مع السماح لـ Supabase فقط لاتصالات الـ API
+  والمصادقة. `script-src` هو `'self'` تمامًا: لا معالجات داخلية، وكل الأزرار
+  والقوائم والحقول والنماذج مربوطة عبر `data-action` / `data-change` / `data-input` /
+  `data-submit`. ويظل `style-src` يسمح بألوان الفرق المضمّنة.
+- `npm run check:secrets` يُفشل CI إذا أُودع مفتاح خاص.
+- سجل النشاط للإضافة فقط: لا صلاحيات للعملاء على `audit_log`، والقراءة عبر
+  `list_audit_log()` المحمية للمشرف. والاستيراد الكامل لـ JSON يسجل سطرًا موجزًا واحدًا
+  بدل سطر لكل سجل مستورد.
+- الموسم المؤرشف يخفي كل أدوات كتابة المباريات. ويمكن للمشرف اختيار الموسم والضغط على
+  **اجعله نشطاً** لتصحيح نتيجة قديمة؛ فيصبح الموسم النشط السابق هو المؤرشف.
+- الموسم المؤرشف بلا مباريات يعرض **حذف الموسم** في شريط الموسم. لا يمكن حذف الموسم
+  النشط ولا أي موسم ما زالت له مباريات.
+- أهداف اللاعبين وبطاقاته إجماليات تراكمية، لذا بطاقة الهداف لكل الأوقات لا لكل موسم.
+  تُقرأ من `v_player_stats`؛ وفي المباريات ذات `events_counted = true` يؤدي إضافة حدث
+  أو حذفه إلى تحديث هذا العرض فورًا، ويظهر المجموع الجديد عند التحديث التالي.
+- لحذف لاعب لديه أحداث، استخدم **حذف** وأكّد رسالة الأرشفة: يختفي اللاعب من التشكيلة
+  النشطة ويبقى سجله سليمًا. يظهر المؤرشفون في قسم صغير **اللاعبون المؤرشفون** أسفل
+  التشكيلة للمشرفين، مع زر **استعادة**.
+- يُهرَّب كل إدخال من المستخدم قبل إدراجه في الصفحة.
+
+### الوثائق
+
+هذه الوثائق مكتوبة بالإنجليزية لأنها موجهة للمطوّرين:
+
+- [تحديث التقدم](docs/PROGRESS.md) — حالة الإصدار الحالية وأدلة التحقق والعوائق
+  وقائمة النشر التالية.
+- [المراجعة الأمنية والخطة](docs/SECURITY_AUDIT.md) — نموذج التهديد والنتائج والمعالجة
+  المرتّبة وأوامر التحقق.
+- [خطة التحديث](docs/MODERNIZATION_PLAN.md) — خارطة طريق مرحلية وتحسينات في البيانات
+  والأمان وتجربة الاستخدام والمنصة.
+- [موجز مراجعة قاعدة البيانات](docs/DATABASE_REVIEW_BRIEF.md) — نص جاهز لمراجعة خارجية
+  لخيار قاعدة البيانات والاستضافة.
+- [دليل التنسيق](docs/COORDINATION.md) و[لوحة المهام](docs/TASKS.md) — كيف تعمل أدوات
+  البرمجة الآلية والمشرف بالتوازي؛ والقواعد المشتركة في [AGENTS.md](AGENTS.md).
+- [سياسة الأمان](SECURITY.md) — كيف تبلّغ عن ثغرة بشكل خاص.
+
+### التثبيت التقني
+
+إنشاء مشروع Supabase وتشغيل [`supabase/schema.sql`](supabase/schema.sql) وملفات
+الترحيل، والفصل بين قاعدة التطوير والإنتاج، والنشر على GitHub Pages: كلها موثّقة
+بالإنجليزية في [القسم الإنجليزي](#english) أدناه، بنفس التفصيل.
+
+---
+
+## Français
+
+Un gestionnaire de championnat léger et responsive pour les divisions locales et les
+tournois amateurs. Le frontend est en HTML/CSS/JS pur, hébergé gratuitement sur GitHub
+Pages ; les données et les comptes vivent dans un projet [Supabase](https://supabase.com)
+gratuit.
+
+> Ce fichier contient l'arabe, puis le français, puis l'anglais. Les étapes techniques
+> (création du projet Supabase, migrations SQL, déploiement) restent en anglais dans la
+> [section English](#english) ci-dessous : ce sont des commandes et des identifiants.
+
+### Fonctionnalités
+
+- **Classement automatique** — points, V/N/D, buts pour/contre, différence de buts,
+  points par match et forme sur les 5 derniers matchs. Le tableau est recalculé
+  instantanément dès qu'un résultat change.
+- **Calendrier et résultats** — programmez les journées, saisissez les scores en direct
+  et clôturez les matchs. Les doublons de match dans une même journée sont refusés. Le
+  prochain match est mis en avant, et les filtres journée/statut se vident en un clic.
+- **Buts et cartons avec minute** — enregistrez chaque but, carton jaune et carton rouge
+  pour un joueur de la bonne équipe, avec la minute. Chaque fiche de match affiche une
+  chronologie et un récapitulatif des buts et cartons.
+- **Vues partageables** — l'onglet actif, la saison, les filtres et la recherche d'effectif
+  sont dans l'URL : un lien copié rouvre exactement ce que vous regardiez. Le bouton
+  **Copier le lien** le fait pour vous.
+- **Meilleurs buteurs** — un classement des cinq meilleurs buteurs avec leur club et leur
+  total, limité à la division choisie dans le sélecteur.
+- **Saisons multiples** — créez une saison, passez de la saison active aux saisons
+  archivées et conservez tous les tableaux et calendriers passés. Les saisons archivées
+  sont en lecture seule dans l'interface et dans la base jusqu'à ce qu'un admin les
+  réactive.
+- **Deux divisions** — Division 1 et Division 2 dans la même saison, avec leurs clubs,
+  tableaux et calendriers. Un sélecteur limite le classement, le calendrier, les effectifs
+  et la carte des buteurs, et reste dans l'URL. Un club appartient à une division et peut
+  changer de saison ; chaque match garde la division où il a été joué.
+- **Équipes et effectifs** — créez et modifiez les clubs, ajoutez des joueurs avec poste,
+  numéro, buts et cartons. Les joueurs qui ont un historique peuvent être archivés puis
+  restaurés sans perdre leurs événements.
+- **Noms bilingues** — les clubs et les joueurs peuvent porter un nom arabe facultatif en
+  plus du nom latin obligatoire. Les deux sont affichés partout (le latin d'abord en
+  anglais et en français, l'arabe d'abord dans l'interface arabe) et la recherche accepte
+  les deux écritures.
+- **Licence et date de naissance** — facultatives par joueur, uniques lorsqu'elles sont
+  renseignées, et visibles des seuls admins : elles vivent dans la table
+  `player_profiles`, illisible par un visiteur anonyme. Elles voyagent avec la sauvegarde
+  JSON et l'export CSV.
+- **Écussons de club** — chaque équipe peut avoir un écusson. Le navigateur le réduit à
+  128 px et le ré-encode (ce qui supprime l'EXIF) ; seule une data URL PNG/JPEG/WebP est
+  enregistrée, donc aucun hébergeur de fichiers n'intervient. L'écusson apparaît dans le
+  classement, le calendrier, les buteurs, la saisie en direct et les effectifs, suit la
+  sauvegarde JSON/CSV, et les clubs sans écusson gardent leur repère coloré.
+- **Interface trilingue** — anglais, français et arabe, avec passage automatique en RTL
+  pour l'arabe.
+- **Comptes et rôles réels** — Supabase Auth avec e-mail et mot de passe. Les spectateurs
+  consultent sans compte ; seuls les utilisateurs avec le rôle `admin` peuvent ajouter,
+  modifier ou supprimer.
+- **Permissions appliquées par la base** — le Row Level Security de Postgres bloque les
+  écritures des non-admins même s'ils modifient la page ou appellent l'API directement.
+- **Double authentification** — les admins peuvent enrôler n'importe quelle application
+  TOTP. Quand l'exigence est activée, la base rejette les écritures des sessions
+  « mot de passe seul » (`aal1`) : un mot de passe volé ne suffit pas à modifier le
+  championnat.
+- **Récupération de compte et déconnexion automatique** — demandez un lien de
+  réinitialisation depuis la fenêtre de connexion ; une réinitialisation réussie
+  déconnecte toutes les sessions. Une session connectée se termine après 30 minutes
+  d'inactivité.
+- **Déconnexion partout** — les admins peuvent révoquer tous les jetons de rafraîchissement,
+  y compris sur d'autres appareils, depuis le menu des réglages.
+- **Données partagées** — chaque visiteur voit le même championnat, depuis n'importe quel
+  appareil.
+- **Journal d'activité** — les admins voient les 50 dernières modifications (ajouts,
+  modifications, suppressions, restaurations, imports et changements de sécurité) avec
+  l'auteur, la date et les valeurs avant/après. Le journal est en ajout seul, invisible
+  pour les spectateurs et les autres utilisateurs connectés, et chaîné par empreinte :
+  la sauvegarde quotidienne enregistre la tête de chaîne, donc toute réécriture
+  ultérieure est détectable.
+- **Corbeille** — les équipes, matchs et saisons vont dans une corbeille au lieu d'être
+  détruits ; les admins les restaurent avec effectif, événements et totaux intacts.
+- **Sauvegarde JSON** — exportez et importez l'ensemble des données depuis le menu des
+  réglages admin.
+- **Outils CSV** — exportez le classement, le calendrier et les effectifs de la saison en
+  cours, construisez tout un championnat à partir de cinq fichiers CSV, ou retransformez
+  une sauvegarde JSON en fichiers CSV modifiables.
+- **Import d'effectif** — chaque club peut remplir un modèle Excel/CSV bilingue ; l'admin
+  prévisualise chaque ligne puis ajoute tout l'effectif en une seule transaction. Un
+  exemple rempli (`examples/squad-example.xlsx`) est lié depuis la fenêtre d'import.
+- **Raccourcis de score en direct** — les matchs à l'état `LIVE` affichent des boutons `+`
+  sur la fiche du match.
+- **Mode démo en lecture seule** — tant que Supabase n'est pas configuré, le site montre
+  le championnat d'exemple, masque tous les contrôles d'écriture et affiche une bannière
+  expliquant comment le connecter.
+
+### Rôles et permissions
+
+| Action | Visiteur (sans compte) | Compte lecteur | Compte marqueur | Compte admin |
+|---|---|---|---|---|
+| Voir classement, calendrier, effectifs | ✅ | ✅ | ✅ | ✅ |
+| Ajouter un but/carton à un match en direct ou du jour qui lui est assigné | ❌ | ❌ | ✅ | ✅ (tout match) |
+| Annuler cet événement (15 minutes) | ❌ | ❌ | ✅ | ✅ (sans limite) |
+| Ajouter / modifier / supprimer équipes, joueurs, matchs | ❌ | ❌ | ❌ | ✅ |
+| Créer des saisons / changer la saison active | ❌ | ❌ | ❌ | ✅ |
+| Supprimer une saison archivée vide | ❌ | ❌ | ❌ | ✅ |
+| Gérer les comptes, les rôles et les officiels de match | ❌ | ❌ | ❌ | ✅ |
+| Déplacer un club vers l'autre division (entre saisons) | ❌ | ❌ | ❌ | ✅ |
+| Voir les tableaux et calendriers des saisons archivées | ✅ | ✅ | ✅ | ✅ |
+| Importer / réinitialiser les données, exporter une sauvegarde | ❌ | ❌ | ❌ | ✅ |
+
+Les visiteurs et les lecteurs ont une interface en lecture seule. Un marqueur n'obtient
+que la fenêtre **Saisie en direct**, et seulement pour les matchs qu'un admin lui a
+assignés via **Utilisateurs et rôles** ; la fenêtre reste disponible tant que le match est
+en direct ou programmé le jour même dans la saison active. La vraie barrière est dans
+`supabase/schema.sql` : `public.is_admin()` vérifie `profiles.role = 'admin'` pour
+`auth.uid()`, et toutes les politiques RLS et fonctions RPC d'administration passent par
+elle. Un marqueur ne satisfait jamais `is_admin()` : sa seule voie d'écriture est
+`record_live_event()` / `remove_live_event()`, qui revérifient côté serveur le rôle,
+l'assignation, la saison active et la fenêtre du match.
+
+### Saisie en masse (CSV)
+
+Pour un championnat complet, modifier cinq fichiers CSV est plus rapide que saisir chaque
+match dans le navigateur. Copiez les modèles de [`data/examples/`](data/examples),
+modifiez les copies dans `data/`, puis lancez :
+
+```powershell
+node tools/csv-to-backup.js
+```
+
+L'outil valide les données et écrit `backups/kickoff-import-YYYY-MM-DD.json`, que vous
+importez avec **Importer Sauvegarde (JSON)**. L'import demande confirmation et télécharge
+le championnat actuel comme sauvegarde de sécurité avant de remplacer quoi que ce soit.
+La référence des colonnes est dans [`data/README.md`](data/README.md). Testez l'import
+dans le projet de développement d'abord : il remplace toutes les équipes, joueurs,
+saisons, matchs et événements de la base connectée.
+
+Si vous avez déjà une sauvegarde JSON et voulez la modifier dans un tableur, générez
+d'abord les cinq fichiers CSV :
+
+```powershell
+node tools/backup-to-csv.js backups/kickoff-backup-YYYY-MM-DD.json data --force
+```
+
+L'outil refuse d'écraser des fichiers CSV existants sans `--force`, pour ne pas remplacer
+par accident de vraies données de championnat.
+
+### Importer un effectif depuis Excel (une équipe à la fois)
+
+C'est la façon la plus rapide de collecter les effectifs de nombreux clubs : envoyez un
+fichier à chaque club, puis importez-le dans l'équipe correspondante.
+
+1. Ouvrez **Équipes & Joueurs**, trouvez l'équipe et cliquez sur le bouton tableur
+   (**Importer l'effectif depuis Excel**). Cliquez sur **Télécharger le modèle (CSV)**
+   pour un fichier vide dans la langue courante. Les modèles français utilisent `;` pour
+   qu'Excel en configuration française les ouvre correctement ; l'anglais et l'arabe
+   utilisent `,`. Vous pouvez aussi partir de **Télécharger un exemple rempli (Excel)**.
+2. Les colonnes sont **Name**, **Position** (`GK`/`DEF`/`MID`/`FWD`, ou `Goalkeeper`,
+   `Défenseur`, `حارس`…), **Number** (1–99), et en option **Goals**, **Yellow**, **Red**.
+   La ligne d'en-tête peut se trouver sous une ligne de titre, et `.xlsx` comme CSV
+   fonctionnent (un ancien `.xls` doit être réenregistré en `.xlsx`).
+3. Choisissez le fichier. L'aperçu liste chaque ligne avec un statut : *prêt*,
+   *prêt (avec remarque)*, *ignoré* (déjà dans l'effectif) ou *erreur*. L'import reste
+   désactivé tant qu'une ligne contient une erreur ; un numéro déjà pris par un coéquipier
+   n'est qu'un avertissement.
+4. Cliquez sur **Ajouter les joueurs**. Toutes les lignes sont insérées dans une seule
+   transaction par `add_players()`, 100 joueurs maximum par import, et une ligne `IMPORT`
+   apparaît dans le journal d'activité. Rien d'autre ne change dans le championnat.
+
+La base revérifie chaque ligne : un fichier modifié à la main ne peut pas contourner la
+validation. Si l'application signale une migration manquante, exécutez d'abord
+[`supabase/add-players-migration.sql`](supabase/add-players-migration.sql).
+
+### Notes et sécurité
+
+- L'autorisation est assurée par le **Row Level Security**, pas par des boutons cachés.
+  Un lecteur peut ouvrir les outils de développement et appeler l'API : Postgres refuse
+  l'écriture.
+- La clé anon est publique par conception. La clé `service_role` contourne le RLS —
+  gardez-la hors du dépôt et hors du navigateur.
+- Les projets Supabase gratuits **se mettent en pause après environ 7 jours
+  d'inactivité**. Ouvrez le tableau de bord et restaurez le projet pour le réveiller ;
+  pendant l'indisponibilité, l'application affiche une bannière « impossible de charger
+  les données » avec un bouton **Réessayer**.
+- Les mots de passe sont gérés par Supabase Auth (hachés, jamais stockés ici). Utilisez un
+  mot de passe fort et unique pour le compte admin. Les liens de récupération sont à usage
+  unique, expirent selon les réglages Auth du projet, et une réinitialisation réussie
+  déconnecte toutes les sessions.
+- Les admins peuvent ajouter un second facteur TOTP. Pour l'exiger, la base vérifie le
+  niveau d'assurance du JWT (`aal2`) dans `is_admin()`, pas seulement l'interface.
+  L'exigence est optionnelle et ne peut être désactivée que depuis une session vérifiée.
+- La déconnexion après 30 minutes d'inactivité est un filet de sécurité côté navigateur.
+  Elle ne révoque pas un jeton déjà copié hors du navigateur ; l'expiration JWT de
+  Supabase, la barrière MFA et le RLS restent les contrôles serveur. Utilisez
+  **Déconnexion de tous les appareils** (ou **Mot de passe oublié**) pour révoquer tous
+  les jetons après une compromission suspectée.
+- Aucun JavaScript, CSS ou police tiers n'est chargé à l'exécution. Une balise CSP
+  restreint chaque directive à cette origine, Supabase n'étant autorisé que pour les
+  connexions API/Auth. `script-src` vaut exactement `'self'` : aucun gestionnaire en
+  ligne, et boutons, sélecteurs, champs et formulaires passent par les attributs délégués
+  `data-action` / `data-change` / `data-input` / `data-submit`. `style-src` autorise
+  encore les couleurs d'équipe en ligne.
+- `npm run check:secrets` fait échouer la CI si une clé privilégiée est commitée.
+- Le journal d'activité est en ajout seul : aucun droit client sur `audit_log`, les
+  lectures passent par `list_audit_log()` protégée par le contrôle admin. Un import JSON
+  complet écrit une ligne de synthèse, pas une ligne par enregistrement.
+- Une saison archivée masque tous les contrôles d'écriture de matchs. Un admin peut
+  sélectionner la saison et cliquer sur **Rendre active** pour corriger un ancien
+  résultat ; la saison active précédente devient alors l'archive.
+- Une saison archivée sans match affiche **Supprimer la saison** dans la barre de saison.
+  La saison active et toute saison qui a encore des matchs ne peuvent pas être supprimées.
+- Les buts et cartons des joueurs restent des totaux cumulés : la carte des buteurs est
+  donc « toutes époques » et non par saison. Ils viennent de `v_player_stats` ; pour les
+  matchs à `events_counted = true`, ajouter ou retirer un événement met à jour cette vue
+  immédiatement, et le rafraîchissement suivant affiche le nouveau total.
+- Pour retirer un joueur qui a déjà des événements, utilisez **Supprimer** et confirmez
+  l'archivage : le joueur quitte l'effectif actif mais son historique reste intact. Les
+  joueurs archivés apparaissent dans une petite section **Joueurs archivés** sous
+  l'effectif, avec un bouton **Restaurer**.
+- Toute saisie utilisateur est échappée avant d'être injectée dans la page.
+
+### Documentation du projet
+
+Ces documents sont en anglais car ils s'adressent aux développeurs :
+
+- [État d'avancement](docs/PROGRESS.md) — version en ligne, preuves de vérification,
+  blocages et prochaine liste de déploiement.
+- [Revue et plan de sécurité](docs/SECURITY_AUDIT.md) — modèle de menace, constats,
+  remédiation priorisée et commandes de vérification.
+- [Plan de modernisation](docs/MODERNIZATION_PLAN.md) — feuille de route par étapes.
+- [Brief de revue de base](docs/DATABASE_REVIEW_BRIEF.md) — texte prêt pour une revue
+  externe du choix de base de données et d'hébergement.
+- [Guide de coordination](docs/COORDINATION.md) et [tableau des tâches](docs/TASKS.md).
+- [Politique de sécurité](SECURITY.md) — comment signaler une faille en privé.
+
+### Installation technique
+
+Création du projet Supabase, exécution de [`supabase/schema.sql`](supabase/schema.sql) et
+des migrations, séparation développement/production et déploiement GitHub Pages : tout est
+détaillé en anglais dans la [section English](#english) ci-dessous.
+
+---
+
+## English
+
 A lightweight, responsive league manager for local football divisions and amateur
 tournaments. The frontend is pure HTML/CSS/JS hosted free on GitHub Pages; data and
 accounts live in a free [Supabase](https://supabase.com) project.
 
-## Features
+### Features
 
 - **Automatic standings** — points, W/D/L, goals for/against, goal difference, points
   per game and last-5 form. The table is recalculated instantly whenever a result changes.
@@ -73,7 +528,7 @@ accounts live in a free [Supabase](https://supabase.com) project.
 - **Read-only demo mode** — until Supabase is configured, the site shows the sample
   league with all write controls hidden and a banner explaining how to connect it.
 
-## Documentation
+### Documentation
 
 - [Progress update](docs/PROGRESS.md) — current release state, verification evidence,
   blockers and the next deploy checklist.
@@ -88,7 +543,7 @@ accounts live in a free [Supabase](https://supabase.com) project.
   [AGENTS.md](AGENTS.md).
 - [Security policy](SECURITY.md) — how to report a vulnerability privately.
 
-## Project structure
+### Project structure
 
 ```
 .
@@ -170,9 +625,9 @@ the Inter/Cairo webfonts (`fonts/`) are self-hosted for the same reason, and
 `index.html` ships a Content-Security-Policy that allows only this origin
 plus Supabase.
 
-## Setup: connect Supabase (5 minutes, free)
+### Setup: connect Supabase (5 minutes, free)
 
-### 1. Create the project
+#### 1. Create the project
 
 1. Sign up at <https://supabase.com> and create a **New project** (free tier:
    500 MB database, 50,000 monthly active users).
@@ -301,7 +756,7 @@ plus Supabase.
 > `deleted_at`; the views automatically stop and resume counting the events of the
 > trashed rows.
 
-### 2. Add your keys
+#### 2. Add your keys
 
 In Supabase open **Project Settings → API** and copy:
 
@@ -330,7 +785,7 @@ const DEVELOPMENT = {
 > Row Level Security is what protects your data. Never put the `service_role` or
 > `secret` key in this file.
 
-### 3. Create your admin account
+#### 3. Create your admin account
 
 1. Open the site, click **Admin Login → No account yet? Create one**.
 2. If Supabase email confirmation is enabled (default), confirm your email first.
@@ -349,7 +804,7 @@ Optional: disable email confirmation under **Authentication → Providers → Em
 if you don't want new accounts to confirm their address. Once your admin account
 exists, you can also turn off public sign-ups there to prevent extra accounts.
 
-### 4. Protect the admin account with two-factor
+#### 4. Protect the admin account with two-factor
 
 1. Run [`supabase/mfa-migration.sql`](supabase/mfa-migration.sql) in the SQL Editor.
 2. Log in as admin, open the data menu and choose **Two-factor authentication**.
@@ -364,7 +819,7 @@ the authenticator: if it is lost, use another admin account or remove the factor
 **Authentication → Users** in the Supabase dashboard. SQL Editor access always remains
 available for recovery. Turning the requirement off also needs a verified session.
 
-### 5. Password recovery and idle logout
+#### 5. Password recovery and idle logout
 
 1. In each Supabase project, open **Authentication → URL Configuration**. Set the
    **Site URL** to the matching site (production for the production project,
@@ -398,7 +853,7 @@ timeout end only the current browser session. Password recovery and the admin-on
 **Sign out all devices** action revoke every refresh token. If no email arrives, check the
 project's Auth email rate limits and SMTP settings; old or reused links are rejected.
 
-### Confirmation email issues
+#### Confirmation email issues
 
 If a confirmation link redirects to `localhost:3000` or says it expired:
 
@@ -411,7 +866,7 @@ If a confirmation link redirects to `localhost:3000` or says it expired:
 3. Or disable **Confirm email** under **Authentication → Providers → Email**, delete the
    unconfirmed user under **Authentication → Users**, and sign up again.
 
-## Development vs production databases
+### Development vs production databases
 
 Use **two independent Supabase projects**. Never test new features directly against
 real league data.
@@ -427,7 +882,7 @@ real league data.
 Both anon/publishable keys are safe to publish. Row Level Security still blocks
 non-admin writes in both projects.
 
-### Create the development project
+#### Create the development project
 
 1. In Supabase, create a **second project** in the same organization.
 2. Run `supabase/schema.sql` in its SQL Editor. This also inserts the sample league.
@@ -444,7 +899,7 @@ non-admin writes in both projects.
    (plus `https://<user>.github.io/<repo>/**` if you use the deployed `?env=dev` preview).
 6. Optionally disable email confirmation in the dev project to speed up sign-in.
 
-### Add the development keys
+#### Add the development keys
 
 The checked-in `DEVELOPMENT` block already points at the original dev project. If you
 are setting up your own copy, replace it with the second project's URL and
@@ -469,7 +924,7 @@ The `PRODUCTION` block keeps the real project. The app picks the database like t
 Auth sessions are separate because each Supabase project uses its own storage key.
 Logging into the dev admin does not log you into production.
 
-### Schema changes and data
+#### Schema changes and data
 
 1. Apply every schema change to the **development** project first.
 2. Test the full feature there, including login, writes, archived seasons and import.
@@ -484,7 +939,7 @@ Logging into the dev admin does not log you into production.
 > may need to be restored from the dashboard before you start working; the app shows a
 > retry banner while it is unavailable.
 
-## Roles and permissions
+### Roles and permissions
 
 | Action | Visitor (no account) | Viewer account | Scorer account | Admin account |
 |---|---|---|---|---|
@@ -519,7 +974,7 @@ in `match_officials`, the active season and the live/today window on the server.
 `select` policies make the league readable without logging in; `match_officials` exposes
 a scorer's own rows only and every row to an admin.
 
-## Run locally
+### Run locally
 
 The compiled Tailwind stylesheet is committed, so the site runs without a build step.
 Serve the folder with the dependency-free local server:
@@ -534,7 +989,7 @@ Then open <http://localhost:8765>. You can also use `npm.cmd run serve`; plain
 > Opening `index.html` directly via `file://` also works in most browsers, but a local
 > server matches GitHub Pages behavior more closely.
 
-### Styling changes
+#### Styling changes
 
 Tailwind is compiled locally into `css/tailwind.css` (about 22 KB) instead of loading
 the Play CDN. The generated file is committed, so visitors and GitHub Pages need no
@@ -550,7 +1005,7 @@ npm run watch:css    # rebuild while editing
 The GitHub Actions workflow rebuilds the CSS on every push and fails if the committed
 file is out of date.
 
-### Tests
+#### Tests
 
 ```bash
 npm run test:sql        # in-memory Postgres: RLS, archive locks, atomic saves, trash restore, audit log, MFA gate
@@ -570,7 +1025,7 @@ locally with `npx playwright install chromium`; the
 push and pull request. Admin login, saves, archive/restore and import rollback remain
 manual until a dedicated test account and disposable development data are available.
 
-### Backups and keepalive
+#### Backups and keepalive
 
 Supabase Free has no automatic database backups, so the repository includes a
 public-read exporter, a validator, and two scheduled GitHub Actions jobs:
@@ -608,7 +1063,7 @@ long off-season, run either job from **Actions → Run workflow**, or make a sma
 Supabase also emails the project owner about a week before pausing a project.
 Download an artifact before any risky migration and keep a local copy; artifacts expire.
 
-## Bulk data entry (CSV)
+### Bulk data entry (CSV)
 
 For a full league, editing five CSV files is faster than entering every fixture in the
 browser. Copy the templates from [`data/examples/`](data/examples), edit the copies in
@@ -635,7 +1090,7 @@ node tools/backup-to-csv.js backups/kickoff-backup-YYYY-MM-DD.json data --force
 The tool refuses to overwrite existing CSV files unless `--force` is supplied, so it
 cannot silently replace real league data by accident.
 
-## Import a squad from Excel (one team at a time)
+### Import a squad from Excel (one team at a time)
 
 This is the fastest way to collect squads from many clubs: send each club one file, then
 import it into the matching team.
@@ -659,7 +1114,7 @@ The database re-checks every row, so a hand-edited file cannot bypass validation
 the app says the migration is missing, run
 [`supabase/add-players-migration.sql`](supabase/add-players-migration.sql) first.
 
-## Deploy to GitHub Pages (free)
+### Deploy to GitHub Pages (free)
 
 1. Push the repository to GitHub (public).
 2. Open **Settings → Pages**.
@@ -669,7 +1124,7 @@ the app says the migration is missing, run
 5. In Supabase, add that URL under **Authentication → URL Configuration → Site URL**
    (and *Redirect URLs*) so confirmation emails point back to the app.
 
-## Data model
+### Data model
 
 The tables in the `public` schema. Column names are snake_case in Postgres and mapped
 to camelCase by `js/backend.js`.
@@ -705,7 +1160,7 @@ most one season is active. The `create_season` and `activate_season` database fu
 are admin-only and run in a single transaction, so the active season always switches
 cleanly.
 
-### Recently deleted (soft delete)
+#### Recently deleted (soft delete)
 
 `seasons`, `teams` and `matches` carry a nullable `deleted_at`. A delete stamps it and
 RLS immediately hides the row, its squad and its events from anonymous and signed-in
@@ -744,7 +1199,7 @@ writes a `SECURITY` row. There are no client grants on the table and RLS is enab
 no policy; admins read the newest entries through `list_audit_log(limit)`. It is a
 history, not a backup — export JSON regularly.
 
-### Two-factor authentication
+#### Two-factor authentication
 
 TOTP factors are enrolled and verified through Supabase Auth in the browser. Once an
 admin ticks **Require two-factor for admin writes**, `public.is_admin()` also requires
@@ -785,7 +1240,7 @@ before seasons existed are upgraded automatically into a single default season:
 }
 ```
 
-## Security notes
+### Security notes
 
 - Authorization is enforced by **Row Level Security**, not by hidden buttons. A viewer
   can open DevTools and call the API, but Postgres rejects the write.
@@ -816,7 +1271,7 @@ before seasons existed are upgraded automatically into a single default season:
   through the admin-checked `list_audit_log()` RPC. A full JSON import records one
   summary entry rather than one row per imported record.
 
-## Notes
+### Notes
 
 - Archived seasons hide all match-writing controls. An admin can select the season
   and click **Make active** to correct an old result; the previously active season
