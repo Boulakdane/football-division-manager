@@ -67,7 +67,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
   bulk-build a league from five CSV files, or turn a JSON backup back into
   editable CSV files.
 - **Squad import** - each team can fill a bilingual Excel/CSV template; the admin
-  previews every row and adds the whole squad in one atomic step.
+  previews every row and adds the whole squad in one atomic step. A filled example
+  (`examples/squad-example.xlsx`) is linked from the import dialog.
 - **Live score shortcuts** — matches in `LIVE` state get `+` buttons on the fixture card.
 - **Read-only demo mode** — until Supabase is configured, the site shows the sample
   league with all write controls hidden and a banner explaining how to connect it.
@@ -109,6 +110,10 @@ accounts live in a free [Supabase](https://supabase.com) project.
 ├── data/
 │   ├── README.md              # CSV column reference and workflow
 │   └── examples/              # Template seasons/teams/players/matches/events CSV files
+├── examples/
+│   ├── README.md              # Squad import columns, accepted values and limits
+│   ├── squad-example.xlsx     # Filled, importable squad example (3 players)
+│   └── squad-example.csv      # Same rows as plain CSV
 ├── docs/
 │   ├── PROGRESS.md            # Current status, blockers and release checklist
 │   ├── SECURITY_AUDIT.md      # Findings, threat model and remediation plan

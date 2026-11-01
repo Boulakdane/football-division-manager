@@ -112,6 +112,21 @@ const existing = [{ name: 'David Silva', num: 8, isActive: true }, { name: 'Old 
   r = SI.validateSquad(many, []);
   check('more than 100 players blocked', !r.canImport && r.rows.some(x => x.issues.some(i => i.code === 'tooManyRows')), r.counts);
 
+  // The files linked from the import dialog must stay importable: editing them by
+  // hand is easy to break (wrong zip entry names, missing header, BOM lost).
+  const exampleDir = path.join(__dirname, '..', 'examples');
+  r = SI.analyze(await SI.readFile(new Uint8Array(fs.readFileSync(path.join(exampleDir, 'squad-example.xlsx')))), []);
+  check('example xlsx: 3 valid players, every optional column',
+    r.headerFound && r.canImport && r.counts.total === 3 && r.counts.error === 0 &&
+    r.toAdd.every(p => p.name && p.pos && p.num && p.licenseId && p.nameAr && p.birthDate), r.counts);
+
+  const exampleCsv = fs.readFileSync(path.join(exampleDir, 'squad-example.csv'));
+  check('example csv: UTF-8 BOM kept for Excel', exampleCsv[0] === 0xef && exampleCsv[1] === 0xbb && exampleCsv[2] === 0xbf);
+  r = SI.analyze(await SI.readFile(new Uint8Array(exampleCsv)), []);
+  check('example csv: same 3 players as the xlsx',
+    r.headerFound && r.canImport && r.counts.total === 3 && r.toAdd.map(p => p.name).join('|') ===
+    'Yacine Belkacem|Amine Cherif|Sofiane Mansouri', r.toAdd.map(p => p.name));
+
   const rejects = async (label, bytes, code) => {
     try { await SI.readFile(bytes); check(label, false); } catch (e) { check(label, e.code === code, e.code); }
   };
