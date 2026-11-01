@@ -8,11 +8,16 @@
  *   * the page itself never scrolls sideways on a phone, on every tab and in
  *     both writing directions (only the standings table scrolls, inside its own
  *     card, which is intended);
- *   * the import dialog links a real, filled .xlsx example that is served by the
- *     site (no Excel, no backend call) and that the label is translated.
+ *   * the import dialog offers a real, filled .xlsx example per language, served
+ *     by the site (no Excel, no backend call), and the blank CSV template and the
+ *     example both follow the language on screen.
  */
 
+const fs = require('fs');
 const { test, expect } = require('@playwright/test');
+const SquadImport = require('../../js/squad-import.js');
+
+test.use({ acceptDownloads: true });
 
 /** Elements sticking out of the viewport, ignoring content of a scroll container. */
 function overflowReport() {
@@ -76,24 +81,61 @@ test('the page does not scroll sideways on a phone', async ({ page }) => {
   expect(pageErrors).toEqual([]);
 });
 
-test('the import dialog offers a downloadable filled example', async ({ page }) => {
+test('the import dialog downloads templates and examples in the chosen language', async ({ page }) => {
   await page.goto('/?env=prod');
   await expect(page.locator('#standings-table-body tr').first()).toBeVisible();
 
-  const link = page.locator('#modal-squad a[href="examples/squad-example.xlsx"]');
-  await expect(link).toHaveCount(1);
-  await expect(link).toContainText('Download filled example (Excel)');
+  // The dialog itself is admin-only (covered elsewhere); open it directly so this
+  // test can focus on the two downloads and the files behind them.
+  await page.evaluate(() => {
+    BACKEND_READY = true;
+    currentRole = 'admin';
+    updateAuthUI();
+    openSquadImport(appState.teams[0].id);
+  });
+  await expect(page.locator('#modal-squad')).toBeVisible();
 
-  // Same file the site serves to a visitor: a real zip, not an HTML error page.
-  const response = await page.request.get('examples/squad-example.xlsx');
-  expect(response.status()).toBe(200);
-  const body = await response.body();
-  expect(body.subarray(0, 2).toString('latin1')).toBe('PK');
-  expect(body.length).toBeGreaterThan(1000);
+  const exampleButton = page.locator('#modal-squad [data-action="squad-example"]');
+  const templateButton = page.locator('#modal-squad [data-action="squad-template"]');
+  await expect(exampleButton).toHaveCount(1);
+  await expect(templateButton).toHaveCount(1);
 
-  // The label follows the chosen language like every other string.
-  await page.locator('#language-select').selectOption('fr');
-  await expect(link).toContainText('Télécharger un exemple rempli (Excel)');
-  await page.locator('#language-select').selectOption('ar');
-  await expect(link).toContainText('تنزيل مثال معبأ (Excel)');
+  // Each language: translated label, its own files, real bytes behind them.
+  const languages = [
+    ['en', 'Download filled example (Excel)'],
+    ['fr', 'Télécharger un exemple rempli (Excel)'],
+    ['ar', 'تنزيل مثال معبأ (Excel)']
+  ];
+  for (const [lang, label] of languages) {
+    if (lang !== 'en') {
+      await page.locator('#language-select').selectOption(lang);
+      await expect(page.locator('html')).toHaveAttribute('lang', lang);
+    }
+    await expect(exampleButton).toContainText(label);
+
+    const [example] = await Promise.all([
+      page.waitForEvent('download'),
+      exampleButton.click()
+    ]);
+    expect(example.suggestedFilename()).toBe(`kickoff_squad_example_${lang}.xlsx`);
+    const exampleBytes = fs.readFileSync(await example.path());
+    expect(exampleBytes.subarray(0, 2).toString('latin1')).toBe('PK');
+    expect(exampleBytes.length).toBeGreaterThan(1000);
+
+    // The blank template is generated at click time, so it can never be stale.
+    const [template] = await Promise.all([
+      page.waitForEvent('download'),
+      templateButton.click()
+    ]);
+    expect(template.suggestedFilename()).toBe(`kickoff_squad_template_${lang}.csv`);
+    const templateText = fs.readFileSync(await template.path(), 'utf8').replace(/^\uFEFF/, '');
+    expect(templateText).toBe(SquadImport.template(lang).text.replace(/^\uFEFF/, ''));
+  }
+
+  // The site serves the same example files to anyone browsing the repository.
+  for (const lang of ['en', 'fr', 'ar']) {
+    const response = await page.request.get(`examples/squad-example-${lang}.xlsx`);
+    expect(response.status()).toBe(200);
+    expect((await response.body()).subarray(0, 2).toString('latin1')).toBe('PK');
+  }
 });

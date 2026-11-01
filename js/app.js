@@ -376,6 +376,7 @@ const CLICK_ACTIONS = {
 
   'import-squad': el => openSquadImport(el.dataset.team),
   'squad-template': () => downloadSquadTemplate(),
+  'squad-example': () => downloadSquadExample(),
   'squad-import-confirm': () => confirmSquadImport(),
 
   'add-event': el => addMatchEvent(el.dataset.side, el.dataset.type),
@@ -2627,6 +2628,23 @@ function downloadSquadTemplate() {
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Download the filled squad example in the language on screen.
+ *
+ * The file is a real .xlsx, one per language, so Excel users get the same header
+ * words as the blank template (js/squad-import.js owns those words). The parser
+ * accepts every version; this is about what the reader sees in Excel.
+ */
+function downloadSquadExample() {
+  const lang = ['en', 'fr', 'ar'].indexOf(currentLang) >= 0 ? currentLang : 'en';
+  const anchor = document.createElement('a');
+  anchor.href = 'examples/squad-example-' + lang + '.xlsx';
+  anchor.download = 'kickoff_squad_example_' + lang + '.xlsx';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
 
 async function confirmSquadImport() {

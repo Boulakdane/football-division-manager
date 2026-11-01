@@ -8,19 +8,27 @@
 
 ملفات جاهزة للاستخدام في **الفرق واللاعبون → (بطاقة الفريق) → استيراد التشكيلة**.
 
-| الملف | استخدمه عندما |
-|---|---|
-| `squad-example.xlsx` | تريد ملف Excel معبأًا لتحريره: ثلاثة لاعبين وكل الأعمدة. |
-| `squad-example.csv` | تفضّل ملفًا نصيًا بسيطًا (يفتح في Excel أيضًا). نفس اللاعبين الثلاثة. |
+لكل لغة ملفها: نفس اللاعبين الأربعة (حارس ومدافع ووسط ومهاجم) في كل نسخة، ولا يتغيّر
+إلا صف العناوين. اختر النسخة التي تناسب من سيملأ الملف.
 
-ينزّل التطبيق الملفين من نافذة الاستيراد:
+| الملف | صف العناوين | ملاحظات |
+|---|---|---|
+| `squad-example-en.xlsx` و`.csv` | `Name, Arabic Name, Position, Number, Licence, Birth date, Goals, Yellow, Red` | فاصلة `,` في CSV |
+| `squad-example-fr.xlsx` و`.csv` | `Nom, Nom arabe, Poste, Numéro, Licence, Date de naissance, Buts, Jaunes, Rouges` | فاصلة منقوطة `;` في CSV حتى يفتحه Excel الفرنسي صحيحًا |
+| `squad-example-ar.xlsx` و`.csv` | `الاسم, الاسم العربي, المركز, الرقم, رخصة, تاريخ الميلاد, الأهداف, بطاقات صفراء, بطاقات حمراء` | فاصلة `,` في CSV |
 
-- **تنزيل مثال معبأ (Excel)** → `squad-example.xlsx`
-- **تنزيل القالب (CSV)** → قالب فارغ بصف عناوين فقط، مترجم إلى اللغة الحالية.
+ينزّل التطبيق الملف المطابق للغة المعروضة في نافذة الاستيراد:
+
+- **تنزيل مثال معبأ (Excel)** → `squad-example-<اللغة>.xlsx`
+- **تنزيل القالب (CSV)** → قالب فارغ بصف عناوين فقط، باللغة نفسها.
+
+كل النسخ تُستورد في أي لغة كانت الواجهة: يقرأ التطبيق صف العناوين بالعربية أو الفرنسية
+أو الإنجليزية، فلا داعي لإعادة تسمية الأعمدة.
 
 ### الأعمدة
 
-العمود **Name** وحده مطلوب. يمكن حذف أي عمود آخر بالكامل ما دام **Name** موجودًا.
+الأسماء أدناه بالإنجليزية؛ النسخة العربية من القالب تستخدم `الاسم`، والفرنسية `Nom`،
+وكلها مقبولة. عمود **Name** وحده مطلوب. يمكن حذف أي عمود آخر بالكامل ما دام موجودًا.
 يبحث التطبيق عن صف العناوين في أول 15 صفًا، لذا لا مشكلة في وجود سطر عنوان فوقه.
 
 | العمود | مطلوب | القيم المقبولة |
@@ -57,21 +65,30 @@
 
 Fichiers prêts à l'emploi pour **Équipes & Joueurs → (fiche de l'équipe) → importer l'effectif**.
 
-| Fichier | À utiliser quand |
-|---|---|
-| `squad-example.xlsx` | Vous voulez un fichier Excel déjà rempli à modifier : trois joueurs, toutes les colonnes. |
-| `squad-example.csv` | Vous préférez un fichier texte simple (il s'ouvre aussi dans Excel). Les trois mêmes joueurs. |
+Chaque langue a son fichier : les quatre mêmes joueurs (gardien, défenseur, milieu,
+attaquant) dans chaque version, seule la ligne d'en-tête change. Prenez la version qui
+convient à la personne qui remplira le fichier.
 
-L'application télécharge ces fichiers depuis la fenêtre d'import :
+| Fichier | Ligne d'en-tête | Remarques |
+|---|---|---|
+| `squad-example-en.xlsx` et `.csv` | `Name, Arabic Name, Position, Number, Licence, Birth date, Goals, Yellow, Red` | virgule `,` en CSV |
+| `squad-example-fr.xlsx` et `.csv` | `Nom, Nom arabe, Poste, Numéro, Licence, Date de naissance, Buts, Jaunes, Rouges` | point-virgule `;` en CSV pour qu'Excel français l'ouvre correctement |
+| `squad-example-ar.xlsx` et `.csv` | `الاسم, الاسم العربي, المركز, الرقم, رخصة, تاريخ الميلاد, الأهداف, بطاقات صفراء, بطاقات حمراء` | virgule `,` en CSV |
 
-- **Télécharger un exemple rempli (Excel)** → `squad-example.xlsx`
-- **Télécharger le modèle (CSV)** → un modèle vide avec seulement la ligne d'en-tête, traduit dans la langue courante.
+L'application télécharge le fichier de la langue affichée depuis la fenêtre d'import :
+
+- **Télécharger un exemple rempli (Excel)** → `squad-example-<langue>.xlsx`
+- **Télécharger le modèle (CSV)** → un modèle vide avec seulement la ligne d'en-tête, dans la même langue.
+
+Toutes les versions s'importent quelle que soit la langue de l'interface : l'application lit
+la ligne d'en-tête en arabe, en français ou en anglais, sans renommer les colonnes.
 
 ### Colonnes
 
-Seul **Name** est obligatoire. Une colonne peut être supprimée entièrement tant que
-**Name** est présent. La ligne d'en-tête est cherchée dans les 15 premières lignes : une
-ligne de titre au-dessus ne gêne pas.
+Les noms ci-dessous sont en anglais ; le modèle arabe utilise `الاسم`, le français `Nom`,
+et tous sont acceptés. Seul **Name** est obligatoire. Toute autre colonne peut être
+supprimée, tant que la colonne du nom reste. La ligne d'en-tête est cherchée dans les 15
+premières lignes : une ligne de titre au-dessus ne gêne pas.
 
 | Colonne | Obligatoire | Valeurs acceptées |
 |---|---|---|
@@ -111,19 +128,30 @@ ligne de titre au-dessus ne gêne pas.
 
 Ready-to-use files for **Teams → (team card) → import squad**.
 
-| File | Use it when |
-|---|---|
-| `squad-example.xlsx` | You want a filled Excel file to edit: three players, every column. |
-| `squad-example.csv` | You prefer a plain text file (opens in Excel too). Same three players. |
+Each language has its own file: the same four players (goalkeeper, defender, midfielder,
+forward) in every version, only the header row changes. Pick the version that suits whoever
+will fill it in.
 
-Both files are downloaded by the app from the import dialog:
-* **Download filled example (Excel)** → `squad-example.xlsx`
-* **Download template (CSV)** → an empty template with only the header row, translated to the current language.
+| File | Header row | Notes |
+|---|---|---|
+| `squad-example-en.xlsx` and `.csv` | `Name, Arabic Name, Position, Number, Licence, Birth date, Goals, Yellow, Red` | comma `,` in CSV |
+| `squad-example-fr.xlsx` and `.csv` | `Nom, Nom arabe, Poste, Numéro, Licence, Date de naissance, Buts, Jaunes, Rouges` | semicolon `;` in CSV so French Excel opens it correctly |
+| `squad-example-ar.xlsx` and `.csv` | `الاسم, الاسم العربي, المركز, الرقم, رخصة, تاريخ الميلاد, الأهداف, بطاقات صفراء, بطاقات حمراء` | comma `,` in CSV |
+
+The app downloads the file for the language on screen from the import dialog:
+
+- **Download filled example (Excel)** → `squad-example-<language>.xlsx`
+- **Download template (CSV)** → an empty template with only the header row, in the same language.
+
+Every version imports whatever the interface language: the app reads the header row in
+Arabic, French or English, so nobody has to rename columns.
 
 ### Columns
 
-Only **Name** is required. A column can be left out entirely, as long as **Name** is present.
-The header row is looked for in the first 15 rows, so a title line above it is fine.
+The names below are English; the Arabic template uses `الاسم`, the French one `Nom`, and all
+are accepted. Only **Name** is required. Any other column can be left out entirely, as long
+as the name column stays. The header row is looked for in the first 15 rows, so a title line
+above it is fine.
 
 | Column | Required | Accepted values |
 |---|---|---|

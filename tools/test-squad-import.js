@@ -112,20 +112,32 @@ const existing = [{ name: 'David Silva', num: 8, isActive: true }, { name: 'Old 
   r = SI.validateSquad(many, []);
   check('more than 100 players blocked', !r.canImport && r.rows.some(x => x.issues.some(i => i.code === 'tooManyRows')), r.counts);
 
-  // The files linked from the import dialog must stay importable: editing them by
+  // The files the import dialog downloads must stay importable: editing them by
   // hand is easy to break (wrong zip entry names, missing header, BOM lost).
+  // Each language ships an .xlsx and a .csv with its own header words.
   const exampleDir = path.join(__dirname, '..', 'examples');
-  r = SI.analyze(await SI.readFile(new Uint8Array(fs.readFileSync(path.join(exampleDir, 'squad-example.xlsx')))), []);
-  check('example xlsx: 3 valid players, every optional column',
-    r.headerFound && r.canImport && r.counts.total === 3 && r.counts.error === 0 &&
-    r.toAdd.every(p => p.name && p.pos && p.num && p.licenseId && p.nameAr && p.birthDate), r.counts);
+  const expectedPlayers = 'MID:8,DEF:4,FWD:9,GK:1';
+  for (const lang of ['en', 'fr', 'ar']) {
+    const delimiter = lang === 'fr' ? ';' : ',';
+    const headers = SI.template(lang).text.replace(/^\ufeff/, '').trim();
 
-  const exampleCsv = fs.readFileSync(path.join(exampleDir, 'squad-example.csv'));
-  check('example csv: UTF-8 BOM kept for Excel', exampleCsv[0] === 0xef && exampleCsv[1] === 0xbb && exampleCsv[2] === 0xbf);
-  r = SI.analyze(await SI.readFile(new Uint8Array(exampleCsv)), []);
-  check('example csv: same 3 players as the xlsx',
-    r.headerFound && r.canImport && r.counts.total === 3 && r.toAdd.map(p => p.name).join('|') ===
-    'Yacine Belkacem|Amine Cherif|Sofiane Mansouri', r.toAdd.map(p => p.name));
+    for (const ext of ['xlsx', 'csv']) {
+      const file = `squad-example-${lang}.${ext}`;
+      const sheets = await SI.readFile(new Uint8Array(fs.readFileSync(path.join(exampleDir, file))));
+      check(`example ${file}: header matches the ${lang} template`,
+        (sheets[0].rows[0] || []).join(delimiter) === headers, sheets[0].rows[0]);
+
+      r = SI.analyze(sheets, []);
+      check(`example ${file}: 4 importable players, every position and column`,
+        r.headerFound && r.canImport && r.counts.total === 4 && r.counts.error === 0 &&
+        r.toAdd.map(p => p.pos + ':' + p.num).join(',') === expectedPlayers &&
+        r.toAdd.every(p => p.name && p.nameAr && p.licenseId && p.birthDate), r.counts);
+    }
+
+    const csv = fs.readFileSync(path.join(exampleDir, `squad-example-${lang}.csv`));
+    check(`example ${lang}.csv: UTF-8 BOM kept for Excel`,
+      csv[0] === 0xef && csv[1] === 0xbb && csv[2] === 0xbf);
+  }
 
   const rejects = async (label, bytes, code) => {
     try { await SI.readFile(bytes); check(label, false); } catch (e) { check(label, e.code === code, e.code); }
