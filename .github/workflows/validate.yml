@@ -89,6 +89,9 @@ jobs:
       - name: Test squad import parser (xlsx/csv)
         run: npm run test:squad-import
 
+      - name: Test the installable app (manifest, icons, service worker)
+        run: npm run test:pwa
+
       - name: Test the security drift monitor (offline mock)
         run: npm run test:drift
 

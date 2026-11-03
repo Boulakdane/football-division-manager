@@ -85,7 +85,7 @@
 | 5 | SQL standings and player-stat views | One definition of truth; reusable by API/widgets | M | High |
 | 6 | Per-season player stats + registrations | Fixes transfers and makes stats meaningful per season | L | High |
 | 7 | Supabase Realtime live match mode | Live scores without polling; a genuinely modern UX | M | High |
-| 8 | PWA read-only offline cache | Works on poor connections at the pitch | M | Medium |
+| 8 | PWA shell cache (installable app shipped) | Works on poor connections at the pitch | M | Medium |
 | 9 | Typed data layer (JSDoc/TypeScript + generated types) | Catches schema drift and refactor errors | M | High |
 | 10 | Versioned migrations + pgTAP RLS tests | Makes schema changes reviewable and safe | M | High |
 | 11 | Playwright + axe + Lighthouse CI | Prevents regressions in auth, RLS, accessibility and performance | M | High |
@@ -152,7 +152,8 @@ Effort: S = days, M = 1–3 weeks, L = 3–6 weeks.
 - Supabase Realtime for live scores and event timelines.
 - Live match mode: clock, period, score, event feed, admin presence.
 - Optimistic UI for score/event updates with rollback on error.
-- PWA: installable, offline read-only cache of the last league snapshot.
+- ✅ PWA: installable from the browser, shell cached offline (`manifest.webmanifest`, `sw.js`).
+- PWA: cache the last successful league snapshot for read-only offline viewing.
 - Share cards: generate an OG image for a match/result (serverless or static template).
 - Deep links: `#/match/:id`, `#/team/:id`, `#/season/:id`.
 - Command palette and keyboard shortcuts for admins.
@@ -328,12 +329,21 @@ Use ES modules and a single `<script type="module" src="js/app.js">` if browser 
 
 ## 10. PWA and offline
 
-- Cache the app shell and the last successful league snapshot.
+- ✅ Install prompt, app icons and a standalone window: `manifest.webmanifest`, 192/512
+  plus a maskable icon (`npm run build:icons`), a **Download app** button in the header
+  and footer, and an iOS “Add to Home Screen” hint where the prompt cannot exist.
+- ✅ Cache the app shell (`sw.js`, network-first, same-origin only) so an installed app
+  still opens at the pitch with no signal.
+- ✅ Clear “could not load” banner when the league snapshot is unreachable, instead of an
+  empty table that looks like real standings.
+- Cache the last successful league snapshot for read-only offline viewing.
 - Read-only offline mode by default.
 - Admin drafts can be queued with idempotency keys, but never auto-apply destructive actions offline.
 - Show a clear offline banner and a “sync pending” indicator.
-- Add an install prompt and app icons.
-- Never cache authenticated API responses in a shared cache.
+- ✅ Never cache authenticated API responses in a shared cache: the worker ignores every
+  cross-origin request, so Supabase Auth/REST traffic is never stored.
+- `npm run test:pwa` checks the manifest, the real icon pixels, the shell list and the
+  translations; `tests/e2e/pwa.spec.js` installs, replays the prompt and reloads offline.
 
 ## 11. Security and operations
 

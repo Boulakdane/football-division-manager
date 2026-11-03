@@ -403,7 +403,12 @@ const CLICK_ACTIONS = {
   'clear-search': () => clearPlayerSearch(),
   'export-calendar': () => exportVisibleCalendar(),
   'export-team-calendar': el => exportTeamCalendar(el.dataset.team),
-  'copy-link': () => copyViewLink()
+  'copy-link': () => copyViewLink(),
+
+  // js/pwa.js owns the install prompt; it loads after this file, so look it up at call time.
+  'install-app': () => {
+    if (typeof installApp === 'function') installApp();
+  }
 };
 
 const CHANGE_ACTIONS = {
