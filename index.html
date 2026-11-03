@@ -16,6 +16,11 @@
   <meta property="og:url" content="https://boulakdane.github.io/football-division-manager/">
   <meta name="twitter:card" content="summary">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mzab League">
   <title>Mzab League — League Manager</title>
 
   <!-- Fonts: Inter (EN/FR) + Cairo (AR), self-hosted variable woff2 -->
@@ -95,6 +100,13 @@
 
         <!-- Right Side Actions & Language Switcher -->
         <div class="flex items-center space-x-1.5 sm:space-x-2 rtl:space-x-reverse ms-auto shrink-0">
+          <!-- Installable app (PWA) -->
+          <button id="btn-install-app" data-action="install-app" data-i18n-title="installApp"
+                  class="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition"
+                  aria-label="Download app" title="Download app">
+            <i data-lucide="monitor-down" class="w-4 h-4"></i>
+          </button>
+
           <!-- Language Selector -->
           <select id="language-select" data-change="language" aria-label="Language"
                   class="lang-select bg-slate-800 text-slate-200 border border-slate-700 text-xs rounded-lg px-2 sm:px-2.5 py-1.5 focus:outline-none focus:border-pitch-500 cursor-pointer">
@@ -411,6 +423,10 @@
     <div class="max-w-7xl mx-auto px-4 text-center sm:flex sm:justify-between sm:items-center text-xs text-slate-400">
       <p data-i18n="footerText">© Mzab League — Zero-server architecture, 100% free hosting on GitHub Pages</p>
       <div class="mt-2 sm:mt-0 flex justify-center space-x-4 rtl:space-x-reverse">
+        <button data-action="install-app" class="hover:text-slate-300 transition flex items-center gap-1">
+          <i data-lucide="monitor-down" class="w-3.5 h-3.5"></i>
+          <span data-i18n="installApp">Download app</span>
+        </button>
         <button data-action="reset-data" class="admin-only hover:text-slate-300 transition" data-i18n="btnReset">Reset Sample Data</button>
       </div>
     </div>
@@ -1360,5 +1376,6 @@
   <!-- Domain helpers as ES modules; deferred, and app.js only calls them after DOMContentLoaded. -->
   <script type="module" src="js/domain/index.js?v=3.11.0"></script>
   <script src="js/app.js?v=3.11.0" defer></script>
+  <script src="js/pwa.js?v=3.11.0" defer></script>
 </body>
 </html>

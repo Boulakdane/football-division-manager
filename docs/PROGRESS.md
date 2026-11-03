@@ -1,6 +1,6 @@
 # KickOff Division — Progress Update
 
-- **Last updated:** 2026-10-28
+- **Last updated:** 2026-11-03
 - **Working-tree version:** `v3.11.0`
 - **Deployed version:** `v3.11.0`; `prod` tag moves with each verified release; integrity, audit-log, soft-delete, MFA, data-quality, squad-import, scheduled-event, derive-totals, drop-stored-totals, scorer-role, divisions, anon-write-revoke, bilingual-names/licence, team-icons and merge-import migrations applied in development and production
 - **Live site:** <https://boulakdane.github.io/football-division-manager/>
@@ -35,6 +35,7 @@
 | Admin two-factor (MFA) | ✅ Enrolled and required in production; development off | TOTP enrolment/step-up in the UI; `is_admin()` requires `aal2` once enabled; production `admin_mfa_required()` returns `true`, development stays `false` for disposable tests |
 | Account recovery, sign-out everywhere and idle logout | ✅ Done in `v3.10.1` | Generic reset request, recovery-link password change, global sign-out after reset or from the admin menu, 30-minute app-level idle logout, EN/FR/AR copy |
 | UX polish and shareability | ✅ Done in `v3.6.0` | Shareable filter URLs, clear filters, guided empty states, match timeline, keyboard/focus handling, Lighthouse 100/100/100 |
+| Installable app (PWA) | ✅ Done, with static and browser checks in CI | `manifest.webmanifest`, 192/512 + maskable icons, a **Download app** button in the header and footer (EN/FR/AR), and a service worker that caches only the same-origin app shell; live data still needs a connection |
 | Production migration | ✅ Applied in development and production | `integrity-migration.sql` is live in both projects; `PLAYERS_ARCHIVE_READY` is true |
 | Realistic-scale import rehearsal | ✅ Done in development (2026-10-24) | 20 teams / 500 players / 200 matches / 2,043 events imported through the UI, exported, validated and restored to the exact original hash; production untouched |
 | Real league data | ⛔ Not started | Waiting for real teams, players, seasons and fixtures |
@@ -89,6 +90,10 @@ Local CSV / JSON tools
 - Compiled Tailwind CSS committed to the repository; no Play CDN in production.
 - Responsive dark theme with English, French and Arabic (RTL) support.
 - Favicon, theme colour, Open Graph metadata and deferred CDN assets.
+- Installable app: web app manifest, generated maskable/apple icons, a service worker that
+  caches the app shell network-first and a **Download app** action in the header and footer.
+  Chrome/Edge install a standalone window; Safari/Firefox get "Add to Home Screen" or
+  browser-menu instructions instead of a dead button.
 
 ### League management
 
@@ -157,6 +162,7 @@ Local CSV / JSON tools
 | SRI load test | Lucide loaded with an integrity check; the Supabase client is served from `vendor/` |
 | Inline-handler XSS test | Malicious ID rendered as a string literal; no execution |
 | `npm run check:secrets` | No privileged secrets found |
+| PWA checks (`npm run test:pwa`, `tests/e2e/pwa.spec.js`) | Manifest served as `application/manifest+json`; icon pixels match the declared sizes; every shell file exists and covers all scripts, styles and fonts; install prompt replayed from the button; no-prompt browsers get the install hint; offline reload shows the shell plus the "could not load" banner; the shell cache holds no cross-origin entry |
 | Production deploy | `v3.5.1` live; version badge and all asset URLs updated; production reads 1 season / 6 teams / 9 players / 9 matches / 1 event; 6 standings rows, 9 fixtures and 6 team cards render; no console warnings/errors; `PLAYERS_ARCHIVE_READY=true` after the integrity migration |
 | Development integrity migration (live) | `PLAYERS_ARCHIVE_READY = true`; direct `teams`/`matches` deletes and `match_events` writes rejected with `42501`; archive/restore keeps the event history; `save_match` rolled back an invalid event; `delete_team` reversed opponent totals (1 goal / 1 yellow → 0 / 0); archived-season writes rejected; anonymous writes and RPCs returned `401`; sample data restored to 1/6/9/9/0 |
 | Production integrity migration (live) | `players.is_active` and `matches.events_counted` present; public reads 1/6/9/9/1; 6 standings rows, 9 fixtures, 6 team cards, no migration notice; anonymous insert and every admin RPC returned `401` / `42501`; live hash identical to the pre-migration backup |

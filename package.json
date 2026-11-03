@@ -7,6 +7,8 @@
     "serve": "node tools/serve.js",
     "build:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --minify",
     "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch",
+    "build:icons": "node tools/make-app-icons.js",
+    "test:pwa": "node tools/test-pwa.js",
     "test:sql": "node tools/test-sql-integrity.js",
     "test:add-players": "node tools/test-add-players.js",
     "test:derived-stats": "node tools/test-derived-stats.js",

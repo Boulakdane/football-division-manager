@@ -392,6 +392,10 @@ const I18N = {
     squadChooseFile: "Choose file",
     squadTemplate: "Download template (CSV)",
     squadExample: "Download filled example (Excel)",
+    installApp: "Download app",
+    installAppHint: "Open your browser menu and choose “Install app” (Chrome/Edge) or “Add to Home screen” (Safari).",
+    installAppIos: "On iPhone or iPad, tap Share, then “Add to Home Screen”.",
+    installAppDone: "App installed. Open it from your desktop or home screen.",
     squadReading: "Reading the file…",
     squadThLine: "Row",
     squadThName: "Name",
@@ -921,6 +925,10 @@ const I18N = {
     squadChooseFile: "Choisir un fichier",
     squadTemplate: "Télécharger le modèle (CSV)",
     squadExample: "Télécharger un exemple rempli (Excel)",
+    installApp: "Télécharger l'application",
+    installAppHint: "Ouvrez le menu du navigateur et choisissez « Installer l'application » (Chrome/Edge) ou « Ajouter à l'écran d'accueil » (Safari).",
+    installAppIos: "Sur iPhone ou iPad, touchez Partager, puis « Sur l'écran d'accueil ».",
+    installAppDone: "Application installée. Ouvrez-la depuis le bureau ou l'écran d'accueil.",
     squadReading: "Lecture du fichier…",
     squadThLine: "Ligne",
     squadThName: "Nom",
@@ -1449,6 +1457,10 @@ const I18N = {
     squadChooseFile: "اختيار ملف",
     squadTemplate: "تنزيل القالب (CSV)",
     squadExample: "تنزيل مثال معبأ (Excel)",
+    installApp: "تنزيل التطبيق",
+    installAppHint: "افتح قائمة المتصفح واختر «تثبيت التطبيق» (Chrome/Edge) أو «إضافة إلى الشاشة الرئيسية» (Safari).",
+    installAppIos: "على iPhone أو iPad اضغط «مشاركة» ثم «إضافة إلى الشاشة الرئيسية».",
+    installAppDone: "تم تثبيت التطبيق. افتحه من سطح المكتب أو الشاشة الرئيسية.",
     squadReading: "جارٍ قراءة الملف…",
     squadThLine: "الصف",
     squadThName: "الاسم",
@@ -1637,8 +1649,15 @@ function applyLanguage() {
     el.setAttribute('placeholder', t(el.getAttribute('data-i18n-ph')));
   });
 
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const label = t(el.getAttribute('data-i18n-title'));
+    el.setAttribute('title', label);
+    el.setAttribute('aria-label', label);
+  });
+
   // Keep every language switcher (header + login screen) in sync
   document.querySelectorAll('.lang-select').forEach(select => {
     select.value = currentLang;
   });
 }
+

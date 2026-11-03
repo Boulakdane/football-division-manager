@@ -47,6 +47,10 @@
   حاجة إلى مستضيف ملفات: يظهر الشعار في الترتيب والمباريات والهدافين والإدخال المباشر
   والتشكيلات، وينتقل مع نسخة JSON/CSV، وتبقى للأندية التي لا شعار لها علامتها الملوّنة.
 - **واجهة بثلاث لغات** — الإنجليزية والفرنسية والعربية، مع اتجاه RTL تلقائي للعربية.
+- **تطبيق قابل للتثبيت** — ثبّت التطبيق من المتصفح على الحاسوب أو الهاتف
+  (Chrome/Edge: «تثبيت التطبيق»؛ iPhone/iPad: مشاركة ← «إضافة إلى الشاشة الرئيسية»)
+  ليفتح في نافذة مستقلة بأيقونته الخاصة. تُخزَّن واجهة التطبيق للعمل دون اتصال، أما
+  نتائج الدوري الحقيقية فتحتاج اتصالًا ويظهر شريط تنبيه عندما يفشل التحميل.
 - **حسابات وأدوار حقيقية** — Supabase Auth بالبريد الإلكتروني وكلمة المرور. يتصفّح
   المتفرجون دون حساب؛ ولا يضيف أو يعدّل أو يحذف إلا المستخدمون ذوو دور `admin`.
 - **صلاحيات تفرضها قاعدة البيانات** — يمنع PostgreSQL عبر Row Level Security أي كتابة
@@ -205,6 +209,20 @@ node tools/backup-to-csv.js backups/kickoff-backup-YYYY-MM-DD.json data --force
   البرمجة الآلية والمشرف بالتوازي؛ والقواعد المشتركة في [AGENTS.md](AGENTS.md).
 - [سياسة الأمان](SECURITY.md) — كيف تبلّغ عن ثغرة بشكل خاص.
 
+### تثبيت التطبيق على جهازك
+
+- **Chrome أو Edge على الحاسوب** — افتح الموقع، ثم اضغط زر **تنزيل التطبيق** في الأعلى
+  (أو أيقونة التثبيت في شريط العنوان) واختر **تثبيت**. تصبح للتطبيق أيقونة في قائمة
+  ابدأ أو Launchpad، ويفتح في نافذة مستقلة بلا شريط عنوان.
+- **Chrome على Android** — من قائمة المتصفح اختر **تثبيت التطبيق** أو **إضافة إلى
+  الشاشة الرئيسية**.
+- **iPhone وiPad (Safari)** — اضغط **مشاركة** ثم **إضافة إلى الشاشة الرئيسية**.
+- **Firefox** — لا يعرض دعوة التثبيت؛ استخدم قائمة المتصفح، أو Chrome/Edge لتطبيق سطح
+  مكتب كامل.
+
+بعد التثبيت تُفتح الواجهة (الصفحات والأنماط والخطوط) دون اتصال، أما بيانات الدوري
+الحقيقية فتُقرأ من قاعدة البيانات وتحتاج الإنترنت.
+
 ### التثبيت التقني
 
 إنشاء مشروع Supabase وتشغيل [`supabase/schema.sql`](supabase/schema.sql) وملفات
@@ -266,6 +284,12 @@ gratuit.
   sauvegarde JSON/CSV, et les clubs sans écusson gardent leur repère coloré.
 - **Interface trilingue** — anglais, français et arabe, avec passage automatique en RTL
   pour l'arabe.
+- **Application installable** — installez l'application depuis le navigateur, sur
+  ordinateur ou téléphone (Chrome/Edge : « Installer l'application » ; iPhone/iPad :
+  Partager → « Sur l'écran d'accueil »). Elle s'ouvre dans sa propre fenêtre avec son
+  icône. L'interface est mise en cache pour fonctionner hors ligne ; les vraies données
+  du championnat demandent une connexion, et un bandeau le signale si le chargement
+  échoue.
 - **Comptes et rôles réels** — Supabase Auth avec e-mail et mot de passe. Les spectateurs
   consultent sans compte ; seuls les utilisateurs avec le rôle `admin` peuvent ajouter,
   modifier ou supprimer.
@@ -446,6 +470,21 @@ Ces documents sont en anglais car ils s'adressent aux développeurs :
 - [Guide de coordination](docs/COORDINATION.md) et [tableau des tâches](docs/TASKS.md).
 - [Politique de sécurité](SECURITY.md) — comment signaler une faille en privé.
 
+### Installer l'application sur votre appareil
+
+- **Chrome ou Edge sur ordinateur** — ouvrez le site, cliquez sur **Télécharger
+  l'application** en haut (ou sur l'icône d'installation de la barre d'adresse) puis sur
+  **Installer**. L'application obtient une icône dans le menu Démarrer ou le Launchpad et
+  s'ouvre dans sa propre fenêtre, sans barre d'adresse.
+- **Chrome sur Android** — menu du navigateur → **Installer l'application** (ou
+  **Ajouter à l'écran d'accueil**).
+- **iPhone et iPad (Safari)** — **Partager** → **Sur l'écran d'accueil**.
+- **Firefox** — n'affiche pas d'invite d'installation ; utilisez le menu du navigateur,
+  ou Chrome/Edge pour une véritable application de bureau.
+
+Une fois installée, l'interface (pages, styles, polices) s'ouvre sans connexion ; les
+données réelles du championnat sont lues dans la base et demandent Internet.
+
 ### Installation technique
 
 Création du projet Supabase, exécution de [`supabase/schema.sql`](supabase/schema.sql) et
@@ -498,6 +537,10 @@ accounts live in a free [Supabase](https://supabase.com) project.
   top scorers, live entry and squads, travels with the JSON/CSV backup, and clubs
   without one keep the coloured marker.
 - **Trilingual UI** — English, French and Arabic, with automatic RTL layout for Arabic.
+- **Installable app** — install it from the browser on desktop or phone (Chrome/Edge:
+  "Install app"; iPhone/iPad: Share → "Add to Home Screen") to run it in its own window
+  with its own icon. The app shell is cached for offline use; real league data still
+  needs a connection, and a banner says so when loading fails.
 - **Real accounts & roles** — Supabase Auth with email + password. Spectators browse
   without an account; only users with the `admin` role can add, edit or delete.
 - **Database-enforced permissions** — Postgres Row Level Security blocks writes from
@@ -1119,6 +1162,19 @@ import it into the matching team.
 The database re-checks every row, so a hand-edited file cannot bypass validation. If
 the app says the migration is missing, run
 [`supabase/add-players-migration.sql`](supabase/add-players-migration.sql) first.
+
+### Install the app on your device
+
+- **Chrome or Edge on desktop** — open the site, click **Download app** in the header
+  (or the install icon in the address bar), then **Install**. The app gets its own icon
+  in the Start menu or Launchpad and opens in its own window without browser chrome.
+- **Chrome on Android** — browser menu → **Install app** (or **Add to Home screen**).
+- **iPhone and iPad (Safari)** — **Share** → **Add to Home Screen**.
+- **Firefox** — shows no install prompt; use the browser menu, or Chrome/Edge for a full
+  desktop app.
+
+Once installed, the interface (pages, styles, fonts) opens without a connection; real
+league data is read from the database and needs the internet.
 
 ### Deploy to GitHub Pages (free)
 
