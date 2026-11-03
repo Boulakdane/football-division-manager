@@ -60,6 +60,8 @@ admin-only write. English, French and Arabic (RTL). See `README.md` and `docs/`.
 | JS syntax | `for f in js/*.js tools/*.js; do node --check "$f"; done` |
 | SQL / RLS tests (PGlite) | `npm run test:sql` |
 | Browser smoke test | `npm run test:e2e` |
+| Installable-app checks (manifest, icons, service worker) | `npm run test:pwa` |
+| Regenerate the app icons | `npm run build:icons` |
 | Rebuild CSS | `npm run build:css` |
 | Backup validation / restore drill | `npm run check:backup -- file.json` / `npm run drill:backup -- file.json` |
 | See what other agents are doing | `npm run agents:status` |
