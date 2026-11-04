@@ -500,7 +500,7 @@ the updated migration was re-applied to both projects and re-verified in develop
 - Add a security regression suite: XSS payloads, CSV formulas, RLS matrix, CSP checks.
 - Add a private vulnerability disclosure workflow and a release security checklist.
 - ✅ Pin GitHub Actions to commit SHAs (`npm run check:actions` fails on a mutable tag; Dependabot keeps the pins current).
-- ✅ Run dependency review on every pull request (`.github/workflows/dependency-review.yml` fails on high/critical vulnerabilities across runtime and development scopes).
+- ✅ Run a dependency vulnerability review on every pull request (`.github/workflows/dependency-review.yml` runs `npm audit --audit-level=high` across runtime and development dependencies; Dependency graph is not enabled on this repository, so the GitHub dependency-review action is not used).
 - Add a staging project for release candidates; never test destructive migrations on production first.
 
 ## 7. Verification checklist
