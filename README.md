@@ -46,7 +46,7 @@
   ويعيد ترميزه (مما يزيل بيانات EXIF)، ويُحفظ فقط كـ data URL بصيغة PNG/JPEG/WebP، فلا
   حاجة إلى مستضيف ملفات: يظهر الشعار في الترتيب والمباريات والهدافين والإدخال المباشر
   والتشكيلات، وينتقل مع نسخة JSON/CSV، وتبقى للأندية التي لا شعار لها علامتها الملوّنة.
-- **واجهة بثلاث لغات** — الإنجليزية والفرنسية والعربية، مع اتجاه RTL تلقائي للعربية.
+- **واجهة بثلاث لغات** — العربية هي اللغة الافتراضية، مع الإنجليزية والفرنسية واتجاه RTL تلقائي للعربية.
 - **تطبيق قابل للتثبيت** — ثبّت التطبيق من المتصفح على الحاسوب أو الهاتف
   (Chrome/Edge: «تثبيت التطبيق»؛ iPhone/iPad: مشاركة ← «إضافة إلى الشاشة الرئيسية»)
   ليفتح في نافذة مستقلة بأيقونته الخاصة. تُخزَّن واجهة التطبيق للعمل دون اتصال، أما
@@ -282,8 +282,8 @@ gratuit.
   enregistrée, donc aucun hébergeur de fichiers n'intervient. L'écusson apparaît dans le
   classement, le calendrier, les buteurs, la saisie en direct et les effectifs, suit la
   sauvegarde JSON/CSV, et les clubs sans écusson gardent leur repère coloré.
-- **Interface trilingue** — anglais, français et arabe, avec passage automatique en RTL
-  pour l'arabe.
+- **Interface trilingue** — l'arabe est la langue par défaut, avec l'anglais et le
+  français, et passage automatique en RTL pour l'arabe.
 - **Application installable** — installez l'application depuis le navigateur, sur
   ordinateur ou téléphone (Chrome/Edge : « Installer l'application » ; iPhone/iPad :
   Partager → « Sur l'écran d'accueil »). Elle s'ouvre dans sa propre fenêtre avec son
@@ -536,7 +536,8 @@ accounts live in a free [Supabase](https://supabase.com) project.
   is saved, so no file host is involved: the crest shows in the standings, fixtures,
   top scorers, live entry and squads, travels with the JSON/CSV backup, and clubs
   without one keep the coloured marker.
-- **Trilingual UI** — English, French and Arabic, with automatic RTL layout for Arabic.
+- **Trilingual UI** — Arabic is the default language, with English and French available,
+  and automatic RTL layout for Arabic.
 - **Installable app** — install it from the browser on desktop or phone (Chrome/Edge:
   "Install app"; iPhone/iPad: Share → "Add to Home Screen") to run it in its own window
   with its own icon. The app shell is cached for offline use; real league data still

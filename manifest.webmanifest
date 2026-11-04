@@ -9,8 +9,8 @@
   "orientation": "any",
   "background_color": "#0f172a",
   "theme_color": "#020617",
-  "lang": "en",
-  "dir": "ltr",
+  "lang": "ar",
+  "dir": "rtl",
   "categories": ["sports", "productivity"],
   "icons": [
     {

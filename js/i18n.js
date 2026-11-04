@@ -1605,7 +1605,7 @@ const I18N = {
   }
 };
 
-let currentLang = localStorage.getItem('kickoff_lang') || 'en';
+let currentLang = localStorage.getItem('kickoff_lang') || 'ar';
 
 /** Translate a key for the active language (falls back to English). */
 function t(key) {

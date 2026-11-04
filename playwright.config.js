@@ -18,6 +18,18 @@ module.exports = defineConfig({
   outputDir: 'test-results',
   use: {
     baseURL: 'http://127.0.0.1:8765',
+    // Existing specs assert English copy. Seed a stored English choice so the
+    // Arabic first-visit default does not change their expectations; the
+    // language spec clears it to exercise the real default.
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: 'http://127.0.0.1:8765',
+          localStorage: [{ name: 'kickoff_lang', value: 'en' }]
+        }
+      ]
+    },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure'
