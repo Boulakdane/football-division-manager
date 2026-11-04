@@ -5,6 +5,7 @@
 | [../README.md](../README.md) | Project overview, features, setup and deployment — Arabic, French, English |
 | [PROGRESS.md](PROGRESS.md) | Current release status, completed work, blockers and release checklist |
 | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Threat model, findings, remediation plan and verification steps |
+| [PRIVACY.md](PRIVACY.md) | What is public, what is admin-only, retention, and correction/removal |
 | [MODERNIZATION_PLAN.md](MODERNIZATION_PLAN.md) | Phased roadmap and sophisticated technical/product changes |
 | [DATABASE_REVIEW_BRIEF.md](DATABASE_REVIEW_BRIEF.md) | Self-contained prompt for an independent database/hosting review |
 | [COORDINATION.md](COORDINATION.md) | How Claude, opencode and the maintainer share the repository without conflicts |
