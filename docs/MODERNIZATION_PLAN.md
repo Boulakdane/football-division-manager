@@ -521,6 +521,7 @@ This is a larger change; do it only when a second competition is a real requirem
 | 2026-10-20 | Add security work before flashy features | Admin role can erase the league |
 | 2026-10-24 | Remove the non-atomic import fallback; revoke `anon` EXECUTE on season RPCs | A failed fallback could half-delete the league; defence in depth for admin RPCs |
 | 2026-11-04 | Make Arabic the default UI language for first-time visitors | The league is local and Arabic-first; the switcher still persists EN/FR/AR per device |
+| 2026-11-04 | Run dependency review on every pull request | Blocks high/critical vulnerable dependency changes before merge; complements pinned GitHub Actions |
 | 2026-10-24 | Add reviewer proposals (section 22) | Independent code and security review; see section 22 for priorities |
 
 ## 22. Reviewer proposals (2026-10-24)

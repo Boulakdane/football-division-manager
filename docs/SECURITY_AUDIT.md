@@ -499,7 +499,8 @@ the updated migration was re-applied to both projects and re-verified in develop
 - Add idempotency keys for imports and destructive actions.
 - Add a security regression suite: XSS payloads, CSV formulas, RLS matrix, CSP checks.
 - Add a private vulnerability disclosure workflow and a release security checklist.
-- Add dependency review and pinned GitHub Actions by SHA.
+- ✅ Pin GitHub Actions to commit SHAs (`npm run check:actions` fails on a mutable tag; Dependabot keeps the pins current).
+- ✅ Run dependency review on every pull request (`.github/workflows/dependency-review.yml` fails on high/critical vulnerabilities across runtime and development scopes).
 - Add a staging project for release candidates; never test destructive migrations on production first.
 
 ## 7. Verification checklist
