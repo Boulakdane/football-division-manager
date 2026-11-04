@@ -511,6 +511,9 @@ Run these before every production release:
 # 1. No privileged secrets in source
 npm.cmd run check:secrets
 
+# 1a. Every GitHub Action is pinned to a commit SHA
+npm.cmd run check:actions
+
 # 2. Dependency audit
 npm.cmd audit --omit=dev
 
