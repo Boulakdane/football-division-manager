@@ -133,7 +133,7 @@ function closeModal(id) {
 }
 
 function closeAllModals() {
-  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-season-rename', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad', 'modal-live', 'modal-users', 'modal-import', 'modal-generate', 'modal-shift'].forEach(id => closeModal(id));
+  ['modal-match', 'modal-team', 'modal-player', 'modal-season', 'modal-season-rename', 'modal-password', 'modal-reset', 'modal-logout-all', 'modal-login', 'modal-audit', 'modal-trash', 'modal-mfa', 'modal-squad', 'modal-live', 'modal-users', 'modal-import', 'modal-generate', 'modal-shift', 'modal-privacy'].forEach(id => closeModal(id));
 }
 
 /** Escape closes the topmost open dialog; Tab stays inside it. */
@@ -422,7 +422,8 @@ const CLICK_ACTIONS = {
   // js/pwa.js owns the install prompt; it loads after this file, so look it up at call time.
   'install-app': () => {
     if (typeof installApp === 'function') installApp();
-  }
+  },
+  'open-privacy': () => openModal('modal-privacy')
 };
 
 const CHANGE_ACTIONS = {

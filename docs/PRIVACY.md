@@ -93,8 +93,9 @@ with the league. The target response time is 30 days.
 - **A public issue is not a private channel.** Do not put names, birth dates, licence numbers or
   contact details in a GitHub issue. Use the league's private contact address.
 
-A dedicated in-app "Privacy" link and a published contact address are follow-ups; until they exist,
-the league's usual communication channel is the contact point.
+The footer's **Privacy** link opens an in-app summary in English, French and Arabic and links to
+this full policy. A published contact address is still a follow-up; until it exists, the league's
+usual communication channel is the contact point.
 
 ## 7. Youth and school leagues
 

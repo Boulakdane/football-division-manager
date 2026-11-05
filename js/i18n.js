@@ -539,7 +539,13 @@ const I18N = {
     calendarSkipped: "Fixtures without a date were skipped.",
     btnSubscribe: "Subscribe",
     btnSubscribeTeam: "Subscribe to {team} fixtures",
-    calendarFeedCopied: "Calendar feed link copied. Paste it into your calendar app."
+    calendarFeedCopied: "Calendar feed link copied. Paste it into your calendar app.",
+    privacyLink: "Privacy",
+    privacyTitle: "Privacy & data",
+    privacyPublic: "The league publishes club names, player names (Arabic optional), shirt numbers, positions, fixtures, results, goals and cards. Birth dates, licence numbers, e-mail addresses and photos are never public.",
+    privacyStorage: "This app sets no advertising or analytics cookies and loads no third-party script. Your browser only stores the chosen language and, for an admin or scorer, the sign-in session.",
+    privacyRequests: "To correct or remove a player, contact the league maintainer through the league's published contact address. A player with match history is anonymised, not deleted, so results stay correct.",
+    privacyFullPolicy: "Read the full privacy and retention policy"
   },
   fr: {
     appTitle: "BSGST",
@@ -1075,7 +1081,13 @@ const I18N = {
     calendarSkipped: "Les matchs sans date ont été ignorés.",
     btnSubscribe: "S'abonner",
     btnSubscribeTeam: "S'abonner aux matchs de {team}",
-    calendarFeedCopied: "Lien du flux calendrier copié. Collez-le dans votre application de calendrier."
+    calendarFeedCopied: "Lien du flux calendrier copié. Collez-le dans votre application de calendrier.",
+    privacyLink: "Confidentialité",
+    privacyTitle: "Confidentialité et données",
+    privacyPublic: "La ligue publie les noms des clubs, les noms des joueurs (arabe facultatif), les numéros, les postes, les matchs, les résultats, les buts et les cartons. Les dates de naissance, numéros de licence, adresses e-mail et photos ne sont jamais publics.",
+    privacyStorage: "Cette application n'utilise aucun cookie publicitaire ou de mesure d'audience et ne charge aucun script tiers. Le navigateur ne conserve que la langue choisie et, pour un administrateur ou un marqueur, la session de connexion.",
+    privacyRequests: "Pour corriger ou retirer un joueur, contactez le responsable de la ligue à l'adresse de contact publiée. Un joueur ayant un historique de matchs est anonymisé, pas supprimé, afin que les résultats restent exacts.",
+    privacyFullPolicy: "Lire la politique complète de confidentialité et de conservation"
   },
   ar: {
     appTitle: "مكتب الرياضيين القراريين للرياضه والعمل",
@@ -1610,7 +1622,13 @@ const I18N = {
     calendarSkipped: "تم تجاهل المباريات التي ليس لها تاريخ.",
     btnSubscribe: "اشترك",
     btnSubscribeTeam: "اشترك في مباريات {team}",
-    calendarFeedCopied: "تم نسخ رابط تقويم المباريات. الصقه في تطبيق التقويم."
+    calendarFeedCopied: "تم نسخ رابط تقويم المباريات. الصقه في تطبيق التقويم.",
+    privacyLink: "الخصوصية",
+    privacyTitle: "الخصوصية والبيانات",
+    privacyPublic: "ينشر الدوري أسماء الأندية وأسماء اللاعبين (الاسم العربي اختياري) وأرقام القمصان والمراكز والمباريات والنتائج والأهداف والبطاقات. تواريخ الميلاد وأرقام الرخص والبريد الإلكتروني والصور لا تكون علنية أبداً.",
+    privacyStorage: "لا يستخدم هذا التطبيق ملفات تعريف ارتباط إعلانية أو تحليلية ولا يحمّل أي سكربت من طرف ثالث. لا يحفظ المتصفح إلا اللغة المختارة، وللمشرف أو مسجل المباراة جلسة الدخول.",
+    privacyRequests: "لتصحيح بيانات لاعب أو حذفه، تواصل مع مسؤول الدوري عبر عنوان الاتصال المنشور. يتم إخفاء هوية اللاعب الذي له سجل مباريات بدلاً من حذفه حتى تبقى النتائج صحيحة.",
+    privacyFullPolicy: "اقرأ سياسة الخصوصية والاحتفاظ الكاملة"
   }
 };
 
