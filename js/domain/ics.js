@@ -16,7 +16,7 @@
 
 const CRLF = '\r\n';
 const MAX_OCTETS = 75;
-const PRODUCT_ID = '-//Mzab League//Mzab League//EN';
+const PRODUCT_ID = '-//BSGST//BSGST//EN';
 const DEFAULT_DURATION_MINUTES = 120;
 
 const encoder = new TextEncoder();

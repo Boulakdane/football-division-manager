@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Mzab League — lightweight, zero-server football league management for local divisions.">
+  <meta name="description" content="BSGST — lightweight, zero-server football league management for local divisions.">
   <meta name="theme-color" content="#020617">
   <meta name="color-scheme" content="dark">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <!-- Every asset is served from this origin; the only outbound calls are Supabase Auth/REST. -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <meta property="og:title" content="Mzab League — League Manager">
+  <meta property="og:title" content="BSGST — League Manager">
   <meta property="og:description" content="Standings, fixtures, results and squads for local football divisions. Free, fast and shareable.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://boulakdane.github.io/football-division-manager/">
@@ -20,24 +20,24 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Mzab League">
-  <title>Mzab League — League Manager</title>
+  <meta name="apple-mobile-web-app-title" content="BSGST">
+  <title>BSGST — League Manager</title>
 
   <!-- Fonts: Inter (EN/FR) + Cairo (AR), self-hosted variable woff2 -->
   <link rel="preload" href="fonts/inter-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/fonts.css?v=3.11.0">
+  <link rel="stylesheet" href="css/fonts.css?v=3.12.0">
 
   <!-- Tailwind CSS (compiled locally, no CDN dependency) -->
-  <link rel="stylesheet" href="css/tailwind.css?v=3.11.0">
+  <link rel="stylesheet" href="css/tailwind.css?v=3.12.0">
 
   <!-- Lucide icons (vendored UMD build, previously pinned with SRI on unpkg) -->
-  <script src="vendor/lucide-1.60.0.js?v=3.11.0" defer></script>
+  <script src="vendor/lucide-1.60.0.js?v=3.12.0" defer></script>
 
   <!-- Supabase JS client (vendored; auth must not depend on a CDN) -->
-  <script src="vendor/supabase-js-2.118.0.js?v=3.11.0" defer></script>
+  <script src="vendor/supabase-js-2.118.0.js?v=3.12.0" defer></script>
 
   <!-- App styles -->
-  <link rel="stylesheet" href="css/styles.css?v=3.11.0">
+  <link rel="stylesheet" href="css/styles.css?v=3.12.0">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200 antialiased">
 
@@ -75,8 +75,8 @@
           </div>
           <div class="min-w-0">
             <h1 class="text-base sm:text-lg font-bold tracking-tight text-white flex items-start sm:items-center gap-2 min-w-0">
-              <span class="leading-tight" data-i18n="appTitle">Mzab League</span>
-              <span class="hidden lg:inline-block shrink-0 text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.11.0</span>
+              <span class="leading-tight" data-i18n="appTitle">BSGST</span>
+              <span class="hidden lg:inline-block shrink-0 text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.12.0</span>
             </h1>
             <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Football League Management</p>
           </div>
@@ -425,7 +425,7 @@
   <!-- FOOTER -->
   <footer class="bg-slate-950 border-t border-slate-800/80 py-4 mt-auto">
     <div class="max-w-7xl mx-auto px-4 text-center sm:flex sm:justify-between sm:items-center text-xs text-slate-400">
-      <p data-i18n="footerText">© Mzab League — Zero-server architecture, 100% free hosting on GitHub Pages</p>
+      <p data-i18n="footerText">© BSGST — Zero-server architecture, 100% free hosting on GitHub Pages</p>
       <div class="mt-2 sm:mt-0 flex justify-center space-x-4 rtl:space-x-reverse">
         <button data-action="install-app" class="hover:text-slate-300 transition flex items-center gap-1">
           <i data-lucide="monitor-down" class="w-3.5 h-3.5"></i>
@@ -1370,16 +1370,16 @@
   </div>
 
   <!-- Application scripts (deferred, loaded in dependency order) -->
-  <script src="js/i18n.js?v=3.11.0" defer></script>
-  <script src="js/store.js?v=3.11.0" defer></script>
-  <script src="js/config.js?v=3.11.0" defer></script>
-  <script src="js/backend.js?v=3.11.0" defer></script>
-  <script src="js/auth.js?v=3.11.0" defer></script>
-  <script src="js/mfa.js?v=3.11.0" defer></script>
-  <script src="js/squad-import.js?v=3.11.0" defer></script>
+  <script src="js/i18n.js?v=3.12.0" defer></script>
+  <script src="js/store.js?v=3.12.0" defer></script>
+  <script src="js/config.js?v=3.12.0" defer></script>
+  <script src="js/backend.js?v=3.12.0" defer></script>
+  <script src="js/auth.js?v=3.12.0" defer></script>
+  <script src="js/mfa.js?v=3.12.0" defer></script>
+  <script src="js/squad-import.js?v=3.12.0" defer></script>
   <!-- Domain helpers as ES modules; deferred, and app.js only calls them after DOMContentLoaded. -->
-  <script type="module" src="js/domain/index.js?v=3.11.0"></script>
-  <script src="js/app.js?v=3.11.0" defer></script>
-  <script src="js/pwa.js?v=3.11.0" defer></script>
+  <script type="module" src="js/domain/index.js?v=3.12.0"></script>
+  <script src="js/app.js?v=3.12.0" defer></script>
+  <script src="js/pwa.js?v=3.12.0" defer></script>
 </body>
 </html>

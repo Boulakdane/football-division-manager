@@ -1,4 +1,4 @@
-# ⚽ Mzab League
+# ⚽ BSGST
 
 [العربية](#العربية) · [Français](#français) · [English](#english)
 

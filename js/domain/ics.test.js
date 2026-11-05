@@ -33,13 +33,13 @@ test('every line ends with CRLF and the file ends with one', () => {
 });
 
 test('the header carries the product id and the calendar name', () => {
-  const { text } = buildCalendar({ name: 'Mzab League — Division 1', description: 'Fixtures', events: [], now: NOW });
+  const { text } = buildCalendar({ name: 'BSGST — Division 1', description: 'Fixtures', events: [], now: NOW });
   const lines = physicalLines(text);
   assert.ok(lines.includes('VERSION:2.0'));
-  assert.ok(lines.includes('PRODID:-//Mzab League//Mzab League//EN'));
+  assert.ok(lines.includes('PRODID:-//BSGST//BSGST//EN'));
   assert.ok(lines.includes('CALSCALE:GREGORIAN'));
   assert.ok(lines.includes('METHOD:PUBLISH'));
-  assert.ok(lines.includes('X-WR-CALNAME:Mzab League — Division 1'));
+  assert.ok(lines.includes('X-WR-CALNAME:BSGST — Division 1'));
   assert.ok(lines.includes('X-WR-CALDESC:Fixtures'));
   assert.equal(text.includes('BEGIN:VEVENT'), false);
 });

@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   Mzab League — application logic
+   BSGST — application logic
    Rendering, navigation, standings calculation, modals, CRUD and
    JSON import/export. Depends on js/i18n.js and js/store.js.
    --------------------------------------------------------------- */
@@ -3009,7 +3009,7 @@ function renderAuditLog() {
       list.innerHTML = entries.map(renderAuditEntry).join('');
     })
     .catch(error => {
-      console.error('Mzab League: could not load the activity log.', error);
+      console.error('BSGST: could not load the activity log.', error);
       list.innerHTML = `<p class="py-6 text-center text-rose-400">${esc(t('auditError'))}</p>`;
     });
 }
@@ -3075,7 +3075,7 @@ function openUsersModal() {
       renderUsersModal();
     })
     .catch(err => {
-      console.error('Mzab League: could not load users.', err);
+      console.error('BSGST: could not load users.', err);
       usersModalState = { loading: false, users: [], error: 'usersLoadFailed', matchId: '', draft: new Set() };
       renderUsersModal();
     });
@@ -3180,7 +3180,7 @@ async function changeUserRole(userId, role) {
     renderUsersModal();
     showToast(t('usersRoleSaved'));
   } catch (err) {
-    console.error('Mzab League: could not change the role.', err);
+    console.error('BSGST: could not change the role.', err);
     alert(t('alertRoleFailed'));
     renderUsersModal();
   }
@@ -3198,7 +3198,7 @@ async function saveOfficials() {
     renderUsersModal();
     showToast(t('usersOfficialsSaved'));
   } catch (err) {
-    console.error('Mzab League: could not save the officials.', err);
+    console.error('BSGST: could not save the officials.', err);
     alert(t('alertOfficialsFailed'));
   }
 }
@@ -3302,7 +3302,7 @@ function renderTrash() {
       list.innerHTML = sections.join('');
     })
     .catch(error => {
-      console.error('Mzab League: could not load the deleted items.', error);
+      console.error('BSGST: could not load the deleted items.', error);
       list.innerHTML = `<p class="py-6 text-center text-rose-400">${esc(t('trashError'))}</p>`;
     });
 }
@@ -4340,7 +4340,7 @@ function previewGeneratedFixtures(event) {
   try {
     plan = domain.generateFixtures(options);
   } catch (error) {
-    console.error('Mzab League: could not build the fixture plan.', error);
+    console.error('BSGST: could not build the fixture plan.', error);
     fixturePlanState.plan = null;
     fixturePlanState.skipped = 0;
     setGenerateError(t('generateInvalid'));
@@ -4397,7 +4397,7 @@ async function saveGeneratedFixtures() {
     showToast(t('generateSaved').replace('{count}', String(created)));
     resetFixturePlan();
   } catch (error) {
-    console.error('Mzab League: could not save the fixture plan.', error);
+    console.error('BSGST: could not save the fixture plan.', error);
     setGenerateError(fixturePlanErrorMessage(error));
     setGenerateBusy(false);
   }
@@ -4541,7 +4541,7 @@ function previewFixtureShift(event) {
   try {
     shifted = domain.shiftRounds(affected, from, days);
   } catch (error) {
-    console.error('Mzab League: could not build the reschedule preview.', error);
+    console.error('BSGST: could not build the reschedule preview.', error);
     setShiftError(t('shiftInvalidDays'));
     return;
   }
@@ -4578,7 +4578,7 @@ async function applyFixtureShift() {
     showToast(t('shiftApplied').replace('{count}', String(moved)));
     resetFixtureShift();
   } catch (error) {
-    console.error('Mzab League: could not reschedule the fixtures.', error);
+    console.error('BSGST: could not reschedule the fixtures.', error);
     setShiftError(fixturePlanErrorMessage(error));
     setShiftBusy(false);
   }
@@ -4604,7 +4604,7 @@ window.addEventListener('DOMContentLoaded', async function () {
 
   if (!BACKEND_READY) {
     // Configuration missing, malformed, or the Supabase CDN failed to load.
-    console.warn('Mzab League: running in read-only demo mode (Supabase not configured).');
+    console.warn('BSGST: running in read-only demo mode (Supabase not configured).');
     applyUrlState();
   } else {
     try {

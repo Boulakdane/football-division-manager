@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Convert the CSV files in data/ into a Mzab League JSON backup.
+ * Convert the CSV files in data/ into a BSGST JSON backup.
  *
  * Usage:
  *   node tools/csv-to-backup.js

@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   Mzab League — Supabase data layer
+   BSGST — Supabase data layer
    Loads league data for everyone (public read) and exposes write
    helpers used by the admin UI. Authorization is enforced by
    Postgres Row Level Security, not by this file.
@@ -52,7 +52,7 @@ function initBackend() {
       }
     });
   } catch (err) {
-    console.error('Mzab League: could not initialise Supabase.', err);
+    console.error('BSGST: could not initialise Supabase.', err);
     BACKEND_READY = false;
     db = null;
   }

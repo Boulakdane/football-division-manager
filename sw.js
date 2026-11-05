@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Mzab League service worker: makes the app installable and keeps the shell
+ * BSGST service worker: makes the app installable and keeps the shell
  * usable offline.
  *
  * Strategy: network-first for every same-origin GET, falling back to the cache
@@ -16,7 +16,7 @@
  * offline client keeps the old shell.
  */
 
-const CACHE = 'kickoff-shell-v1';
+const CACHE = 'kickoff-shell-v2';
 
 const SHELL = [
   './',

@@ -201,7 +201,7 @@ function buildFeeds(data, options) {
   const divisions = new Map(data.divisions.map(division => [division.id, division]));
   const stamp = feedStamp(activeMatches, season);
   const context = { teams, divisions, season };
-  const seasonName = season && season.name ? season.name : 'Mzab League';
+  const seasonName = season && season.name ? season.name : 'BSGST';
   const files = new Map();
   const manifestFeeds = [];
 
@@ -223,7 +223,7 @@ function buildFeeds(data, options) {
     });
   };
 
-  addFeed('all', 'all.ics', `${seasonName} — Mzab League`, activeMatches);
+  addFeed('all', 'all.ics', `${seasonName} — BSGST`, activeMatches);
 
   const divisionIds = [...new Set([
     ...data.divisions.map(division => division.id),
