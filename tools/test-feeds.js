@@ -2,7 +2,7 @@
 
 /*
  * Offline tests for the hosted calendar feeds (plan section 22.8, stage 2).
- * No network: the synthetic backup stands in for the public read views.
+ * No network: tests/fixtures/feeds-league.json stands in for the public read views.
  */
 
 const assert = require('assert');
@@ -17,7 +17,7 @@ const root = path.resolve(__dirname, '..');
 
 async function main() {
   const { buildCalendar } = await import(pathToFileURL(path.join(root, 'js', 'domain', 'ics.js')).href);
-  const backup = JSON.parse(fs.readFileSync(path.join(root, 'backups', 'synthetic-league-full.json'), 'utf8'));
+  const backup = JSON.parse(fs.readFileSync(path.join(root, 'tests', 'fixtures', 'feeds-league.json'), 'utf8'));
   const data = normalizeData(backup);
 
   const first = buildFeeds(data, { buildCalendar });

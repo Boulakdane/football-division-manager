@@ -1,0 +1,25 @@
+{
+  "seasons": [
+    { "id": "s1", "name": "2026 Season", "startDate": "2026-08-01", "isActive": true }
+  ],
+  "teams": [
+    { "id": "t1", "name": "North FC", "divisionId": "d1" },
+    { "id": "t2", "name": "East United", "divisionId": "d1" },
+    { "id": "t3", "name": "West City", "divisionId": "d1" },
+    { "id": "t4", "name": "South Town", "divisionId": "d1" },
+    { "id": "t5", "name": "Riverside", "divisionId": "d1" },
+    { "id": "t6", "name": "Harbour", "divisionId": "d1" }
+  ],
+  "matches": [
+    {
+      "id": "m1", "seasonId": "s1", "divisionId": "d1", "round": 1,
+      "homeId": "t1", "awayId": "t2", "homeScore": 2, "awayScore": 1,
+      "status": "FINISHED", "datetime": "2026-10-04T15:00", "venue": "North Stadium"
+    },
+    {
+      "id": "m2", "seasonId": "s1", "divisionId": "d1", "round": 1,
+      "homeId": "t3", "awayId": "t4", "homeScore": 1, "awayScore": 1,
+      "status": "FINISHED", "datetime": "2026-10-12T17:30", "venue": "West Arena"
+    }
+  ]
+}
