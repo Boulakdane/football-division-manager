@@ -211,3 +211,26 @@ test('a filter with no dated fixture downloads nothing and says why', async ({ p
   await expect(page.locator('#toast')).toHaveText('No dated fixtures to add yet.');
   expect(downloads).toBe(0);
 });
+
+test('the subscribe buttons copy the hosted feed URL for the division and a club', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const pageErrors = await boot(page);
+
+  const divisionUrl = await page.evaluate(() => calendarFeedUrl('d1'));
+  expect(divisionUrl).toMatch(/\/feeds\/division-d1\.ics$/);
+
+  await page.locator('[data-action="subscribe-calendar"]').click();
+  await expect(page.locator('#toast')).toHaveText('Calendar feed link copied. Paste it into your calendar app.');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(divisionUrl);
+
+  await page.locator('#nav-teams').click();
+  await expect(page.locator('#view-teams')).toBeVisible();
+
+  const teamUrl = await page.evaluate(() => calendarFeedUrl(null, 't1'));
+  expect(teamUrl).toMatch(/\/feeds\/team-t1\.ics$/);
+
+  await page.locator('[data-action="subscribe-team-calendar"][data-team="t1"]').click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(teamUrl);
+
+  expect(pageErrors).toEqual([]);
+});

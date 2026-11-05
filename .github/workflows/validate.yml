@@ -2,6 +2,8 @@ name: Validate
 
 on:
   push:
+    paths-ignore:
+      - 'feeds/**'
   pull_request:
 
 permissions:
@@ -58,6 +60,9 @@ jobs:
 
       - name: Test domain helpers and standings without a browser (roadmap E)
         run: npm run test:domain
+
+      - name: Test hosted calendar feeds (roadmap G stage 2)
+        run: npm run test:feeds
 
       - name: Compare JS and SQL standings (roadmap E dual-run)
         run: npm run test:standings-dual

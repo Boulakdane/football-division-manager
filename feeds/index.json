@@ -1,0 +1,77 @@
+{
+  "season": "s1",
+  "seasonName": "2026 Season",
+  "stamp": "2026-10-25T00:00:00Z",
+  "feeds": [
+    {
+      "id": "all",
+      "file": "all.ics",
+      "name": "2026 Season — Mzab League",
+      "events": 9,
+      "skipped": 0
+    },
+    {
+      "id": "division-d1",
+      "file": "division-d1.ics",
+      "name": "2026 Season — Division 1",
+      "events": 9,
+      "skipped": 0
+    },
+    {
+      "id": "division-d2",
+      "file": "division-d2.ics",
+      "name": "2026 Season — Division 2",
+      "events": 0,
+      "skipped": 0
+    },
+    {
+      "id": "team-t1",
+      "file": "team-t1.ics",
+      "name": "Spartan FC — 2026 Season",
+      "events": 3,
+      "skipped": 0
+    },
+    {
+      "id": "team-t2",
+      "file": "team-t2.ics",
+      "name": "Titan United — 2026 Season",
+      "events": 3,
+      "skipped": 0
+    },
+    {
+      "id": "team-t3",
+      "file": "team-t3.ics",
+      "name": "Phoenix Rovers — 2026 Season",
+      "events": 3,
+      "skipped": 0
+    },
+    {
+      "id": "team-t4",
+      "file": "team-t4.ics",
+      "name": "Vanguard Athletic — 2026 Season",
+      "events": 3,
+      "skipped": 0
+    },
+    {
+      "id": "team-t5",
+      "file": "team-t5.ics",
+      "name": "Atlas Warriors — 2026 Season",
+      "events": 3,
+      "skipped": 0
+    },
+    {
+      "id": "team-t6",
+      "file": "team-t6.ics",
+      "name": "Coastal Sharks — 2026 Season",
+      "events": 3,
+      "skipped": 0
+    },
+    {
+      "id": "team-t_1793107955967_708",
+      "file": "team-t_1793107955967_708.ics",
+      "name": "BOLIK FC — 2026 Season",
+      "events": 0,
+      "skipped": 0
+    }
+  ]
+}

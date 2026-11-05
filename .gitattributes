@@ -1,0 +1,3 @@
+# Hosted calendar subscriptions are RFC 5545 files: CRLF is part of the format,
+# so Git must store and serve the exact bytes instead of normalizing them.
+*.ics -text
