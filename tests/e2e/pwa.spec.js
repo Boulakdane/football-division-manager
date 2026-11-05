@@ -27,7 +27,7 @@ test('manifest, icons and service worker make the app installable', async ({ pag
   expect(response.headers()['content-type']).toContain('application/manifest+json');
 
   const manifest = await response.json();
-  expect(manifest.name).toContain('Mzab League');
+  expect(manifest.name).toContain('BSGST');
   expect(manifest.display).toBe('standalone');
   expect(manifest.start_url).toBe('./');
   expect(manifest.icons.some(icon => icon.sizes === '192x192' && icon.purpose === 'any')).toBe(true);

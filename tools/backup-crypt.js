@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Encrypt and decrypt a Mzab League JSON backup.
+ * Encrypt and decrypt a BSGST JSON backup.
  *
  * Usage:
  *   node tools/backup-crypt.js encrypt backup.json backup.kob

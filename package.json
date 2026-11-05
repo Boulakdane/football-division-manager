@@ -1,8 +1,8 @@
 {
   "name": "kickoff-division",
-  "version": "3.11.0",
+  "version": "3.12.0",
   "private": true,
-  "description": "Mzab League — zero-server football league manager",
+  "description": "BSGST — zero-server football league manager",
   "scripts": {
     "serve": "node tools/serve.js",
     "build:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --minify",

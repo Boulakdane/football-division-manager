@@ -5,7 +5,7 @@
 **Review:** every 12 months, or before a new personal-data feature ships (player photos, youth
 leagues, public accounts).
 
-This document explains what Mzab League stores, what it publishes, how long it keeps it, and how a
+This document explains what BSGST stores, what it publishes, how long it keeps it, and how a
 player, parent or account holder can ask for a correction or removal. It describes the application
 as built; it is not legal advice. The league should confirm the applicable rules with its own
 adviser, in particular Algeria's Law 18-07 and the GDPR if it has visitors in the European Union.
