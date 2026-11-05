@@ -1,0 +1,41 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Mzab League//Mzab League//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Titan United — 2026 Season
+X-WR-CALDESC:2026 Season — hosted calendar subscription
+BEGIN:VEVENT
+UID:match-m1@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261003T150000
+DURATION:PT120M
+SUMMARY:Spartan FC 3–1 Titan United
+DESCRIPTION:R1 · Division 1 · 2026 Season · Venue: Main Field - Pitch 1 
+ · Finished
+LOCATION:Main Field - Pitch 1
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:match-m4@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261010T153000
+DURATION:PT120M
+SUMMARY:Titan United 0–1 Phoenix Rovers
+DESCRIPTION:R2 · Division 1 · 2026 Season · Venue: United Arena · Finis
+ hed
+LOCATION:United Arena
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:match-m8@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261025T170000
+DURATION:PT120M
+SUMMARY:Titan United vs Atlas Warriors
+DESCRIPTION:R3 · Division 1 · 2026 Season · Venue: United Arena · Sched
+ uled
+LOCATION:United Arena
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR

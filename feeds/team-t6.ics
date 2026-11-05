@@ -1,0 +1,40 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Mzab League//Mzab League//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Coastal Sharks — 2026 Season
+X-WR-CALDESC:2026 Season — hosted calendar subscription
+BEGIN:VEVENT
+UID:match-m3@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261004T160000
+DURATION:PT120M
+SUMMARY:Atlas Warriors 1–0 Coastal Sharks
+DESCRIPTION:R1 · Division 1 · 2026 Season · Venue: Community Sports Comp
+ lex · Finished
+LOCATION:Community Sports Complex
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:match-m6@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261020T190000
+DURATION:PT120M
+SUMMARY:Coastal Sharks vs Spartan FC
+DESCRIPTION:R2 · Division 1 · 2026 Season · Venue: Shark Park · Live
+LOCATION:Shark Park
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:match-m9@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261025T193000
+DURATION:PT120M
+SUMMARY:Vanguard Athletic vs Coastal Sharks
+DESCRIPTION:R3 · Division 1 · 2026 Season · Venue: Vanguard Ground · Sc
+ heduled
+LOCATION:Vanguard Ground
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR

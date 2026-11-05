@@ -536,7 +536,10 @@ const I18N = {
     calendarVersus: "vs",
     calendarSaved: "Calendar file ready.",
     calendarNoFixtures: "No dated fixtures to add yet.",
-    calendarSkipped: "Fixtures without a date were skipped."
+    calendarSkipped: "Fixtures without a date were skipped.",
+    btnSubscribe: "Subscribe",
+    btnSubscribeTeam: "Subscribe to {team} fixtures",
+    calendarFeedCopied: "Calendar feed link copied. Paste it into your calendar app."
   },
   fr: {
     appTitle: "Mzab League",
@@ -1069,7 +1072,10 @@ const I18N = {
     calendarVersus: "vs",
     calendarSaved: "Fichier calendrier prêt.",
     calendarNoFixtures: "Aucun match daté à ajouter pour le moment.",
-    calendarSkipped: "Les matchs sans date ont été ignorés."
+    calendarSkipped: "Les matchs sans date ont été ignorés.",
+    btnSubscribe: "S'abonner",
+    btnSubscribeTeam: "S'abonner aux matchs de {team}",
+    calendarFeedCopied: "Lien du flux calendrier copié. Collez-le dans votre application de calendrier."
   },
   ar: {
     appTitle: "البطولة المحلية للفرق المزابية",
@@ -1601,7 +1607,10 @@ const I18N = {
     calendarVersus: "ضد",
     calendarSaved: "ملف التقويم جاهز.",
     calendarNoFixtures: "لا توجد مباريات مؤرخة لإضافتها بعد.",
-    calendarSkipped: "تم تجاهل المباريات التي ليس لها تاريخ."
+    calendarSkipped: "تم تجاهل المباريات التي ليس لها تاريخ.",
+    btnSubscribe: "اشترك",
+    btnSubscribeTeam: "اشترك في مباريات {team}",
+    calendarFeedCopied: "تم نسخ رابط تقويم المباريات. الصقه في تطبيق التقويم."
   }
 };
 

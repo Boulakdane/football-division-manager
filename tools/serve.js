@@ -12,6 +12,7 @@ const types = {
   '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   '.csv': 'text/csv; charset=utf-8',
+  '.ics': 'text/calendar; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',

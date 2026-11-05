@@ -1,0 +1,41 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Mzab League//Mzab League//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Phoenix Rovers — 2026 Season
+X-WR-CALDESC:2026 Season — hosted calendar subscription
+BEGIN:VEVENT
+UID:match-m2@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261003T173000
+DURATION:PT120M
+SUMMARY:Phoenix Rovers 2–2 Vanguard Athletic
+DESCRIPTION:R1 · Division 1 · 2026 Season · Venue: Main Field - Pitch 2 
+ · Finished
+LOCATION:Main Field - Pitch 2
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:match-m4@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261010T153000
+DURATION:PT120M
+SUMMARY:Titan United 0–1 Phoenix Rovers
+DESCRIPTION:R2 · Division 1 · 2026 Season · Venue: United Arena · Finis
+ hed
+LOCATION:United Arena
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:match-m7@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261024T150000
+DURATION:PT120M
+SUMMARY:Spartan FC vs Phoenix Rovers
+DESCRIPTION:R3 · Division 1 · 2026 Season · Venue: Main Field - Pitch 1 
+ · Scheduled
+LOCATION:Main Field - Pitch 1
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR

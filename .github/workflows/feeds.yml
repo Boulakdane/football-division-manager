@@ -1,0 +1,48 @@
+name: Calendar feeds
+
+# Plan section 22.8, stage 2: refresh the hosted .ics subscriptions from the
+# public read views. GitHub Pages serves this repository from its root, so the
+# generated files under feeds/ are the subscription URLs. No server, no new
+# origin and no secret beyond the publishable key already in js/config.js.
+
+on:
+  schedule:
+    # Every six hours, offset from the backup (06:15) and drift (05:40) jobs.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: calendar-feeds
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+
+      - name: Build hosted calendar feeds
+        run: node tools/build-feeds.js --env=prod
+
+      - name: Commit changed feeds
+        shell: bash
+        run: |
+          if git diff --quiet -- feeds; then
+            echo "Calendar feeds are already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add feeds
+          git commit -m "chore(feeds): refresh calendar subscriptions"
+          git push

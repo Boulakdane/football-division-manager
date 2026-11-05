@@ -1,0 +1,41 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Mzab League//Mzab League//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Atlas Warriors — 2026 Season
+X-WR-CALDESC:2026 Season — hosted calendar subscription
+BEGIN:VEVENT
+UID:match-m3@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261004T160000
+DURATION:PT120M
+SUMMARY:Atlas Warriors 1–0 Coastal Sharks
+DESCRIPTION:R1 · Division 1 · 2026 Season · Venue: Community Sports Comp
+ lex · Finished
+LOCATION:Community Sports Complex
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:match-m5@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261011T180000
+DURATION:PT120M
+SUMMARY:Vanguard Athletic 2–2 Atlas Warriors
+DESCRIPTION:R2 · Division 1 · 2026 Season · Venue: Vanguard Ground · Fi
+ nished
+LOCATION:Vanguard Ground
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:match-m8@mzab-league.github.io
+DTSTAMP:20261025T000000Z
+DTSTART:20261025T170000
+DURATION:PT120M
+SUMMARY:Titan United vs Atlas Warriors
+DESCRIPTION:R3 · Division 1 · 2026 Season · Venue: United Arena · Sched
+ uled
+LOCATION:United Arena
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR
