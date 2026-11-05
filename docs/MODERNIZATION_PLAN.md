@@ -630,6 +630,8 @@ Some protections live in the Supabase dashboard and cannot be seen in the repo (
 
 **Done when:** standings logic has unit tests that run without a browser, and the JS and SQL standings can be compared in CI (section 17, "dual-run").
 
+**Delivered (stage 3).** Every HTML string now reaches the DOM through one `renderInto(element, html)` helper in `js/app.js`; the 40 direct `innerHTML` assignments were routed through it. `eslint.config.js` enables `no-restricted-syntax` for `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `eval` and `new Function`, and `npm run lint` runs in `Validate` after `npm ci`, so a new render path cannot bypass the escaping rules. The helper carries the only inline disable, with its justification. JSDoc/TypeScript remains optional and separate.
+
 ### 22.7 F — Fixture generator
 
 Running a league means building 100+ fixtures by hand. Add an admin tool that produces a full schedule:

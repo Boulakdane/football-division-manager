@@ -14,6 +14,18 @@
  * on globalThis by js/domain/index.js.
  */
 
+/**
+ * The single audited HTML sink. Every template string reaches the DOM here,
+ * after the caller has passed each interpolated value through esc() or toInt().
+ * The lint gate (eslint.config.js) rejects any other direct innerHTML write, so
+ * a new render path cannot bypass the escaping rules by accident.
+ */
+function renderInto(element, html) {
+  if (!element) return;
+  // eslint-disable-next-line no-restricted-syntax -- the one audited HTML sink
+  element.innerHTML = html;
+}
+
 function uid(prefix) {
   return prefix + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 }
@@ -739,9 +751,9 @@ function renderSeasonBar() {
   const seasons = appState.seasons || [];
   const select = document.getElementById('season-select');
   if (select) {
-    select.innerHTML = seasons.length
+    renderInto(select, seasons.length
       ? seasons.map(season => `<option value="${esc(season.id)}">${esc(season.name)}${season.isActive ? ' — ' + esc(t('seasonActive')) : ''}</option>`).join('')
-      : `<option value="">${esc(t('seasonNone'))}</option>`;
+      : `<option value="">${esc(t('seasonNone'))}</option>`);
     select.value = appState.viewSeasonId || '';
     select.disabled = seasons.length === 0;
   }
@@ -754,9 +766,9 @@ function renderSeasonBar() {
   const showDivisions = Boolean(appState.divisionsReady) && divisions.length > 1;
   if (divisionSwitcher) divisionSwitcher.classList.toggle('hidden', !showDivisions);
   if (divisionSelect && showDivisions) {
-    divisionSelect.innerHTML = divisions
+    renderInto(divisionSelect, divisions
       .map(division => `<option value="${esc(division.id)}">${esc(divisionLabel(division.id))}</option>`)
-      .join('');
+      .join(''));
     divisionSelect.value = viewedDivisionId();
   }
 
@@ -892,18 +904,18 @@ function renderTopScorers() {
     .slice(0, 5);
 
   if (!rows.length) {
-    list.innerHTML = `<p class="px-4 py-6 text-center text-xs text-slate-500">${esc(t('emptyTopScorers'))}</p>`;
+    renderInto(list, `<p class="px-4 py-6 text-center text-xs text-slate-500">${esc(t('emptyTopScorers'))}</p>`);
     return;
   }
 
-  list.innerHTML = rows.map((row, index) => `
+  renderInto(list, rows.map((row, index) => `
     <div class="flex items-center gap-3 px-4 py-2.5">
       <span class="w-5 shrink-0 text-center text-[11px] font-bold text-slate-500">${index + 1}</span>
       ${teamMarkerHtml(row.team, 18)}
       <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-200">${esc(playerDisplayName(row.player))}</span>
       <span class="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-500">${esc(row.team.code)}</span>
       <span class="w-8 shrink-0 text-end text-sm font-extrabold tabular-nums text-white">${row.goals}</span>
-    </div>`).join('');
+    </div>`).join(''));
 }
 
 function renderStandings() {
@@ -911,7 +923,7 @@ function renderStandings() {
   const rows = calculateStandings();
 
   if (rows.length === 0) {
-    tbody.innerHTML = `
+    renderInto(tbody, `
       <tr>
         <td colspan="12" class="py-10 px-4 text-center">
           <i data-lucide="shield-plus" class="w-9 h-9 mx-auto mb-2 text-slate-600"></i>
@@ -921,11 +933,11 @@ function renderStandings() {
             <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddTeam'))}
           </button>
         </td>
-      </tr>`;
+      </tr>`);
     return;
   }
 
-  tbody.innerHTML = rows.map((s, i) => {
+  renderInto(tbody, rows.map((s, i) => {
     const rank = i + 1;
     let rankBadge = 'bg-slate-800 text-slate-400';
     if (rank === 1) rankBadge = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
@@ -961,7 +973,7 @@ function renderStandings() {
           <div class="flex items-center justify-center gap-1">${s.form.length ? s.form.map(formBadge).join('') : '<span class="text-slate-600 text-[10px]">-</span>'}</div>
         </td>
       </tr>`;
-  }).join('');
+  }).join(''));
 }
 
 /* ---------------------------------------------------------------
@@ -1100,8 +1112,8 @@ function renderFixtureFilters() {
   const rounds = [...new Set(visibleMatches().map(m => m.round))]
     .sort((a, b) => a - b);
 
-  select.innerHTML = `<option value="ALL">${esc(t('optAllMatchdays'))}</option>` +
-    rounds.map(r => `<option value="${r}">${esc(t('matchdayPrefix'))} ${r}</option>`).join('');
+  renderInto(select, `<option value="ALL">${esc(t('optAllMatchdays'))}</option>` +
+    rounds.map(r => `<option value="${r}">${esc(t('matchdayPrefix'))} ${r}</option>`).join(''));
 
   select.value = rounds.map(String).includes(previous) ? previous : 'ALL';
 }
@@ -1126,7 +1138,7 @@ function renderFixtures() {
 
   if (matches.length === 0) {
     // Distinguish "nothing scheduled yet" from "nothing matches these filters".
-    container.innerHTML = filtering ? `
+    renderInto(container, filtering ? `
       <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center">
         <i data-lucide="filter-x" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
         <p class="font-medium text-sm text-slate-300">${esc(t('emptyFiltered'))}</p>
@@ -1142,7 +1154,7 @@ function renderFixtures() {
         <button data-action="new-match" class="admin-only season-write mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('btnLogFirstMatch'))}
         </button>
-      </div>`;
+      </div>`);
     refreshIcons();
     syncUrlState();
     return;
@@ -1160,7 +1172,7 @@ function renderFixtures() {
     })
     .find(m => !m.datetime || new Date(m.datetime).getTime() >= now - 6 * 60 * 60 * 1000);
 
-  container.innerHTML = matches.map(m => {
+  renderInto(container, matches.map(m => {
     const home = getTeam(m.homeId) || { name: '?', code: '??', color: '#334155' };
     const away = getTeam(m.awayId) || { name: '?', code: '??', color: '#334155' };
     const isNext = Boolean(nextMatch && nextMatch.id === m.id);
@@ -1240,7 +1252,7 @@ function renderFixtures() {
           </div>
         </div>
       </div>`;
-  }).join('');
+  }).join(''));
 
   refreshIcons();
   syncUrlState();
@@ -1315,7 +1327,7 @@ function renderLiveEntry() {
 
   const match = appState.matches.find(m => m.id === liveEntryMatchId);
   if (!match) {
-    body.innerHTML = `<p class="text-xs text-slate-400">${esc(t('liveEntryClosed'))}</p>`;
+    renderInto(body, `<p class="text-xs text-slate-400">${esc(t('liveEntryClosed'))}</p>`);
     return;
   }
 
@@ -1397,7 +1409,7 @@ function renderLiveEntry() {
       </button>
     </form>` : `<p class="text-[11px] text-slate-500 border-t border-slate-800 pt-3">${esc(t('liveEntryClosed'))}</p>`;
 
-  body.innerHTML = `
+  renderInto(body, `
     <div class="flex items-center justify-between gap-3 rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2">
       <span class="min-w-0 flex-1 flex items-center gap-1.5 text-sm font-semibold text-white">
         ${teamCrestHtml(home, 24)}
@@ -1411,7 +1423,7 @@ function renderLiveEntry() {
     </div>
     <p class="text-[11px] text-slate-500 leading-relaxed">${esc(t('liveEntryHint'))}</p>
     <ol class="space-y-0.5 rounded-xl bg-slate-950/40 border border-slate-800 px-3 py-2">${eventRows}</ol>
-    ${form}`;
+    ${form}`);
 
   refreshIcons();
 }
@@ -1487,7 +1499,7 @@ function renderTeamsView() {
   const teams = divisionTeams();
 
   if (teams.length === 0) {
-    container.innerHTML = `
+    renderInto(container, `
       <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center">
         <i data-lucide="shield-plus" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
         <p class="font-medium text-sm text-slate-300">${esc(t('emptyDivisionTeams'))}</p>
@@ -1495,13 +1507,13 @@ function renderTeamsView() {
         <button data-action="new-team" class="admin-only mt-4 px-3 py-1.5 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> ${esc(t('btnAddTeam'))}
         </button>
-      </div>`;
+      </div>`);
     refreshIcons();
     syncUrlState();
     return;
   }
 
-  container.innerHTML = teams.map(team => {
+  renderInto(container, teams.map(team => {
     const allSquad = appState.players.filter(p => p.teamId === team.id);
     let squad = allSquad.filter(p => p.isActive !== false);
     let archived = (typeof isAdmin === 'function' && isAdmin())
@@ -1614,18 +1626,18 @@ function renderTeamsView() {
             </div>` : ''}
         </div>
       </div>`;
-  }).join('');
+  }).join(''));
 
   // A search that matches nobody should say so instead of leaving a blank grid.
   if (query && container.children.length === 0) {
-    container.innerHTML = `
+    renderInto(container, `
       <div class="col-span-full bg-slate-800/30 border border-slate-800 rounded-xl p-8 text-center">
         <i data-lucide="search-x" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
         <p class="font-medium text-sm text-slate-300">${esc(t('emptyNoSearchResults'))}</p>
         <button data-action="clear-search" class="mt-4 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition">
           <i data-lucide="x" class="w-3.5 h-3.5"></i> ${esc(t('btnClearSearch'))}
         </button>
-      </div>`;
+      </div>`);
   }
 
   refreshIcons();
@@ -1694,8 +1706,8 @@ function openMatchModal(matchId) {
   const homeSelect = document.getElementById('match-home-team');
   const awaySelect = document.getElementById('match-away-team');
   const teamOptions = divisionTeamsForMatch.map(team => `<option value="${esc(team.id)}">${esc(teamDisplayName(team))}</option>`).join('');
-  homeSelect.innerHTML = teamOptions;
-  awaySelect.innerHTML = teamOptions;
+  renderInto(homeSelect, teamOptions);
+  renderInto(awaySelect, teamOptions);
 
   document.getElementById('form-match').reset();
   document.getElementById('match-id').value = '';
@@ -1779,11 +1791,11 @@ function renderMatchEventPanel(side) {
 
   const events = matchEventDraft.filter(event => event.teamId === teamId);
   if (!events.length) {
-    list.innerHTML = `<p class="text-[11px] text-slate-500 py-1">${esc(t(players.length ? 'noMatchEvents' : 'noPlayersFound'))}</p>`;
+    renderInto(list, `<p class="text-[11px] text-slate-500 py-1">${esc(t(players.length ? 'noMatchEvents' : 'noPlayersFound'))}</p>`);
     return;
   }
 
-  list.innerHTML = events.map(event => {
+  renderInto(list, events.map(event => {
     const knownPlayer = players.some(player => player.id === event.playerId);
     const eventPlayer = appState.players.find(player => player.id === event.playerId);
     let options = '';
@@ -1811,7 +1823,7 @@ function renderMatchEventPanel(side) {
         <button type="button" data-action="remove-event" data-id="${esc(event.id)}" aria-label="${esc(t('btnRemove'))}" class="ml-auto rtl:ml-0 rtl:mr-auto w-6 h-6 rounded text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 text-base leading-none">&times;</button>
       </div>
     </div>`;
-  }).join('');
+  }).join(''));
 }
 
 function updateMatchGoalHint() {
@@ -2097,11 +2109,11 @@ function renderTeamIconPreview() {
   const remove = document.getElementById('team-icon-remove');
   if (!box) return;
   if (teamIconBusy) {
-    box.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 text-slate-400 animate-spin"></i>';
+    renderInto(box, '<i data-lucide="loader-2" class="w-5 h-5 text-slate-400 animate-spin"></i>');
   } else if (teamIconDraft) {
-    box.innerHTML = `<img src="${esc(teamIconDraft)}" alt="" class="w-full h-full object-contain">`;
+    renderInto(box, `<img src="${esc(teamIconDraft)}" alt="" class="w-full h-full object-contain">`);
   } else {
-    box.innerHTML = '<i data-lucide="image" class="w-5 h-5 text-slate-600"></i>';
+    renderInto(box, '<i data-lucide="image" class="w-5 h-5 text-slate-600"></i>');
   }
   if (remove) remove.classList.toggle('hidden', !teamIconDraft || teamIconBusy);
   refreshIcons();
@@ -2146,9 +2158,9 @@ function prepareTeamDivisionField(selectedId) {
   const divisionSelect = document.getElementById('team-division');
   if (wrap) wrap.classList.toggle('hidden', !appState.divisionsReady);
   if (divisionSelect) {
-    divisionSelect.innerHTML = (appState.divisions || [])
+    renderInto(divisionSelect, (appState.divisions || [])
       .map(division => `<option value="${esc(division.id)}">${esc(divisionLabel(division.id))}</option>`)
-      .join('');
+      .join(''));
     divisionSelect.disabled = !appState.divisionsReady;
     divisionSelect.value = selectedId || viewedDivisionId();
   }
@@ -2487,7 +2499,7 @@ function openSquadImport(teamId) {
   const input = document.getElementById('squad-file');
   if (input) input.value = '';
   document.getElementById('squad-preview').classList.add('hidden');
-  document.getElementById('squad-rows').innerHTML = '';
+  renderInto(document.getElementById('squad-rows'), '');
   document.getElementById('squad-progress').classList.add('hidden');
   setSquadError('');
   setSquadImportEnabled(false);
@@ -2603,7 +2615,7 @@ function renderSquadPreview() {
     .replace('{skip}', number.format(counts.skip))
     .replace('{error}', number.format(counts.error));
 
-  rowsBody.innerHTML = analysis.rows.map(row => {
+  renderInto(rowsBody, analysis.rows.map(row => {
     const issues = row.issues.map(squadIssueText).join('; ');
     return `<tr class="border-t border-slate-800/80 align-top">
       <td class="py-1.5 pe-2 text-slate-500">${toInt(row.line)}</td>
@@ -2615,7 +2627,7 @@ function renderSquadPreview() {
         ${issues ? `<span class="block mt-0.5 text-[10px] leading-snug text-slate-400">${esc(issues)}</span>` : ''}
       </td>
     </tr>`;
-  }).join('');
+  }).join(''));
 
   preview.classList.remove('hidden');
   setSquadImportEnabled(analysis.canImport);
@@ -2989,28 +3001,28 @@ function renderAuditLog() {
   if (!list || !modal) return;
 
   if (!BACKEND_READY) {
-    list.innerHTML = `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('auditUnavailable'))}</div>`;
+    renderInto(list, `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('auditUnavailable'))}</div>`);
     return;
   }
 
-  list.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('auditLoading'))}</p>`;
+  renderInto(list, `<p class="py-6 text-center text-slate-500">${esc(t('auditLoading'))}</p>`);
 
   dbListAuditLog(50)
     .then(entries => {
       if (modal.classList.contains('hidden')) return;
       if (entries === null) {
-        list.innerHTML = `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('auditUnavailable'))}</div>`;
+        renderInto(list, `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('auditUnavailable'))}</div>`);
         return;
       }
       if (!entries.length) {
-        list.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('auditEmpty'))}</p>`;
+        renderInto(list, `<p class="py-6 text-center text-slate-500">${esc(t('auditEmpty'))}</p>`);
         return;
       }
-      list.innerHTML = entries.map(renderAuditEntry).join('');
+      renderInto(list, entries.map(renderAuditEntry).join(''));
     })
     .catch(error => {
       console.error('Mzab League: could not load the activity log.', error);
-      list.innerHTML = `<p class="py-6 text-center text-rose-400">${esc(t('auditError'))}</p>`;
+      renderInto(list, `<p class="py-6 text-center text-rose-400">${esc(t('auditError'))}</p>`);
     });
 }
 
@@ -3086,15 +3098,15 @@ function renderUsersModal() {
   if (!body) return;
 
   if (usersModalState.loading) {
-    body.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('usersLoading'))}</p>`;
+    renderInto(body, `<p class="py-6 text-center text-slate-500">${esc(t('usersLoading'))}</p>`);
     return;
   }
   if (usersModalState.error) {
-    body.innerHTML = `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed text-xs">${esc(t(usersModalState.error))}</div>`;
+    renderInto(body, `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed text-xs">${esc(t(usersModalState.error))}</div>`);
     return;
   }
   if (!usersModalState.users.length) {
-    body.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('usersEmpty'))}</p>`;
+    renderInto(body, `<p class="py-6 text-center text-slate-500">${esc(t('usersEmpty'))}</p>`);
     return;
   }
 
@@ -3141,7 +3153,7 @@ function renderUsersModal() {
         </label>`).join('')
     : `<p class="text-[11px] text-slate-500 leading-relaxed">${esc(t('usersNoScorers'))}</p>`;
 
-  body.innerHTML = `
+  renderInto(body, `
     <section class="space-y-2">
       <div class="flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-slate-500">
         <span>${esc(t('usersEmail'))}</span><span>${esc(t('usersRole'))}</span>
@@ -3159,7 +3171,7 @@ function renderUsersModal() {
               class="w-full px-3 py-2 bg-pitch-600 hover:bg-pitch-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 transition">
         <i data-lucide="save" class="w-3.5 h-3.5"></i> ${esc(t('usersSaveOfficials'))}
       </button>
-    </section>`;
+    </section>`);
 
   refreshIcons();
 }
@@ -3249,17 +3261,17 @@ function renderTrash() {
   if (!list || !modal) return;
 
   if (!BACKEND_READY) {
-    list.innerHTML = `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('trashUnavailable'))}</div>`;
+    renderInto(list, `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('trashUnavailable'))}</div>`);
     return;
   }
 
-  list.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('trashLoading'))}</p>`;
+  renderInto(list, `<p class="py-6 text-center text-slate-500">${esc(t('trashLoading'))}</p>`);
 
   dbListDeleted()
     .then(trash => {
       if (modal.classList.contains('hidden')) return;
       if (trash === null) {
-        list.innerHTML = `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('trashUnavailable'))}</div>`;
+        renderInto(list, `<div class="p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200 leading-relaxed">${esc(t('trashUnavailable'))}</div>`);
         return;
       }
 
@@ -3267,7 +3279,7 @@ function renderTrash() {
       const matches = Array.isArray(trash.matches) ? trash.matches : [];
       const seasons = Array.isArray(trash.seasons) ? trash.seasons : [];
       if (!teams.length && !matches.length && !seasons.length) {
-        list.innerHTML = `<p class="py-6 text-center text-slate-500">${esc(t('trashEmpty'))}</p>`;
+        renderInto(list, `<p class="py-6 text-center text-slate-500">${esc(t('trashEmpty'))}</p>`);
         return;
       }
 
@@ -3299,11 +3311,11 @@ function renderTrash() {
         return renderTrashItem('season', season.id, season.name || season.id, meta);
       })));
 
-      list.innerHTML = sections.join('');
+      renderInto(list, sections.join(''));
     })
     .catch(error => {
       console.error('Mzab League: could not load the deleted items.', error);
-      list.innerHTML = `<p class="py-6 text-center text-rose-400">${esc(t('trashError'))}</p>`;
+      renderInto(list, `<p class="py-6 text-center text-rose-400">${esc(t('trashError'))}</p>`);
     });
 }
 

@@ -32,6 +32,7 @@
     "test:e2e": "playwright test",
     "check:secrets": "node tools/check-secrets.js",
     "check:actions": "node tools/check-action-pins.js",
+    "lint": "eslint js",
     "check:drift": "node tools/check-security-drift.js --env=prod",
     "check:backup": "node tools/validate-backup.js",
     "drill:backup": "node tools/restore-drill.js",
@@ -44,6 +45,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "0.5.14",
     "@playwright/test": "1.64.1",
+    "eslint": "^10.14.0",
     "tailwindcss": "3.4.19"
   }
 }
