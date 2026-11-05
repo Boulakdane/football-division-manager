@@ -111,7 +111,7 @@ CI      ──push──► GitHub Pages
 **Remediation:**
 
 1. ✅ Remove inline event handlers. `data-action` / `data-id` attributes plus one delegated `click` / `change` / `input` / `submit` dispatcher.
-2. Replace `innerHTML` rendering with DOM construction or a small escaping/template layer with a lint rule. Do not interpolate untrusted values into HTML strings. (Still template strings; every value goes through `esc()`.)
+2. Done (2026-11-05): every HTML string goes through `renderInto(element, html)` in `js/app.js`, and `npm run lint` (ESLint `no-restricted-syntax`) rejects a direct `innerHTML`/`outerHTML` write, `insertAdjacentHTML`, `eval` or `new Function`. Values are still template strings escaped with `esc()`/`toInt()`.
 3. ✅ Strict CSP, live in `index.html`:
    - `default-src 'self'`
    - `script-src 'self'`

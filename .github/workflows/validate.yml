@@ -30,6 +30,9 @@ jobs:
       - name: Install CSS tooling
         run: npm ci --no-audit --no-fund
 
+      - name: Lint the safe-rendering gate (roadmap E stage 3)
+        run: npm run lint
+
       - name: Build Tailwind CSS
         run: npm run build:css
 

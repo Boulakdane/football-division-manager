@@ -13,6 +13,7 @@
 ## How I checked it
 
 - [ ] `npm run check:secrets`
+- [ ] `npm run lint` (safe-rendering gate)
 - [ ] `node --check` on every `js/*.js` and `tools/*.js`
 - [ ] `npm run test:sql`
 - [ ] `npm run test:e2e` (UI changes)

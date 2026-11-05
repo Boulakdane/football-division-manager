@@ -57,6 +57,7 @@ admin-only write. English, French and Arabic (RTL). See `README.md` and `docs/`.
 |---|---|
 | Serve locally (dev project) | `npm run serve` → http://localhost:8765 |
 | Secret scan | `npm run check:secrets` |
+| Safe-rendering lint (innerHTML/eval) | `npm run lint` |
 | JS syntax | `for f in js/*.js tools/*.js; do node --check "$f"; done` |
 | SQL / RLS tests (PGlite) | `npm run test:sql` |
 | Browser smoke test | `npm run test:e2e` |
