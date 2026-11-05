@@ -25,19 +25,19 @@
 
   <!-- Fonts: Inter (EN/FR) + Cairo (AR), self-hosted variable woff2 -->
   <link rel="preload" href="fonts/inter-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/fonts.css?v=3.12.0">
+  <link rel="stylesheet" href="css/fonts.css?v=3.13.0">
 
   <!-- Tailwind CSS (compiled locally, no CDN dependency) -->
-  <link rel="stylesheet" href="css/tailwind.css?v=3.12.0">
+  <link rel="stylesheet" href="css/tailwind.css?v=3.13.0">
 
   <!-- Lucide icons (vendored UMD build, previously pinned with SRI on unpkg) -->
-  <script src="vendor/lucide-1.60.0.js?v=3.12.0" defer></script>
+  <script src="vendor/lucide-1.60.0.js?v=3.13.0" defer></script>
 
   <!-- Supabase JS client (vendored; auth must not depend on a CDN) -->
-  <script src="vendor/supabase-js-2.118.0.js?v=3.12.0" defer></script>
+  <script src="vendor/supabase-js-2.118.0.js?v=3.13.0" defer></script>
 
   <!-- App styles -->
-  <link rel="stylesheet" href="css/styles.css?v=3.12.0">
+  <link rel="stylesheet" href="css/styles.css?v=3.13.0">
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col transition-colors duration-200 antialiased">
 
@@ -76,7 +76,7 @@
           <div class="min-w-0">
             <h1 class="text-base sm:text-lg font-bold tracking-tight text-white flex items-start sm:items-center gap-2 min-w-0">
               <span class="leading-tight" data-i18n="appTitle">BSGST</span>
-              <span class="hidden lg:inline-block shrink-0 text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.12.0</span>
+              <span class="hidden lg:inline-block shrink-0 text-[10px] font-normal px-2 py-0.5 rounded bg-pitch-500/20 text-pitch-400 border border-pitch-500/30">v3.13.0</span>
             </h1>
             <p class="text-xs text-slate-400 hidden sm:block" data-i18n="appSubtitle">Local Football League Management</p>
           </div>
@@ -431,10 +431,37 @@
           <i data-lucide="monitor-down" class="w-3.5 h-3.5"></i>
           <span data-i18n="installApp">Download app</span>
         </button>
+        <button data-action="open-privacy" class="hover:text-slate-300 transition flex items-center gap-1">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+          <span data-i18n="privacyLink">Privacy</span>
+        </button>
         <button data-action="reset-data" class="admin-only hover:text-slate-300 transition" data-i18n="btnReset">Reset Sample Data</button>
       </div>
     </div>
   </footer>
+
+  <!-- MODAL: PRIVACY & DATA -->
+  <div id="modal-privacy" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="shield-check" class="w-5 h-5 text-emerald-400"></i> <span data-i18n="privacyTitle">Privacy &amp; data</span>
+        </h3>
+        <button data-action="close-modal" data-modal="modal-privacy" class="text-slate-400 hover:text-white" aria-label="Close dialog"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto space-y-3 text-xs text-slate-300 leading-relaxed">
+        <p data-i18n="privacyPublic">The league publishes club names, player names (Arabic optional), shirt numbers, positions, fixtures, results, goals and cards. Birth dates, licence numbers, e-mail addresses and photos are never public.</p>
+        <p data-i18n="privacyStorage">This app sets no advertising or analytics cookies and loads no third-party script. Your browser only stores the chosen language and, for an admin or scorer, the sign-in session.</p>
+        <p data-i18n="privacyRequests">To correct or remove a player, contact the league maintainer through the league's published contact address. A player with match history is anonymised, not deleted, so results stay correct.</p>
+      </div>
+
+      <div class="flex flex-wrap justify-between items-center gap-3 pt-2 border-t border-slate-800">
+        <a href="https://github.com/Boulakdane/football-division-manager/blob/main/docs/PRIVACY.md" target="_blank" rel="noopener noreferrer" class="text-emerald-400 hover:text-emerald-300 underline underline-offset-2 text-xs" data-i18n="privacyFullPolicy">Read the full privacy and retention policy</a>
+        <button data-action="close-modal" data-modal="modal-privacy" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold" data-i18n="btnGotIt">Got it</button>
+      </div>
+    </div>
+  </div>
 
   <!-- MODAL: MATCH LOGGING / EDITING -->
   <div id="modal-match" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1370,16 +1397,16 @@
   </div>
 
   <!-- Application scripts (deferred, loaded in dependency order) -->
-  <script src="js/i18n.js?v=3.12.0" defer></script>
-  <script src="js/store.js?v=3.12.0" defer></script>
-  <script src="js/config.js?v=3.12.0" defer></script>
-  <script src="js/backend.js?v=3.12.0" defer></script>
-  <script src="js/auth.js?v=3.12.0" defer></script>
-  <script src="js/mfa.js?v=3.12.0" defer></script>
-  <script src="js/squad-import.js?v=3.12.0" defer></script>
+  <script src="js/i18n.js?v=3.13.0" defer></script>
+  <script src="js/store.js?v=3.13.0" defer></script>
+  <script src="js/config.js?v=3.13.0" defer></script>
+  <script src="js/backend.js?v=3.13.0" defer></script>
+  <script src="js/auth.js?v=3.13.0" defer></script>
+  <script src="js/mfa.js?v=3.13.0" defer></script>
+  <script src="js/squad-import.js?v=3.13.0" defer></script>
   <!-- Domain helpers as ES modules; deferred, and app.js only calls them after DOMContentLoaded. -->
-  <script type="module" src="js/domain/index.js?v=3.12.0"></script>
-  <script src="js/app.js?v=3.12.0" defer></script>
-  <script src="js/pwa.js?v=3.12.0" defer></script>
+  <script type="module" src="js/domain/index.js?v=3.13.0"></script>
+  <script src="js/app.js?v=3.13.0" defer></script>
+  <script src="js/pwa.js?v=3.13.0" defer></script>
 </body>
 </html>
