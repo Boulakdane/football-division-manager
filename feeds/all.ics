@@ -1,9 +1,9 @@
 BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//Mzab League//Mzab League//EN
+PRODID:-//BSGST//BSGST//EN
 CALSCALE:GREGORIAN
 METHOD:PUBLISH
-X-WR-CALNAME:2026 Season — Mzab League
+X-WR-CALNAME:2026 Season — BSGST
 X-WR-CALDESC:2026 Season — hosted calendar subscription
 BEGIN:VEVENT
 UID:match-m1@mzab-league.github.io

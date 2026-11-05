@@ -127,7 +127,7 @@ test('a visitor downloads every dated fixture of the viewed division', async ({ 
   expect(text.endsWith('END:VCALENDAR\r\n')).toBe(true);
   expect(/[^\r]\n/.test(text)).toBe(false);
   expect(text).toContain('\r\nVERSION:2.0\r\n');
-  expect(text).toContain('\r\nX-WR-CALNAME:Mzab League — 2026 Season — Group 1\r\n');
+  expect(text).toContain('\r\nX-WR-CALNAME:BSGST — 2026 Season — Group 1\r\n');
   expect(eventCount(text)).toBe(4);
 
   // Timed fixture: floating local time, fixed two-hour duration, venue kept.
@@ -192,7 +192,7 @@ test('a team card exports only that club fixtures', async ({ page }) => {
   expect(text).toContain('UID:match-m4@');
   expect(text).not.toContain('UID:match-m5@');
   expect(text).not.toContain('UID:match-m3@');
-  expect(text).toContain('\r\nX-WR-CALNAME:Mzab League — 2026 Season — Spartan FC\r\n');
+  expect(text).toContain('\r\nX-WR-CALNAME:BSGST — 2026 Season — Spartan FC\r\n');
 
   // The undated fixture belongs to two other clubs, so nothing is skipped.
   await expect(page.locator('#toast')).toHaveText('Calendar file ready.');

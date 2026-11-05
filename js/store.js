@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   Mzab League — data store
+   BSGST — data store
    Holds the in-memory league state and the demo dataset. Real data
    is loaded from Supabase in js/backend.js.
    --------------------------------------------------------------- */

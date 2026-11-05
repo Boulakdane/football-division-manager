@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Convert a Mzab League JSON backup into the five CSV files used by
+ * Convert a BSGST JSON backup into the five CSV files used by
  * tools/csv-to-backup.js.
  *
  * Usage:

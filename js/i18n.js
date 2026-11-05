@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   Mzab League — internationalization (EN / FR / AR)
+   BSGST — internationalization (EN / FR / AR)
    Provides the dictionary, translation helper and the RTL-aware
    language switcher.
    --------------------------------------------------------------- */
@@ -7,7 +7,7 @@
 
 const I18N = {
   en: {
-    appTitle: "Mzab League",
+    appTitle: "BSGST",
     appSubtitle: "Local Football League Management",
     tabStandings: "Standings",
     tabFixtures: "Fixtures & Results",
@@ -89,7 +89,7 @@ const I18N = {
     titleTeams: "Teams & Player Squads",
     subtitleTeams: "Manage club profiles, rosters, positions, squad numbers and goal stats",
     searchPlaceholder: "Search players or teams...",
-    footerText: "© Mzab League — Zero-server architecture, 100% free hosting on GitHub Pages",
+    footerText: "© BSGST — Zero-server architecture, 100% free hosting on GitHub Pages",
     modalMatchTitle: "Schedule / Log Match",
     modalMatchEditTitle: "Edit Match",
     lblRound: "Matchday / Round",
@@ -267,7 +267,7 @@ const I18N = {
     alertMinTeams: "You need at least 2 teams to log a match.",
     alertSameTeam: "Home and away teams must be different.",
     alertDuplicate: "This fixture already exists for that matchday.",
-    alertImportError: "Import failed: the selected file is not a valid Mzab League backup.",
+    alertImportError: "Import failed: the selected file is not a valid BSGST backup.",
     confirmImport: "Replace all league data with this backup? The current data will be downloaded as a safety backup first.",
     importTitle: "Merge a backup",
     importMergeHint: "Choose a JSON backup. Nothing is written until you review the preview and confirm the merge.",
@@ -298,7 +298,7 @@ const I18N = {
     importReplaced: "All league data was replaced with the backup.",
     importApplied: "Backup merged: {added} added, {changed} changed, {removed} removed.",
     importReplayToast: "This backup was already applied. Nothing changed.",
-    importInvalidFile: "This file is not a valid Mzab League backup.",
+    importInvalidFile: "This file is not a valid BSGST backup.",
     importReadError: "The file could not be read.",
     importFileTooLarge: "The backup is too large (10 MB maximum).",
     importMigrationError: "Merge import is unavailable. Run supabase/merge-import-migration.sql, then reload.",
@@ -542,7 +542,7 @@ const I18N = {
     calendarFeedCopied: "Calendar feed link copied. Paste it into your calendar app."
   },
   fr: {
-    appTitle: "Mzab League",
+    appTitle: "BSGST",
     appSubtitle: "Gestion de Football Locale",
     tabStandings: "Classement",
     tabFixtures: "Calendrier & Résultats",
@@ -624,7 +624,7 @@ const I18N = {
     titleTeams: "Équipes & Effectifs",
     subtitleTeams: "Gérez les profils des clubs, effectifs, postes, numéros et buteurs",
     searchPlaceholder: "Rechercher joueurs ou équipes...",
-    footerText: "© Mzab League — Architecture sans serveur, hébergement gratuit sur GitHub Pages",
+    footerText: "© BSGST — Architecture sans serveur, hébergement gratuit sur GitHub Pages",
     modalMatchTitle: "Planifier / Saisir un Match",
     modalMatchEditTitle: "Modifier le Match",
     lblRound: "Journée / Tour",
@@ -802,7 +802,7 @@ const I18N = {
     alertMinTeams: "Il faut au moins 2 équipes pour saisir un match.",
     alertSameTeam: "Les équipes domicile et extérieure doivent être différentes.",
     alertDuplicate: "Ce match existe déjà pour cette journée.",
-    alertImportError: "Échec de l'import : le fichier sélectionné n'est pas une sauvegarde Mzab League valide.",
+    alertImportError: "Échec de l'import : le fichier sélectionné n'est pas une sauvegarde BSGST valide.",
     confirmImport: "Remplacer toutes les données de la ligue par cette sauvegarde ? Les données actuelles seront téléchargées en sauvegarde de sécurité avant l'import.",
     importTitle: "Fusionner une sauvegarde",
     importMergeHint: "Choisissez une sauvegarde JSON. Rien n'est écrit avant que vous ayez vérifié l'aperçu et confirmé la fusion.",
@@ -833,7 +833,7 @@ const I18N = {
     importReplaced: "Toutes les données de la ligue ont été remplacées par la sauvegarde.",
     importApplied: "Sauvegarde fusionnée : {added} ajout(s), {changed} modification(s), {removed} suppression(s).",
     importReplayToast: "Cette sauvegarde a déjà été appliquée. Rien n'a changé.",
-    importInvalidFile: "Ce fichier n'est pas une sauvegarde Mzab League valide.",
+    importInvalidFile: "Ce fichier n'est pas une sauvegarde BSGST valide.",
     importReadError: "Le fichier n'a pas pu être lu.",
     importFileTooLarge: "La sauvegarde est trop volumineuse (10 Mo maximum).",
     importMigrationError: "La fusion d'import est indisponible. Exécutez supabase/merge-import-migration.sql, puis rechargez.",
@@ -1078,7 +1078,7 @@ const I18N = {
     calendarFeedCopied: "Lien du flux calendrier copié. Collez-le dans votre application de calendrier."
   },
   ar: {
-    appTitle: "البطولة المحلية للفرق المزابية",
+    appTitle: "مكتب الرياضيين القراريين للرياضه والعمل",
     appSubtitle: "إدارة بطولات كرة القدم المحلية",
     tabStandings: "الترتيب",
     tabFixtures: "المباريات والنتائج",
@@ -1160,7 +1160,7 @@ const I18N = {
     titleTeams: "الفرق وتشكيلات اللاعبين",
     subtitleTeams: "إدارة بيانات الأندية والقوائم والمواضع وأرقام القمصان وإحصائيات الأهداف",
     searchPlaceholder: "ابحث عن لاعب أو فريق...",
-    footerText: "© البطولة المحلية للفرق المزابية — بدون خوادم، استضافة مجانية 100% عبر GitHub Pages",
+    footerText: "© مكتب الرياضيين القراريين للرياضه والعمل — بدون خوادم، استضافة مجانية 100% عبر GitHub Pages",
     modalMatchTitle: "جدولة / تسجيل مباراة",
     modalMatchEditTitle: "تعديل المباراة",
     lblRound: "الجولة",
@@ -1369,7 +1369,7 @@ const I18N = {
     importReplaced: "تم استبدال كل بيانات الدوري بالنسخة الاحتياطية.",
     importApplied: "تم دمج النسخة الاحتياطية: {added} مضاف، {changed} معدّل، {removed} محذوف.",
     importReplayToast: "تم تطبيق هذه النسخة الاحتياطية من قبل. لم يتغير شيء.",
-    importInvalidFile: "هذا الملف ليس نسخة احتياطية صالحة من البطولة المحلية للفرق المزابية.",
+    importInvalidFile: "هذا الملف ليس نسخة احتياطية صالحة من مكتب الرياضيين القراريين للرياضه والعمل.",
     importReadError: "تعذّرت قراءة الملف.",
     importFileTooLarge: "النسخة الاحتياطية كبيرة جدًا (10 ميغابايت كحد أقصى).",
     importMigrationError: "دمج الاستيراد غير متاح. نفّذ supabase/merge-import-migration.sql ثم أعد التحميل.",

@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   Mzab League — backend configuration
+   BSGST — backend configuration
    Two independent Supabase projects are recommended:
 
    PRODUCTION  → real league data, used by GitHub Pages

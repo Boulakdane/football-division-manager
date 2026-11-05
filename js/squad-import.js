@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   Mzab League — squad import (Excel / CSV)
+   BSGST — squad import (Excel / CSV)
    Reads a team's player list from an .xlsx or CSV file and checks every
    row, so the admin sees a preview before anything is saved.
 
