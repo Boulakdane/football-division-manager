@@ -42,7 +42,7 @@
     "test:squad-import": "node tools/test-squad-import.js"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.14",
+    "@electric-sql/pglite": "0.5.15",
     "@playwright/test": "1.64.1",
     "@tailwindcss/cli": "4.3.4",
     "eslint": "^10.14.0",
