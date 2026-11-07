@@ -1,3 +1,25 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * Tailwind CSS v4 entry point (CSS-first configuration).
+ *
+ * Sources are declared explicitly so the build only scans the app, never the
+ * vendored libraries or fonts. The custom palette keeps the same pitch colours
+ * and font stacks the v3 tailwind.config.js defined.
+ */
+@import "tailwindcss" source(none);
+
+@source "../index.html";
+@source "../js/**/*.js";
+
+@theme {
+  --font-sans: "Inter", sans-serif;
+  --font-arabic: "Cairo", sans-serif;
+
+  --color-pitch-50: #f0fdf4;
+  --color-pitch-100: #dcfce7;
+  --color-pitch-400: #4ade80;
+  --color-pitch-500: #22c55e;
+  --color-pitch-600: #16a34a;
+  --color-pitch-700: #15803d;
+  --color-pitch-800: #166534;
+  --color-pitch-900: #14532d;
+}

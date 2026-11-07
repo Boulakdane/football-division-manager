@@ -1214,7 +1214,7 @@ function renderFixtures() {
       : '';
 
     return `
-      <div class="bg-slate-800/60 border ${isNext ? 'border-pitch-500/40' : 'border-slate-700/70'} rounded-xl p-4 shadow-sm hover:border-slate-600 transition flex flex-col justify-between">
+      <div class="bg-slate-800/60 border ${isNext ? 'border-pitch-500/40' : 'border-slate-700/70'} rounded-xl p-4 shadow-xs hover:border-slate-600 transition flex flex-col justify-between">
         <div class="flex justify-between items-center text-xs text-slate-400 mb-3 pb-2 border-b border-slate-700/50 gap-2">
           <span class="font-medium text-slate-300 truncate">${esc(t('matchdayPrefix'))} ${m.round} • ${esc(m.venue || '')}</span>
           <div class="flex items-center gap-2 shrink-0">
@@ -1534,7 +1534,7 @@ function renderTeamsView() {
     const totalSquad = squad.length;
 
     return `
-      <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl overflow-hidden shadow-sm flex flex-col">
+      <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl overflow-hidden shadow-xs flex flex-col">
         <div class="bg-slate-900/80 p-4 border-b border-slate-700 flex justify-between items-center gap-2">
           <div class="flex items-center gap-3 min-w-0">
             ${teamIconSrc(team)

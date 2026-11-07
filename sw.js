@@ -16,7 +16,7 @@
  * offline client keeps the old shell.
  */
 
-const CACHE = 'kickoff-shell-v3';
+const CACHE = 'kickoff-shell-v4';
 
 const SHELL = [
   './',
