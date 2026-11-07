@@ -1,13 +1,12 @@
 {
   "name": "kickoff-division",
-  "version": "3.13.0",
+  "version": "3.14.0",
   "private": true,
   "description": "BSGST — zero-server football league manager",
   "scripts": {
     "serve": "node tools/serve.js",
     "build:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --minify",
-    "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch",
-    "build:icons": "node tools/make-app-icons.js",
+    "watch:css": "tailwindcss -i ./css/tailwind.input.css -o ./css/tailwind.css --watch",    "build:icons": "node tools/make-app-icons.js",
     "test:pwa": "node tools/test-pwa.js",
     "test:sql": "node tools/test-sql-integrity.js",
     "test:add-players": "node tools/test-add-players.js",
@@ -45,7 +44,8 @@
   "devDependencies": {
     "@electric-sql/pglite": "0.5.14",
     "@playwright/test": "1.64.1",
+    "@tailwindcss/cli": "4.3.4",
     "eslint": "^10.14.0",
-    "tailwindcss": "3.4.19"
+    "tailwindcss": "4.3.4"
   }
 }

@@ -607,7 +607,6 @@ accounts live in a free [Supabase](https://supabase.com) project.
 │   └── app.js                 # Rendering, standings math, modals, import/export
 ├── package.json               # Tailwind build and test scripts (dev-only dependencies)
 ├── playwright.config.js       # Chromium smoke-test configuration and local server
-├── tailwind.config.js         # Tailwind theme (pitch palette, fonts, content)
 ├── data/
 │   ├── README.md              # CSV column reference and workflow
 │   └── examples/              # Template seasons/teams/players/matches/events CSV files
@@ -1041,10 +1040,11 @@ Then open <http://localhost:8765>. You can also use `npm.cmd run serve`; plain
 
 #### Styling changes
 
-Tailwind is compiled locally into `css/tailwind.css` (about 22 KB) instead of loading
+Tailwind is compiled locally into `css/tailwind.css` (about 48 KB) instead of loading
 the Play CDN. The generated file is committed, so visitors and GitHub Pages need no
-build tooling. If you add or change Tailwind classes in `index.html` or `js/`, rebuild
-the stylesheet:
+build tooling. Tailwind 4 is configured in CSS: `css/tailwind.input.css` declares the
+scanned sources and the pitch palette with `@source` and `@theme`. If you add or change
+Tailwind classes in `index.html` or `js/`, rebuild the stylesheet:
 
 ```bash
 npm install          # first time only

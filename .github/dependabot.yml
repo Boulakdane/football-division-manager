@@ -8,13 +8,6 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
-    ignore:
-      # Tailwind 4 is a breaking migration: the CLI moved to @tailwindcss/cli
-      # and the config moved into CSS. Track it as its own task (X8) instead of
-      # reopening a grouped bump that cannot build.
-      - dependency-name: tailwindcss
-        update-types:
-          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: "/"
