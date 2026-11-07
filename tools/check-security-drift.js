@@ -242,7 +242,11 @@ function emit(note, code) {
   const file = option('markdown', '');
   if (file) fs.writeFileSync(file, md);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
-  process.exit(code);
+  // Set the code and let the event loop drain. Calling process.exit() here races
+  // the HTTP client's teardown and trips a libuv assertion on Windows with
+  // Node 23/24/25 (nodejs/node#56645), which would report a successful check as
+  // a crash. Node 20/22 in CI are unaffected either way.
+  process.exitCode = code;
 }
 
 (async () => {
